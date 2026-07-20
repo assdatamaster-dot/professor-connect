@@ -7,7 +7,11 @@ import { createApp } from './app.js';
 import { logger } from './utils/logger.js';
 
 const httpServer = createServer(createApp());
-const websocketServer = initializeWebSocket(httpServer);
+const communicationGateway = initializeWebSocket(httpServer, logger, environment.requestTimeoutMs, {
+  intervalMs: environment.heartbeatIntervalMs,
+  timeoutMs: environment.heartbeatTimeoutMs,
+  reconnectWindowMs: environment.reconnectWindowMs,
+});
 
 httpServer.on('error', (error) => {
   logger.error('Não foi possível iniciar o servidor', error);
@@ -24,7 +28,7 @@ httpServer.listen(environment.port, environment.host, () => {
 function shutdown(signal: NodeJS.Signals): void {
   logger.info('Encerrando servidor', { signal });
 
-  websocketServer.close(() => {
+  communicationGateway.close(() => {
     logger.info('Servidor encerrado');
   });
 }

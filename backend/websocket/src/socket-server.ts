@@ -2,8 +2,92 @@ import type { Server as HttpServer } from 'node:http';
 
 import { Server as SocketServer } from 'socket.io';
 
-export function initializeWebSocket(httpServer: HttpServer): SocketServer {
-  return new SocketServer(httpServer, {
+import {
+  CallManager,
+  CallService,
+  CallStore,
+  ConnectionManager,
+  ConnectionService,
+  HeartbeatManager,
+  HeartbeatService,
+  PresenceManager,
+  PresenceService,
+  RequestManager,
+  RequestService,
+  RequestStore,
+  SessionManager,
+  SessionService,
+  SessionStore,
+  type HeartbeatSettings,
+} from '@professor-connect/services';
+
+import { CommunicationGateway } from './modules/communication/communication.gateway.js';
+import { CommunicationService } from './modules/communication/communication.service.js';
+import type {
+  ClientToServerEvents,
+  CommunicationLogger,
+  ServerToClientEvents,
+} from './modules/communication/communication.types.js';
+
+export function initializeWebSocket(
+  httpServer: HttpServer,
+  logger: CommunicationLogger,
+  requestTimeoutMilliseconds = 60_000,
+  heartbeatSettings: HeartbeatSettings = {
+    intervalMs: 30_000,
+    timeoutMs: 90_000,
+    reconnectWindowMs: 90_000,
+  },
+): CommunicationGateway {
+  const socketServer = new SocketServer<ClientToServerEvents, ServerToClientEvents>(httpServer, {
     serveClient: false,
   });
+
+  const communicationService = new CommunicationService();
+  const connectionService = new ConnectionService(new ConnectionManager());
+  const presenceService = new PresenceService(new PresenceManager(), connectionService);
+  const requestService = new RequestService(
+    new RequestManager(new RequestStore(), { stateMachineLogger: logger }),
+    presenceService,
+    requestTimeoutMilliseconds,
+  );
+  const callService = new CallService(
+    new CallManager(new CallStore(), { stateMachineLogger: logger }),
+    requestService,
+    logger,
+  );
+  const sessionService = new SessionService(
+    new SessionManager(new SessionStore()),
+    connectionService,
+  );
+  const heartbeatService = new HeartbeatService(
+    new HeartbeatManager(heartbeatSettings),
+    connectionService,
+    presenceService,
+    {
+      replaceSessionConnection: (previousConnectionId, connectionId) =>
+        sessionService.replaceClientConnection(previousConnectionId, connectionId),
+      releaseSessions: (connectionId) =>
+        sessionService.leaveAllSessions(connectionId).map((change) => change.session),
+      listPendingRequests: (clientId) => requestService.listPendingRequestsForClient(clientId),
+      listActiveCalls: (clientId) => callService.listActiveCallsForClient(clientId),
+    },
+    heartbeatSettings,
+    logger,
+  );
+  const communicationGateway = new CommunicationGateway(
+    socketServer,
+    communicationService,
+    connectionService,
+    presenceService,
+    requestService,
+    callService,
+    sessionService,
+    heartbeatService,
+    logger,
+  );
+
+  communicationGateway.registerEvents();
+
+  return communicationGateway;
 }

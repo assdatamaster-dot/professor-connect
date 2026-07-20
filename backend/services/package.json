@@ -3,10 +3,27 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
-    "lint": "eslint src --max-warnings=0",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "lint": "eslint src tests --max-warnings=0",
+    "pretest": "npm run build --workspace=@professor-connect/shared-types",
+    "test": "tsx --test tests/state-machine.spec.ts tests/call.spec.ts tests/heartbeat.spec.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tests/tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@professor-connect/shared-types": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "tsx": "4.23.1"
   }
 }

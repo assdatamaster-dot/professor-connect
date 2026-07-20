@@ -16,7 +16,7 @@
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "dev": "tsx watch src/server.ts",
     "lint": "eslint src tests --max-warnings=0",
-    "predev": "npm run build --workspace=@professor-connect/config --workspace=@professor-connect/websocket",
+    "predev": "npm run build --workspace=@professor-connect/shared-types --workspace=@professor-connect/services --workspace=@professor-connect/config --workspace=@professor-connect/websocket",
     "start": "node dist/server.js",
     "test": "tsx --test tests/health.spec.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tests/tsconfig.json --noEmit"

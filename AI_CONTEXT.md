@@ -6,10 +6,12 @@ O Professor Connect será uma plataforma de atendimento remoto entre alunos e pr
 produto deverá permitir que cada perfil utilize um aplicativo desktop próprio e se comunique
 com serviços centrais por interfaces bem definidas.
 
-Este documento oferece contexto persistente para pessoas e agentes de IA. A Sprint 2 adiciona
-somente a infraestrutura inicial do backend: servidor Express, health check, Socket.IO,
-configuração via ambiente e preparação do Prisma. Não existem regras de negócio, telas, login,
-banco de dados, chamadas de vídeo ou acesso remoto implementados.
+Este documento oferece contexto persistente para pessoas e agentes de IA. A Sprint 9 adiciona
+heartbeat periódico, detecção de timeout e recuperação de conexão em memória. O `clientId` é a
+identidade estável e o `connectionId` identifica somente o socket atual. Uma recuperação válida
+preserva Presence, Sessions e referências a Requests e Calls ativas. O protocolo continua
+baseado em `SocketMessage<T>` e `EventType`. Não existem login, banco de dados, WebRTC, mídia ou
+acesso remoto implementados.
 
 ## Arquitetura completa
 
@@ -135,8 +137,69 @@ O fluxo abaixo descreve a direção planejada, não uma implementação atual:
 
 ## Estado da fundação
 
-Os workspaces permanecem separados pelas fronteiras definidas na Sprint 1. Na Sprint 2, `api`
-passa a executar o servidor HTTP e expõe exclusivamente `GET /health`; `websocket` inicializa o
-Socket.IO; `config` centraliza o ambiente; e `database` fornece a configuração inicial do Prisma
-sem modelos, migrações ou conexão durante a inicialização. Os demais workspaces continuam como
-fundações sem funcionalidades de produto.
+Os workspaces permanecem separados pelas fronteiras definidas na Sprint 1. `api` executa o
+servidor HTTP e expõe exclusivamente `GET /health`; `websocket` adapta o protocolo tipado ao
+Socket.IO; `services` contém managers independentes e Services de conexão e sessão;
+`shared-types` publica `EventType`, `SocketMessage<T>` e contratos de sessão, presença e
+solicitação; `services` contém os módulos `presence` e `request`, independentes de Socket.IO;
+`config` centraliza o ambiente, o timeout de Request e as configurações de heartbeat; e
+`database` mantém somente a configuração inicial do Prisma. Sessões, conexões, presenças,
+solicitações, Calls e metadados de heartbeat existem apenas em memória durante a vida do
+processo. `STUDENT` e `TEACHER` são classificações técnicas, sem autenticação.
+
+O módulo `request` separa `RequestStore`, `RequestManager` e `RequestService`. O store mantém
+registros, destinatários e rejeições; o manager delega mudanças de status para
+`RequestStateMachine`; o service valida papéis por meio de `PresenceService`, agenda expirações e
+publica resultados sem conhecer Socket.IO. Rejeições são individuais: a Request compartilhada
+permanece `PENDING`, inclusive após todos os destinatários rejeitarem, até aceite, cancelamento ou
+expiração. Estados terminais são removidos da visão de Requests ativas, mas ficam em memória para
+consulta técnica durante a vida do processo.
+
+A infraestrutura genérica reside em `backend/services/src/core/state-machine`, porque
+`backend/services` é o workspace proprietário das regras de aplicação; não existe um workspace
+válido em `backend/src`. `StateMachine<TState>` recebe o grafo de transições e dependências
+injetáveis de relógio e logger. Ela não importa tipos de Request nem frameworks. Cada mudança
+válida cria `StateTransition<TState>` com estado anterior, novo estado e timestamp, registra o
+histórico e emite um evento. Transições inválidas preservam o estado e lançam
+`InvalidStateTransitionError` com código `INVALID_STATE_TRANSITION`.
+
+O grafo de Request permite somente `PENDING → ACCEPTED|REJECTED|CANCELLED|EXPIRED`. Estados
+terminais não possuem transições de saída. Aceite, cancelamento e expiração operacionais passam
+obrigatoriamente pela máquina. As rejeições individuais do protocolo continuam sendo metadados
+de destinatário da Sprint 6; uma futura mudança compartilhada para `REJECTED` já está protegida
+pelo mesmo grafo, sem antecipar nova regra de produto.
+
+O módulo `backend/services/src/modules/call` separa `CallStore`, `CallStateMachine`, `CallManager`
+e `CallService`. O store implementa as operações em memória com `Map`; a máquina declara somente
+as sete transições permitidas; o manager gera UUID, mantém uma máquina e um histórico por Call e
+atualiza timestamps a partir dos objetos de transição; o service valida que a Request esteja
+`ACCEPTED`, publica eventos de ciclo de vida e registra logs sem conhecer Socket.IO.
+
+O gateway assina os eventos do `CallService`. Depois de `request.accept`, ele cria a Call em
+`CREATED` e solicita `CONNECTING`; `call.created` e `call.connecting` são enviados apenas ao aluno
+e ao professor aceito. Os estados `CONNECTED`, `FINISHED`, `FAILED` e `CANCELLED` estão disponíveis
+no service para simulação e futura integração, mas nenhum protocolo de mídia foi implementado.
+
+O grafo de Call permite somente `CREATED → CONNECTING|FAILED|CANCELLED`,
+`CONNECTING → CONNECTED|FAILED|CANCELLED` e `CONNECTED → FINISHED`. Todas as demais combinações
+lançam `InvalidStateTransitionError`, preservam estado e histórico e não emitem evento válido.
+
+O módulo `backend/services/src/modules/heartbeat` separa `HeartbeatManager` e
+`HeartbeatService`. O manager mantém índices por `clientId` e `connectionId`, além de `lastSeen`,
+`ConnectionStatus` e `ConnectionState`. O service agenda inspeções, coordena portas de Connection,
+Presence e recursos recuperáveis e publica eventos internos sem importar Socket.IO. A composição
+concreta permanece em `backend/websocket`.
+
+Após uma perda, Presence preserva o status anterior e deixa de indexar o socket antigo. Uma
+reconexão anterior ao menor limite entre timeout de heartbeat e janela de reconexão substitui o
+socket nas Sessions, mantém o mesmo `clientId` e retorna Presence, Sessions, Requests pendentes e
+Calls ativas em `connection.recovered`. O gateway reinscreve o socket nas salas restauradas.
+Após o limite, a conexão é removida, Presence muda para `OFFLINE` e associações técnicas de
+Session são liberadas. Requests e Calls não sofrem transição automática, pois continuam sob seus
+próprios ciclos de vida.
+
+As configurações pertencem exclusivamente a `backend/config`: `HEARTBEAT_INTERVAL_MS=30000`,
+`HEARTBEAT_TIMEOUT_MS=90000` e `RECONNECT_WINDOW_MS=90000`. O intervalo deve ser menor que o
+timeout, e a janela não pode exceder o timeout. Os eventos `heartbeat.ping`, `heartbeat.pong`,
+`connection.lost`, `connection.recovered` e `connection.timeout` usam os contratos compartilhados
+de `EventType` e `SocketMessage<T>`.
