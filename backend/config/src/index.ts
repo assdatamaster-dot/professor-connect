@@ -1,2 +1,1 @@
-/** Ponto de entrada reservado para configuração da aplicação. */
-export {};
+export { environment, type Environment } from './environment.js';

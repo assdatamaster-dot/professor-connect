@@ -14,6 +14,10 @@
       "dependsOn": ["^typecheck"],
       "inputs": ["$TURBO_DEFAULT$", "../../tsconfig.base.json"]
     },
+    "test": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", "../../tsconfig.base.json"]
+    },
     "clean": {
       "cache": false
     }

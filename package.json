@@ -16,11 +16,15 @@
   ],
   "scripts": {
     "build": "turbo run build",
-    "check": "npm run lint && npm run typecheck && npm run format:check",
+    "check": "npm run lint && npm run typecheck && npm run test && npm run format:check",
     "clean": "turbo run clean",
+    "dev": "npm run dev --workspace=@professor-connect/api",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "turbo run lint",
+    "prisma:generate": "npm run prisma:generate --workspace=@professor-connect/database",
+    "start": "npm run start --workspace=@professor-connect/api",
+    "test": "turbo run test",
     "typecheck": "turbo run typecheck"
   },
   "devDependencies": {

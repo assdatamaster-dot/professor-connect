@@ -5,8 +5,9 @@ atendimentos remotos. Este repositório contém a fundação técnica do produto
 monorepo, limites entre módulos, ferramentas de qualidade e documentação para orientar a
 evolução do sistema.
 
-> **Estado atual:** Sprint 1 — fundação. Não há telas, autenticação, persistência, chamadas de
-> vídeo, comunicação em tempo real ou acesso remoto implementados.
+> **Estado atual:** Sprint 2 — infraestrutura inicial do backend. O servidor Express, o health
+> check e o Socket.IO estão ativos. Não há autenticação, persistência, regras de negócio,
+> chamadas de vídeo ou acesso remoto implementados.
 
 ## Arquitetura
 
@@ -35,12 +36,14 @@ e elementos visuais realmente reutilizáveis ficam em `packages/`.
 - **Turborepo:** orquestração de tarefas, cache e dependências entre workspaces.
 - **TypeScript e Node.js:** linguagem e ambiente de execução dos módulos.
 - **Tauri:** base prevista para os aplicativos desktop de aluno e professor.
-- **Socket.IO:** transporte previsto para eventos em tempo real.
-- **PostgreSQL e Prisma:** persistência relacional prevista e acesso tipado aos dados.
+- **Express:** servidor HTTP e fronteira da API.
+- **Socket.IO:** servidor preparado para receber conexões em tempo real.
+- **Prisma:** cliente configurado para a futura persistência PostgreSQL, ainda sem modelos.
 - **ESLint, Prettier e EditorConfig:** análise estática e padronização do código.
 
-Nesta sprint, Tauri, Socket.IO e Prisma estão apenas declarados nos workspaces responsáveis.
-Não existem configuração de produto, schema de dados ou integrações ativas.
+Nesta sprint, o backend expõe somente `GET /health`. O Prisma possui apenas a configuração
+inicial, sem modelos, migrações ou acesso ao banco. Os aplicativos Tauri continuam reservados
+para sprints futuras.
 
 ## Estrutura de pastas
 
@@ -50,11 +53,11 @@ ProfessorConnect/
 │   ├── student-desktop/   # Cliente desktop do aluno
 │   └── teacher-desktop/   # Cliente desktop do professor
 ├── backend/
-│   ├── api/               # Entrada HTTP futura
-│   ├── websocket/         # Entrada de eventos futura
+│   ├── api/               # Servidor Express, health check e tratamento de erros
+│   ├── websocket/         # Inicialização do Socket.IO
 │   ├── services/          # Casos de uso e orquestração futuros
-│   ├── database/          # Adaptadores de persistência futuros
-│   └── config/            # Configuração validada futura
+│   ├── database/          # Configuração inicial do Prisma, sem modelos
+│   └── config/            # Variáveis de ambiente validadas
 ├── packages/
 │   ├── shared-types/      # Contratos compartilhados
 │   ├── shared-utils/      # Utilitários agnósticos
@@ -82,27 +85,76 @@ Na raiz do repositório:
 
 ```bash
 npm install
+cp .env.example .env
 ```
 
-O npm reconhece automaticamente os diretórios de `apps/`, `backend/` e `packages/` como
-workspaces.
+No PowerShell, use `Copy-Item .env.example .env` no lugar de `cp`. Os valores padrão permitem
+iniciar o servidor sem alterar o arquivo. A variável `DATABASE_URL` fica reservada para o Prisma;
+o backend não tenta acessar um banco nesta sprint.
+
+Para gerar novamente o cliente Prisma após alterações futuras no schema:
+
+```bash
+npm run prisma:generate
+```
 
 ## Desenvolvimento
 
-Use os comandos abaixo durante o desenvolvimento:
+Inicie o backend com recarregamento automático:
+
+```bash
+npm run dev
+```
+
+O servidor fica disponível em `http://localhost:3000`. Verifique o health check com:
+
+```bash
+curl http://localhost:3000/health
+```
+
+Resposta esperada:
+
+```json
+{
+  "status": "ok"
+}
+```
+
+O processo também registra que o Socket.IO foi inicializado e está aguardando conexões.
+
+## Build e execução
+
+Para compilar e executar o backend compilado:
+
+```bash
+npm run build
+npm run start
+```
+
+Outros comandos disponíveis:
 
 ```bash
 npm run lint          # executa o ESLint em todos os workspaces
 npm run typecheck     # valida os tipos sem gerar arquivos
+npm run test          # executa os testes automatizados
 npm run format:check  # confere a formatação
 npm run check         # executa todas as verificações de qualidade
-npm run build         # compila os workspaces com cache do Turborepo
 npm run format        # aplica a formatação padronizada
 npm run clean         # remove saídas de compilação dos workspaces
 ```
 
-Não há comando para iniciar a aplicação nesta sprint, pois nenhum processo ou interface foi
-implementado. Consulte o [Guia do Desenvolvedor](docs/DEVELOPER_GUIDE.md), o
+## Docker para desenvolvimento
+
+O `docker-compose.yml` é exclusivo para desenvolvimento e inicia somente o backend, com o código
+local montado no contêiner:
+
+```bash
+docker compose up --build
+```
+
+Nenhum serviço de banco de dados é criado nesta sprint.
+
+Consulte o [Guia do Desenvolvedor](docs/DEVELOPER_GUIDE.md), o
 [Contexto de IA](AI_CONTEXT.md) e o [Roadmap](docs/ROADMAP.md) antes de iniciar uma nova tarefa.
 
 ## Princípios de evolução

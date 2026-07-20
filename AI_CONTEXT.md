@@ -6,9 +6,10 @@ O Professor Connect será uma plataforma de atendimento remoto entre alunos e pr
 produto deverá permitir que cada perfil utilize um aplicativo desktop próprio e se comunique
 com serviços centrais por interfaces bem definidas.
 
-Este documento oferece contexto persistente para pessoas e agentes de IA. Na Sprint 1, o único
-resultado autorizado é a fundação do projeto. Não existem funcionalidades, telas, login, banco
-de dados, chamadas de vídeo ou acesso remoto implementados.
+Este documento oferece contexto persistente para pessoas e agentes de IA. A Sprint 2 adiciona
+somente a infraestrutura inicial do backend: servidor Express, health check, Socket.IO,
+configuração via ambiente e preparação do Prisma. Não existem regras de negócio, telas, login,
+banco de dados, chamadas de vídeo ou acesso remoto implementados.
 
 ## Arquitetura completa
 
@@ -134,6 +135,8 @@ O fluxo abaixo descreve a direção planejada, não uma implementação atual:
 
 ## Estado da fundação
 
-Todos os workspaces possuem apenas manifests, configuração TypeScript e barrels vazios para
-permitir validação estrutural. A presença de uma dependência indica a tecnologia escolhida e o
-módulo que será seu proprietário; não indica que a integração esteja implementada.
+Os workspaces permanecem separados pelas fronteiras definidas na Sprint 1. Na Sprint 2, `api`
+passa a executar o servidor HTTP e expõe exclusivamente `GET /health`; `websocket` inicializa o
+Socket.IO; `config` centraliza o ambiente; e `database` fornece a configuração inicial do Prisma
+sem modelos, migrações ou conexão durante a inicialização. Os demais workspaces continuam como
+fundações sem funcionalidades de produto.

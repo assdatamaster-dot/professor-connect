@@ -1,2 +1,1 @@
-/** Ponto de entrada reservado para a API. */
-export {};
+export { createApp } from './app.js';
