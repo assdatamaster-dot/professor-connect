@@ -28,6 +28,9 @@ import type {
   CommunicationLogger,
   ServerToClientEvents,
 } from './modules/communication/communication.types.js';
+import { SignalingGateway } from './modules/signaling/signaling.gateway.js';
+import { SignalingManager } from './modules/signaling/signaling.manager.js';
+import { SignalingService } from './modules/signaling/signaling.service.js';
 
 export function initializeWebSocket(
   httpServer: HttpServer,
@@ -75,6 +78,12 @@ export function initializeWebSocket(
     heartbeatSettings,
     logger,
   );
+  const signalingGateway = new SignalingGateway(
+    socketServer,
+    new SignalingService(),
+    new SignalingManager(sessionService, callService, connectionService, presenceService),
+    logger,
+  );
   const communicationGateway = new CommunicationGateway(
     socketServer,
     communicationService,
@@ -88,6 +97,7 @@ export function initializeWebSocket(
   );
 
   communicationGateway.registerEvents();
+  signalingGateway.registerEvents();
 
   return communicationGateway;
 }

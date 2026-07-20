@@ -23,6 +23,10 @@ import type {
   SessionLeavePayload,
   SocketMessage,
 } from '@professor-connect/shared-types';
+import type {
+  SignalingClientToServerEvents,
+  SignalingServerToClientEvents,
+} from '../signaling/signaling.types.js';
 
 export interface CommunicationPingPayload {
   readonly type: 'ping';
@@ -35,7 +39,7 @@ export interface CommunicationPongPayload {
 export type PingMessage = SocketMessage<CommunicationPingPayload>;
 export type PongResponse = SocketMessage<CommunicationPongPayload>;
 
-export type ClientToServerEvents = {
+export type ClientToServerEvents = SignalingClientToServerEvents & {
   [EventType.COMMUNICATION_PING]: (message: PingMessage) => void;
 } & {
   [EventType.HEARTBEAT_PONG]: (message: SocketMessage<HeartbeatPongPayload>) => void;
@@ -65,7 +69,7 @@ export type ClientToServerEvents = {
   [EventType.REQUEST_CANCEL]: (message: SocketMessage<RequestReferencePayload>) => void;
 };
 
-export type ServerToClientEvents = {
+export type ServerToClientEvents = SignalingServerToClientEvents & {
   [EventType.COMMUNICATION_PONG]: (response: PongResponse) => void;
 } & {
   [EventType.HEARTBEAT_PING]: (message: SocketMessage<HeartbeatPingPayload>) => void;

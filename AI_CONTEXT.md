@@ -6,12 +6,12 @@ O Professor Connect será uma plataforma de atendimento remoto entre alunos e pr
 produto deverá permitir que cada perfil utilize um aplicativo desktop próprio e se comunique
 com serviços centrais por interfaces bem definidas.
 
-Este documento oferece contexto persistente para pessoas e agentes de IA. A Sprint 9 adiciona
-heartbeat periódico, detecção de timeout e recuperação de conexão em memória. O `clientId` é a
-identidade estável e o `connectionId` identifica somente o socket atual. Uma recuperação válida
-preserva Presence, Sessions e referências a Requests e Calls ativas. O protocolo continua
-baseado em `SocketMessage<T>` e `EventType`. Não existem login, banco de dados, WebRTC, mídia ou
-acesso remoto implementados.
+Este documento oferece contexto persistente para pessoas e agentes de IA. A Sprint 15 integra o
+MVP por uma camada de Workflow cliente. Presence, Request, Session, Call, Heartbeat, Signaling,
+WebRTC, DataChannel, áudio, vídeo, compartilhamento de tela e autorização de controle remoto
+preservam seus módulos e são coordenados por interfaces. Health Check e liberação idempotente de
+recursos estabilizam o ciclo completo. Mouse e teclado continuam sem execução real; não existem
+login, banco de dados, gravação, chat ou múltiplos participantes.
 
 ## Arquitetura completa
 
@@ -203,3 +203,129 @@ As configurações pertencem exclusivamente a `backend/config`: `HEARTBEAT_INTER
 timeout, e a janela não pode exceder o timeout. Os eventos `heartbeat.ping`, `heartbeat.pong`,
 `connection.lost`, `connection.recovered` e `connection.timeout` usam os contratos compartilhados
 de `EventType` e `SocketMessage<T>`.
+
+O módulo `backend/websocket/src/modules/signaling` mantém a sinalização separada da comunicação
+geral. `SignalingGateway` recebe e valida envelopes; `SignalingManager` resolve o único par após
+consultar portas de Session, Call, Connection e Presence; `SignalingService` cria e envia o novo
+`SocketMessage<T>` ao destinatário. O módulo não armazena SDP ou ICE e não possui estado próprio.
+
+Os eventos `signal.offer`, `signal.answer`, `signal.ice-candidate` e `signal.error` são membros de
+`EventType`. Offer e Answer carregam `callId` e `sdp`; ICE carrega `callId`, `candidate` e metadados
+opcionais; erros carregam código, mensagem e evento relacionado. Uma Call em estado terminal é
+rejeitada. Se a Call já tiver `sessionId`, ele deve corresponder ao envelope; quando não tiver, a
+correlação é feita pelas identidades de aluno e professor registradas em Presence.
+
+O workspace `packages/webrtc` oferece uma implementação compartilhada pelos aplicativos de aluno
+e professor. `PeerFactory` isola `RTCPeerConnection` e `RTCDataChannel`; `DataChannelService`
+valida, serializa e entrega mensagens; `DataChannelWebRtcManager` mantém um peer e uma State
+Machine por Call; `DataChannelWebRtcService` orquestra Offer, Answer, ICE, canal e encerramento por
+portas pequenas. O módulo não depende de Socket.IO e recebe o `WebRtcSignalingPort` já usado pelo
+módulo de signaling da Sprint 10. O fluxo DataChannel não depende de `MediaService`.
+
+A Negotiation State Machine reutiliza `backend/services/src/core/state-machine` por meio do
+subpath público `@professor-connect/services/state-machine`. O fluxo esperado é
+`NEW → CONNECTING → NEGOTIATING → CONNECTED → CLOSED`. Estados ativos podem ir para `FAILED` ou
+`CLOSED`, e `FAILED` pode ir para `CLOSED`. `CONNECTED` somente ocorre após o peer estar conectado
+e o canal `professor-connect-control` estar aberto.
+
+Cada transição emite `EventType.WEBRTC_PEER_STATE_CHANGED` dentro de
+`SocketMessage<PeerNegotiationStatePayload>`. Offer, Answer e ICE continuam usando os eventos e
+payloads da Sprint 10. Mensagens peer-to-peer usam `EventType.WEBRTC_DATA_CHANNEL_MESSAGE` e
+`SocketMessage<DataChannelMessage<DataChannelPayload>>`; o conteúdo interno possui `type`,
+`timestamp` e `payload`. Candidatos locais são enfileirados até o respectivo SDP ser enviado.
+
+A configuração padrão fica em `packages/webrtc/src/config/webrtc.ts`: STUN usa
+`stun:stun.l.google.com:19302`; TURN possui URLs, username e credential, fica desabilitado por
+padrão e pode ser carregado das variáveis `WEBRTC_*` documentadas em `.env.example`. Os testes usam
+`@roamhq/wrtc` somente como implementação WebRTC de Node 22; produção utiliza as APIs nativas do
+WebView/Tauri.
+
+A camada `packages/webrtc/src/client/core/rtc` é o núcleo cliente compartilhado pelos aplicativos
+de aluno e professor. Ela corresponde ao módulo lógico `client/src/core/rtc` sem criar um terceiro
+cliente ou duplicar arquivos nos dois apps. `RtcEngine` é a fachada exclusiva para a interface;
+`PeerManager` compõe `WebRtcService`, `WebRtcManager`, `PeerConnectionFactory` e
+`WebRtcSignalingPort`; `MediaManager` implementa `MediaServicePort`, controla permissões,
+constraints, dispositivos, streams e tracks. A interface não recebe nem manipula
+`RTCPeerConnection`.
+
+`MediaManager` sempre exige uma track de áudio e uma de vídeo. A configuração prepara seleção de
+microfone/câmera por `deviceId`, largura, altura e FPS, usando dispositivos padrão quando os campos
+não são informados. `BrowserVideoRenderer` é o adaptador de `HTMLVideoElement`; testes usam uma
+porta de renderização em memória. O stream local é renderizado após a captura e o remoto é
+renderizado no primeiro `ontrack` de cada MediaStream.
+
+Na reconexão, `PeerManager` encerra o runtime atual, remove os senders, para tracks, descarta
+listeners antigos e compõe um novo manager/service/peer para a mesma Call e Session. O signaling
+permanece Offer/Answer/ICE da Sprint 10 e não é duplicado. `RtcEngine` preserva listeners da UI,
+limpa renderizadores e emite eventos locais tipados para criação de stream, conexão, reconexão,
+recebimento remoto, falha e encerramento.
+
+O compartilhamento de tela reside nos arquivos `screen-sharing.*` da mesma camada
+`packages/webrtc/src/client/core/rtc`. `ScreenSharingService` coordena os eventos
+`SCREEN_SHARE_REQUEST`, `SCREEN_SHARE_ACCEPT`, `SCREEN_SHARE_DENY`, `SCREEN_SHARE_STARTED`,
+`SCREEN_SHARE_STOPPED` e `SCREEN_SHARE_FAILED`; `ScreenSharingManager` controla captura, track,
+preview e State Machine. A UI chama somente métodos de `RtcEngine` para solicitar, aceitar,
+recusar ou encerrar.
+
+O fluxo de solicitação reutiliza o gateway de signaling e o padrão Request/Event existente. Cada
+mensagem contém `callId`, `requestId`, `sessionId`, `EventType` e envelope `SocketMessage<T>`. O
+`SignalingManager` valida Session ativa, Call ativa, participantes e conexões antes de encaminhar.
+Não existe um novo socket, sala, gateway ou armazenamento para screen sharing.
+
+A State Machine usa `IDLE → REQUESTED → STARTING → SHARING → STOPPING → STOPPED`, com transições
+controladas para `FAILED` e novo request a partir de `STOPPED`/`FAILED`. O aluno captura somente
+vídeo por `getDisplayMedia`; o microfone existente continua ativo. `PeerManager` localiza o sender
+de vídeo e executa `RTCRtpSender.replaceTrack()`. O evento `ended` da captura restaura a câmera e o
+preview automaticamente e emite `SCREEN_SHARE_STOPPED`. Apenas um compartilhamento é permitido por
+instância.
+
+O módulo lógico `client/src/core/remote-control` reside em
+`packages/webrtc/src/client/core/remote-control`, compartilhado pelos dois aplicativos.
+`PermissionManager` é proprietário da State Machine e do timer de autorização;
+`RemoteControlManager` valida o estado e a correlação antes de enviar ou receber;
+`CommandDispatcher` serializa, desserializa e encaminha comandos para uma porta de executor; e
+`RemoteControlService` coordena o signaling de autorização. A implementação padrão do executor
+apenas registra o comando, sem integração com APIs do sistema operacional.
+
+Os eventos `REMOTE_REQUEST`, `REMOTE_ACCEPT`, `REMOTE_DENY`, `REMOTE_STARTED`, `REMOTE_STOPPED`,
+`REMOTE_EXPIRED` e `REMOTE_FAILED` reutilizam `SignalingGateway`, `SignalingManager`, Session e
+Call. O gateway não registra `REMOTE_COMMAND`. Assim, comandos não podem atravessar Socket.IO e
+viajam como `SocketMessage<RemoteCommandTransportPayload>` pela porta genérica adicionada ao
+`DataChannelService`/`DataChannelWebRtcService` existente.
+
+A State Machine permite `IDLE|STOPPED|DENIED|EXPIRED|FAILED → REQUESTED`, depois
+`REQUESTED → AUTHORIZED|DENIED|EXPIRED|FAILED`, `AUTHORIZED → ACTIVE` e encerramento por
+`AUTHORIZED|ACTIVE → STOPPING → STOPPED`. Estados autorizados também podem ir para `EXPIRED` ou
+`FAILED`. O `authorizationId`, a Call, a Session, o prazo e o estado `ACTIVE` são verificados antes
+de cada comando.
+
+O protocolo tipado discrimina `MouseMove`, `MouseDown`, `MouseUp`, `MouseWheel`, `KeyDown` e
+`KeyUp`. Todo comando contém `commandId`, `type`, `timestamp` e uma interface de payload nomeada.
+Não há execução real, clipboard, arquivos, chat, gravação ou suporte a múltiplos participantes.
+
+O módulo lógico `client/src/core/workflow` reside em
+`packages/webrtc/src/client/core/workflow`. `WorkflowManager` orquestra o ciclo e mantém somente o
+contexto de integração; `WorkflowService` expõe a fachada; `HealthCheckService` agrega sinais de
+saúde; `ResourceManager` coordena o teardown. Nenhuma regra interna de Presence, Request, Session,
+Call, Heartbeat, WebRTC, Screen Sharing ou Remote Control foi copiada para o Workflow.
+
+O fluxo operacional é dividido em `begin`, que conecta participantes, registra Presence, inicia
+Heartbeat e cria Request; `accept`, que aceita a Request, cria Session e Call, prepara Signaling,
+conecta WebRTC/DataChannel e valida mídia; ações opcionais para Screen Sharing e Remote Control;
+`recover`, que recupera sockets e reconecta os dois transportes; e `end`, que finaliza o
+atendimento e libera recursos.
+
+A máquina de estados do Workflow utiliza `IDLE`, `CONNECTING`, `REQUESTED`, `PREPARING`,
+`NEGOTIATING`, `ACTIVE`, `RECOVERING`, `STOPPING`, `COMPLETED` e `FAILED`. Atendimentos concluídos
+ou com falha podem iniciar um novo contexto, permitindo uso sequencial sem reutilizar IDs nem
+recursos.
+
+O Health Check produz um snapshot `HEALTHY` somente quando Socket.IO, Heartbeat, Call, Session,
+PeerConnection, DataChannel e MediaStreams estão saudáveis ao mesmo tempo. A recuperação só volta
+para `ACTIVE` depois desse snapshot integrado.
+
+O Resource Manager tenta parar Screen Sharing e Remote Control, finalizar Call, encerrar Session,
+fechar peer/mídia e DataChannel, cancelar timers, remover listeners e limpar memória. Uma falha é
+registrada no relatório sem impedir as etapas seguintes; o workflow só conclui quando não há
+falhas. Os adapters de `RtcEngine.close()` permanecem responsáveis por PeerConnection,
+MediaStreams e renderizadores, evitando duplicação.

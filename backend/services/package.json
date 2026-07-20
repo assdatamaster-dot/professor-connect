@@ -9,6 +9,10 @@
     ".": {
       "types": "./src/index.ts",
       "import": "./dist/index.js"
+    },
+    "./state-machine": {
+      "types": "./src/core/state-machine/index.ts",
+      "import": "./dist/core/state-machine/index.js"
     }
   },
   "scripts": {

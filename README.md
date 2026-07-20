@@ -5,9 +5,10 @@ atendimentos remotos. Este repositório contém a fundação técnica do produto
 monorepo, limites entre módulos, ferramentas de qualidade e documentação para orientar a
 evolução do sistema.
 
-> **Estado atual:** Sprint 9 — monitoramento de conexões por heartbeat e recuperação em memória.
-> Reconexões dentro da janela preservam o `clientId`, a presença e referências ativas; conexões
-> expiradas são encerradas e ficam `OFFLINE`. Não há WebRTC, mídia, autenticação ou persistência.
+> **Estado atual:** Sprint 15 — MVP integrado e estabilizado. O Workflow coordena Presence,
+> Request, Session, Call, Heartbeat, Signaling, WebRTC, DataChannel, mídia, compartilhamento de
+> tela e autorização de controle remoto. O encerramento libera recursos de forma verificável;
+> mouse e teclado continuam sem execução real.
 
 ## Arquitetura
 
@@ -37,14 +38,17 @@ e elementos visuais realmente reutilizáveis ficam em `packages/`.
 - **TypeScript e Node.js:** linguagem e ambiente de execução dos módulos.
 - **Tauri:** base prevista para os aplicativos desktop de aluno e professor.
 - **Express:** servidor HTTP e fronteira da API.
-- **Socket.IO:** comunicação tipada para ping/pong, sessões, presença, solicitações e eventos de
-  ciclo de vida de Calls.
+- **Socket.IO:** comunicação tipada para ping/pong, sessões, presença, solicitações, Calls e
+  mensagens de negociação do servidor de sinalização.
+- **WebRTC:** conexão peer-to-peer por DataChannel, áudio e vídeo nos clientes desktop, com APIs
+  nativas do WebView e implementação Node somente nos testes automatizados.
 - **Prisma:** cliente configurado para a futura persistência PostgreSQL, ainda sem modelos.
 - **ESLint, Prettier e EditorConfig:** análise estática e padronização do código.
 
-Nesta sprint, o backend expõe somente `GET /health` via HTTP. O Socket.IO oferece comunicação,
-sessões, presença e o ciclo de vida de solicitações. `STUDENT` e `TEACHER` continuam sendo papéis
-técnicos sem login. O Prisma permanece sem modelos, migrações ou acesso ao banco.
+Nesta sprint, o backend continua expondo somente `GET /health` via HTTP e transportando a
+sinalização pelo Socket.IO. Peers, DataChannel e MediaStreams ficam exclusivamente nos clientes
+por meio do workspace compartilhado `@professor-connect/webrtc`. `STUDENT` e `TEACHER` continuam
+sendo papéis técnicos sem login. O Prisma permanece sem modelos, migrações ou acesso ao banco.
 
 ## Estrutura de pastas
 
@@ -56,11 +60,9 @@ ProfessorConnect/
 ├── backend/
 │   ├── api/               # Servidor Express, health check e tratamento de erros
 │   ├── websocket/         # Socket.IO e módulo de comunicação
-│   │   └── src/modules/communication/
-│   │       ├── communication.gateway.ts
-│   │       ├── communication.service.ts
-│   │       ├── communication.events.ts
-│   │       └── communication.types.ts
+│   │   └── src/modules/
+│   │       ├── communication/ # Protocolo Socket.IO existente
+│   │       └── signaling/     # Gateway, service, manager, eventos e tipos de sinalização
 │   ├── services/          # Gerenciamento independente em memória
 │   │   └── src/
 │   │       ├── core/state-machine/ # Máquina de estados genérica
@@ -76,6 +78,13 @@ ProfessorConnect/
 ├── packages/
 │   ├── shared-types/      # EventType, SocketMessage e contratos compartilhados
 │   ├── shared-utils/      # Utilitários agnósticos
+│   ├── webrtc/            # Capacidade WebRTC compartilhada pelos dois clientes
+│   │   ├── src/config/webrtc.ts # Configuração central de STUN/TURN
+│   │   ├── src/client/core/rtc/ # RTC Engine, Peer Manager e Media Manager
+│   │   │   └── screen-sharing.* # Manager, service, tipos e eventos de tela
+│   │   ├── src/client/core/remote-control/ # Autorização e comandos P2P tipados
+│   │   ├── src/client/core/workflow/ # Orquestração, Health Check e liberação do MVP
+│   │   └── src/modules/webrtc/  # Peer, DataChannel, service, manager, eventos e tipos
 │   └── ui/                # Base visual compartilhada futura
 ├── docs/                  # Guias e planejamento
 ├── prompts/               # Prompts versionados
@@ -412,6 +421,210 @@ Execute os testes unitários e o teste Socket.IO de recuperação com:
 npm run test --workspace=@professor-connect/services
 npm run test --workspace=@professor-connect/websocket
 ```
+
+## Servidor de sinalização
+
+O módulo `backend/websocket/src/modules/signaling` transporta somente dados de negociação entre
+dois clientes. Antes de encaminhar, o `SignalingManager` confirma que a Session existe e está
+`ACTIVE`, possui exatamente dois clientes conectados, o remetente pertence à Session e a Call
+existe, está ativa e corresponde aos participantes. O gateway não cria peer connections, não
+interpreta SDP e não acessa câmera, microfone ou qualquer `MediaStream`.
+
+| Evento                 | Direção                  | Payload                      |
+| ---------------------- | ------------------------ | ---------------------------- |
+| `signal.offer`         | Cliente A → servidor → B | `SignalOfferPayload`         |
+| `signal.answer`        | Cliente B → servidor → A | `SignalAnswerPayload`        |
+| `signal.ice-candidate` | Qualquer cliente → par   | `SignalIceCandidatePayload`  |
+| `signal.error`         | Servidor → remetente     | `SignalErrorPayload`         |
+| `screen-share.*`       | Cliente → servidor → par | Payloads de compartilhamento |
+
+Offer e Answer usam `{ callId, sdp }`. ICE usa `{ callId, candidate, sdpMid?,
+sdpMLineIndex?, usernameFragment? }`. Erros usam `{ code, message, relatedEvent }`. Todos esses
+payloads viajam exclusivamente no envelope `SocketMessage<T>`, com o evento selecionado pelo
+enum `EventType` e o identificador da Session em `sessionId`.
+
+O teste automatizado sobe um servidor real, conecta aluno e professor, cria a Session, aceita uma
+Request para iniciar a Call e verifica Offer, Answer, ICE nos dois sentidos e `signal.error`:
+
+```bash
+npm run test --workspace=@professor-connect/websocket
+```
+
+## WebRTC Peer Connection e DataChannel
+
+O workspace `packages/webrtc` é compartilhado pelos aplicativos de aluno e professor. O fluxo da
+Sprint 11 cria um `RTCPeerConnection`, abre o canal padrão `professor-connect-control` e reutiliza
+a porta de sinalização da Sprint 10. Ele não chama `getUserMedia`, não adiciona tracks e não envia
+áudio ou vídeo.
+
+```text
+Aluno                           Signaling                         Professor
+  │ Peer + createDataChannel        │                                 │
+  ├──── signal.offer ──────────────>├──── signal.offer ──────────────>│
+  │                                 │                      cria Answer │
+  │<─── signal.answer ──────────────┤<─── signal.answer ──────────────┤
+  │<────── signal.ice-candidate ───>│<──── signal.ice-candidate ─────>│
+  │<════ SocketMessage<DataChannelMessage<...>> via DataChannel ════>│
+```
+
+A máquina de estados específica usa `NEW`, `CONNECTING`, `NEGOTIATING`, `CONNECTED`, `FAILED` e
+`CLOSED`. Cada transição passa pela infraestrutura `StateMachine` da Sprint 7 e produz um
+`SocketMessage<PeerNegotiationStatePayload>` com `EventType.WEBRTC_PEER_STATE_CHANGED`. O estado
+`CONNECTED` exige simultaneamente peer conectado e DataChannel aberto.
+
+Mensagens do canal usam `EventType.WEBRTC_DATA_CHANNEL_MESSAGE` e um envelope
+`SocketMessage<DataChannelMessage<DataChannelPayload>>`. O payload interno contém `type`,
+`timestamp` e `payload`; a implementação valida toda a estrutura recebida antes de notificá-la.
+
+A configuração fica centralizada em `packages/webrtc/src/config/webrtc.ts`. As variáveis
+`WEBRTC_STUN_URLS`, `WEBRTC_TURN_ENABLED`, `WEBRTC_TURN_URLS`, `WEBRTC_TURN_USERNAME` e
+`WEBRTC_TURN_CREDENTIAL` preparam STUN/TURN; TURN permanece desabilitado por padrão.
+
+O teste usa dois peers WebRTC reais em Node, sem mídia, e comprova Offer, Answer, ICE, abertura do
+canal, mensagens nos dois sentidos, mudanças de estado e encerramento:
+
+```bash
+npm run test --workspace=@professor-connect/webrtc
+```
+
+## RTC Engine de áudio e vídeo
+
+A Sprint 12 adiciona a camada cliente `packages/webrtc/src/client/core/rtc`. Como aluno e
+professor consomem a mesma implementação, ela permanece no workspace compartilhado em vez de ser
+duplicada nos dois aplicativos.
+
+- `RtcEngine` é a única API operacional destinada à interface: conecta, recebe signaling,
+  reconecta, lista dispositivos, configura mídia e encerra.
+- `PeerManager` compõe a fábrica, o signaling e os managers existentes, gerencia ICE e troca o
+  runtime inteiro durante uma reconexão.
+- `MediaManager` solicita permissões, cria o MediaStream, adiciona/remove tracks, mantém seleção de
+  dispositivos e entrega streams para renderizadores.
+- `BrowserVideoRenderer` liga a porta de renderização a um `HTMLVideoElement`; vídeo local deve
+  ser criado com `muted=true` para evitar retorno de áudio.
+
+```text
+Interface → RtcEngine → PeerManager → WebRtcService → Signaling da Sprint 10
+                   └──→ MediaManager → getUserMedia → áudio/vídeo local
+                                      ← ontrack ← áudio/vídeo remoto
+```
+
+As configurações aceitam `deviceId` do microfone e da câmera, além de largura, altura e FPS
+preferidos. Sem seleção explícita, o navegador usa os dispositivos padrão. Permissão negada
+interrompe a conexão antes da criação do peer e é registrada sem expor dados pessoais.
+
+O teste automatizado cria dois RTC Engines reais, captura uma track de áudio e uma de vídeo em
+cada lado, verifica renderização local/remota, executa reconexão com novos peers e confirma o
+encerramento das tracks:
+
+```bash
+npm run test --workspace=@professor-connect/webrtc
+```
+
+## Compartilhamento de tela
+
+A Sprint 13 estende a camada `packages/webrtc/src/client/core/rtc` sem expor o peer à interface.
+O professor cria uma solicitação, o aluno aceita e passa a compartilhar sua tela. O request usa o
+mesmo gateway Socket.IO, `SignalingManager`, Session e Call do fluxo de eventos existente; não há
+socket ou protocolo paralelo.
+
+```text
+Professor                Relay existente                 Aluno
+   │ SCREEN_SHARE_REQUEST ───>│───────────────────────────>│
+   │<── SCREEN_SHARE_ACCEPT ──│<───────────────────────────┤
+   │<── SCREEN_SHARE_STARTED ─│<──── getDisplayMedia() ────┤
+   │<════ mesma conexão WebRTC, câmera substituída por tela ═│
+   │<── SCREEN_SHARE_STOPPED ─│<──── usuário encerra ──────┤
+   │<════ mesma conexão WebRTC, câmera restaurada ══════════│
+```
+
+`ScreenSharingManager` usa `RTCRtpSender.replaceTrack()` pela porta do `PeerManager`; não cria uma
+segunda conexão e não renegocia SDP. O áudio do microfone permanece na conexão. Ao receber
+`onended` da captura, o manager restaura automaticamente a câmera, atualiza o preview local e
+notifica o professor.
+
+A máquina de estados utiliza `IDLE`, `REQUESTED`, `STARTING`, `SHARING`, `STOPPING`, `STOPPED` e
+`FAILED` sobre a mesma infraestrutura genérica da Sprint 7. Somente um compartilhamento pode estar
+ativo por instância.
+
+```bash
+npm run test --workspace=@professor-connect/webrtc
+npm run test --workspace=@professor-connect/websocket
+```
+
+## Autorização e transporte de controle remoto
+
+A Sprint 14 adiciona o módulo lógico `client/src/core/remote-control`, localizado em
+`packages/webrtc/src/client/core/remote-control` para permanecer compartilhado entre professor e
+aluno. `PermissionManager` mantém a autorização temporária, `RemoteControlManager` protege o
+canal e coordena comandos, `CommandDispatcher` valida o protocolo e encaminha para um executor
+que, nesta sprint, apenas registra o comando. `RemoteControlService` coordena os eventos de
+autorização.
+
+```text
+Professor                 Signaling validado                    Aluno
+   │ REMOTE_REQUEST ──────────────>│──────────────────────────────>│
+   │<────────────── REMOTE_ACCEPT │<──────────────────────────────┤
+   │ REMOTE_STARTED ─────────────>│──────────────────────────────>│
+   │<════════ REMOTE_COMMAND pelo RTCDataChannel ════════════════>│
+   │<────────────── REMOTE_STOPPED│<────────── revogação/stop ────┤
+```
+
+Os eventos de autorização `REMOTE_REQUEST`, `REMOTE_ACCEPT`, `REMOTE_DENY`, `REMOTE_STARTED`,
+`REMOTE_STOPPED`, `REMOTE_EXPIRED` e `REMOTE_FAILED` passam pelo relay existente como
+`SocketMessage<T>`. `REMOTE_COMMAND` não integra os contratos Socket.IO: ele é serializado como
+`SocketMessage<RemoteCommandTransportPayload>` diretamente no DataChannel padrão. Cada comando
+tem `commandId`, `type`, `timestamp` e um payload nomeado; são suportados `MouseMove`,
+`MouseDown`, `MouseUp`, `MouseWheel`, `KeyDown` e `KeyUp`.
+
+A State Machine usa `IDLE`, `REQUESTED`, `AUTHORIZED`, `ACTIVE`, `STOPPING`, `STOPPED`, `DENIED`,
+`EXPIRED` e `FAILED`. A autorização possui `authorizationId` e `expiresAt`; comandos só são
+aceitos no estado `ACTIVE`, dentro do prazo, para a Call, Session e autorização correspondentes.
+
+```bash
+npm run test --workspace=@professor-connect/webrtc
+npm run test --workspace=@professor-connect/websocket
+```
+
+Os testes cobrem aceite, recusa, expiração, seis tipos de comando, recebimento, revogação e relay
+de autorização. Não há execução real de mouse ou teclado.
+
+## Workflow integrado do MVP
+
+A Sprint 15 adiciona o módulo lógico `client/src/core/workflow`, compartilhado em
+`packages/webrtc/src/client/core/workflow`. Ele não substitui serviços existentes: coordena suas
+interfaces e mantém as regras de cada domínio nos módulos de origem.
+
+```text
+Conexão → Presence → Request → aceite → Session → Call
+        → Signaling → WebRTC → DataChannel → áudio/vídeo
+        → Screen Sharing opcional → Remote Control opcional
+        → Call finalizada → Session encerrada → recursos liberados
+```
+
+`WorkflowManager` mantém o contexto e o estado do atendimento. `WorkflowService` é a fachada de
+uso. `HealthCheckService` verifica Socket.IO, Heartbeat, Call, Session, PeerConnection,
+DataChannel e MediaStreams. `ResourceManager` encerra recursos em ordem segura, continua a
+limpeza quando uma etapa falha e informa um relatório tipado.
+
+Para executar a validação automatizada do MVP integrado:
+
+```bash
+npm install
+npm run test --workspace=@professor-connect/webrtc
+npm run check
+```
+
+O teste `workflow.spec.ts` percorre o atendimento completo, incluindo compartilhamento de tela,
+autorização, comando pelo DataChannel, recuperação, encerramento e atendimentos sequenciais. Para
+subir o backend usado pelos adapters Socket.IO dos aplicativos:
+
+```bash
+Copy-Item .env.example .env
+npm run dev
+```
+
+Os aplicativos desktop ainda são pontos de composição sem interface visual final; as fachadas do
+Workflow são exportadas pelos dois workspaces para a integração da apresentação.
 
 ## Build e execução
 

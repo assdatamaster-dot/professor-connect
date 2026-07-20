@@ -33,7 +33,27 @@ export {
   type RequestRejectedPayload,
   type ServiceRequest,
 } from './request.js';
+export {
+  RemoteControlFailureCode,
+  type RemoteControlAuthorizationPayload,
+  type RemoteControlFailedPayload,
+  type RemoteControlReferencePayload,
+  type RemoteControlRequestPayload,
+} from './remote-control.js';
 export type { SocketMessage } from './socket-message.js';
+export {
+  ScreenShareFailureCode,
+  type ScreenShareFailedPayload,
+  type ScreenShareReferencePayload,
+  type ScreenShareRequestPayload,
+} from './screen-sharing.js';
+export {
+  SignalErrorCode,
+  type SignalAnswerPayload,
+  type SignalErrorPayload,
+  type SignalIceCandidatePayload,
+  type SignalOfferPayload,
+} from './signaling.js';
 export {
   SessionStatus,
   type Session,
@@ -44,3 +64,12 @@ export {
   type SessionJoinPayload,
   type SessionLeavePayload,
 } from './session.js';
+export {
+  DataChannelMessageType,
+  PeerNegotiationState,
+  WebRtcNegotiationState,
+  type DataChannelMessage,
+  type DataChannelPayload,
+  type PeerNegotiationStatePayload,
+  type WebRtcNegotiationStatePayload,
+} from './webrtc.js';
