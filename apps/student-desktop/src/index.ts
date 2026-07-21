@@ -18,4 +18,4 @@ export {
   WorkflowService,
   WebRtcManager,
   WebRtcService,
-} from '@professor-connect/webrtc';
+} from '@professor-connect/engine';

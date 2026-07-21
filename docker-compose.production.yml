@@ -1,0 +1,39 @@
+name: professor-connect
+
+services:
+  backend:
+    image: ${PROFESSOR_CONNECT_IMAGE:-professor-connect-backend:0.1.0}
+    build:
+      context: .
+      dockerfile: services/backend/Dockerfile
+      target: production
+    restart: unless-stopped
+    init: true
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000
+      REQUEST_TIMEOUT_MS: ${REQUEST_TIMEOUT_MS:-60000}
+      HEARTBEAT_INTERVAL_MS: ${HEARTBEAT_INTERVAL_MS:-30000}
+      HEARTBEAT_TIMEOUT_MS: ${HEARTBEAT_TIMEOUT_MS:-90000}
+      RECONNECT_WINDOW_MS: ${RECONNECT_WINDOW_MS:-90000}
+    ports:
+      - '${BACKEND_BIND_ADDRESS:-127.0.0.1}:${BACKEND_PORT:-3000}:3000'
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://127.0.0.1:3000/health').then((response) => {
+          if (!response.ok) process.exit(1); }).catch(() => process.exit(1));
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 20s

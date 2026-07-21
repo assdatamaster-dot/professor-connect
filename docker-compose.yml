@@ -2,7 +2,7 @@ services:
   backend:
     build:
       context: .
-      dockerfile: backend/Dockerfile
+      dockerfile: services/backend/Dockerfile
       target: development
     environment:
       HOST: 0.0.0.0

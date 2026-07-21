@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Professor Connect</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <img src="../assets/icon.svg" width="42" height="42" alt="" />
+          <div>
+            <h1>Professor Connect</h1>
+            <p>Aplicativo do aluno</p>
+          </div>
+        </div>
+        <div id="connection-badge" class="connection-badge" data-status="DISCONNECTED">
+          <span class="connection-dot" aria-hidden="true"></span>
+          <span id="connection-text">🔴 Desconectado</span>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <section class="attendance-card" aria-labelledby="attendance-title">
+          <div class="status-heading">
+            <span class="eyebrow">STATUS DO ATENDIMENTO</span>
+            <h2 id="attendance-title"><span id="attendance-text">Disponível</span></h2>
+            <p id="status-message" aria-live="polite">Pronto para iniciar um atendimento.</p>
+          </div>
+
+          <div id="call-section" class="call-action">
+            <div class="call-illustration" aria-hidden="true">
+              <img src="../assets/support.svg" width="210" height="150" alt="" />
+            </div>
+            <button id="call-professor" class="button button--primary" type="button">
+              CHAMAR PROFESSOR
+            </button>
+            <p>Um professor disponível receberá sua solicitação.</p>
+          </div>
+
+          <div id="media-section" class="media-area" hidden>
+            <div class="video-grid">
+              <figure class="video-card video-card--remote">
+                <video id="remote-video" autoplay playsinline></video>
+                <figcaption>Professor</figcaption>
+              </figure>
+              <figure class="video-card video-card--local">
+                <video id="local-video" autoplay muted playsinline></video>
+                <figcaption>Você</figcaption>
+              </figure>
+            </div>
+            <div class="session-controls">
+              <div class="remote-status">
+                <span>Controle remoto</span>
+                <strong id="remote-control-text">Não autorizado</strong>
+              </div>
+              <div class="button-group">
+                <button id="share-screen" class="button button--secondary" type="button">
+                  Compartilhar Tela
+                </button>
+                <button id="end-attendance" class="button button--danger" type="button">
+                  Encerrar Atendimento
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <aside class="log-panel" aria-labelledby="log-title">
+          <div class="log-panel__header">
+            <div>
+              <span class="eyebrow">PAINEL DE LOGS</span>
+              <h2 id="log-title">Atividade</h2>
+            </div>
+            <span class="live-label"><span aria-hidden="true"></span> Ao vivo</span>
+          </div>
+          <ul id="log-list" class="log-list" aria-live="polite">
+            <li class="log-empty">Nenhuma atividade registrada.</li>
+          </ul>
+        </aside>
+      </main>
+    </div>
+
+    <script type="module" src="./index.js"></script>
+  </body>
+</html>

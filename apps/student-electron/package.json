@@ -1,0 +1,68 @@
+{
+  "name": "@professor-connect/student-electron",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Aplicativo desktop do aluno para atendimentos no Professor Connect.",
+  "author": {
+    "name": "Professor Connect"
+  },
+  "productName": "Professor Connect - Aluno",
+  "type": "module",
+  "main": "dist/main/index.js",
+  "scripts": {
+    "build": "tsc -p preload/tsconfig.json && tsc -p tsconfig.json && node scripts/copy-static.mjs",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "dev": "npm run build && electron .",
+    "dist:win": "npm run build && electron-builder --win nsis --x64",
+    "lint": "eslint main preload renderer shared tests --max-warnings=0",
+    "start": "electron .",
+    "test": "tsx --test tests/*.spec.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p preload/tsconfig.json --noEmit && tsc -p tests/tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@professor-connect/engine": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "electron": "43.1.1",
+    "tsx": "4.23.1"
+  },
+  "build": {
+    "appId": "br.com.professorconnect.student",
+    "productName": "Professor Connect - Aluno",
+    "copyright": "Copyright (c) 2026 Professor Connect",
+    "asar": true,
+    "npmRebuild": false,
+    "directories": {
+      "buildResources": "assets",
+      "output": "../../release/student"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.svg",
+      "executableName": "Professor Connect Aluno",
+      "legalTrademarks": "Professor Connect"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Professor Connect - Aluno",
+      "uninstallDisplayName": "Professor Connect - Aluno",
+      "artifactName": "Professor-Connect-Aluno-Setup-${version}-${arch}.${ext}"
+    }
+  }
+}

@@ -1,22 +1,23 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": ["tsconfig.base.json", "eslint.config.mjs"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "inputs": ["$TURBO_DEFAULT$", "../../tsconfig.base.json"],
+      "inputs": ["$TURBO_DEFAULT$"],
       "outputs": ["dist/**"]
     },
     "lint": {
       "dependsOn": ["^lint"],
-      "inputs": ["$TURBO_DEFAULT$", "../../eslint.config.mjs"]
+      "inputs": ["$TURBO_DEFAULT$"]
     },
     "typecheck": {
       "dependsOn": ["^typecheck"],
-      "inputs": ["$TURBO_DEFAULT$", "../../tsconfig.base.json"]
+      "inputs": ["$TURBO_DEFAULT$"]
     },
     "test": {
       "dependsOn": ["^build"],
-      "inputs": ["$TURBO_DEFAULT$", "../../tsconfig.base.json"]
+      "inputs": ["$TURBO_DEFAULT$"]
     },
     "clean": {
       "cache": false

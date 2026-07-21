@@ -12,7 +12,7 @@ coesão dentro do módulo e comunicação por contratos explícitos entre módul
 ## Como criar módulos
 
 1. Confirme que a responsabilidade não pertence a um workspace existente.
-2. Crie o diretório no grupo adequado: `apps/`, `backend/` ou `packages/`.
+2. Crie o diretório no grupo adequado: `apps/`, `services/backend/` ou `packages/`.
 3. Adicione um `package.json` privado com nome `@professor-connect/<nome>`.
 4. Estenda o `tsconfig.base.json` e limite `rootDir` a `src`.
 5. Exponha somente a API pública necessária por `src/index.ts` e pelo campo `exports`.
@@ -25,7 +25,7 @@ uma fronteira de responsabilidade, implantação, propriedade ou reutilização 
 
 ## Como criar serviços
 
-- Coloque serviços de aplicação em `backend/services/src`.
+- Coloque serviços de aplicação em `services/backend/services/src`.
 - Dê ao serviço o nome do caso de uso ou capacidade que ele representa.
 - Receba dependências pelo construtor ou função fábrica, usando contratos pequenos.
 - Mantenha regras independentes de HTTP, Socket.IO, Tauri, Prisma e variáveis de ambiente.

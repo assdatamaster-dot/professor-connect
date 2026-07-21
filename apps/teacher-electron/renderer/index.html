@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="pt-BR" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Professor Connect</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <img src="../assets/icon.svg" width="42" height="42" alt="" />
+          <div>
+            <h1>Professor Connect</h1>
+            <p>Aplicativo do professor</p>
+          </div>
+        </div>
+        <div id="connection-badge" class="connection-badge" data-status="DISCONNECTED">
+          <span class="connection-dot" aria-hidden="true"></span>
+          <span id="connection-text">🔴 Desconectado</span>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <section class="main-column" aria-labelledby="attendance-title">
+          <header class="status-card">
+            <div>
+              <span class="eyebrow">STATUS DO ATENDIMENTO</span>
+              <h2 id="attendance-title"><span id="attendance-text">Inicializando</span></h2>
+              <p id="status-message" aria-live="polite">
+                Conecte-se para receber solicitações de atendimento.
+              </p>
+            </div>
+            <div class="teacher-availability" aria-label="Professor disponível">
+              <span aria-hidden="true"></span>
+              Professor
+            </div>
+          </header>
+
+          <div id="dashboard-section" class="dashboard-grid">
+            <article class="panel" aria-labelledby="students-title">
+              <div class="panel__header">
+                <div>
+                  <span class="eyebrow">PRESENÇA</span>
+                  <h2 id="students-title">Alunos online</h2>
+                </div>
+              </div>
+              <ul id="student-list" class="entity-list" aria-live="polite">
+                <li class="empty-state">Carregando alunos…</li>
+              </ul>
+            </article>
+
+            <article class="panel panel--requests" aria-labelledby="requests-title">
+              <div class="panel__header">
+                <div>
+                  <span class="eyebrow">FILA DE ATENDIMENTO</span>
+                  <h2 id="requests-title">Solicitações de atendimento</h2>
+                </div>
+              </div>
+              <ul id="request-list" class="entity-list" aria-live="polite">
+                <li class="empty-state">Carregando solicitações…</li>
+              </ul>
+            </article>
+          </div>
+
+          <section id="media-section" class="media-panel" hidden aria-label="Atendimento ativo">
+            <div class="video-grid">
+              <figure class="video-card video-card--remote">
+                <video id="remote-video" autoplay playsinline></video>
+                <figcaption id="active-student">Aluno</figcaption>
+              </figure>
+              <figure class="video-card video-card--local">
+                <video id="local-video" autoplay muted playsinline></video>
+                <figcaption>Você</figcaption>
+              </figure>
+            </div>
+
+            <div class="action-status-grid">
+              <div class="action-status">
+                <span>Compartilhamento de tela</span>
+                <strong id="screen-status">Disponível</strong>
+              </div>
+              <div class="action-status">
+                <span>Controle remoto</span>
+                <strong id="remote-status">Disponível</strong>
+              </div>
+            </div>
+
+            <div class="session-controls">
+              <button id="request-screen-sharing" class="button button--secondary" type="button">
+                Solicitar Compartilhamento de Tela
+              </button>
+              <button id="request-remote-control" class="button button--secondary" type="button">
+                Solicitar Controle Remoto
+              </button>
+              <button id="end-attendance" class="button button--danger" type="button">
+                Encerrar Atendimento
+              </button>
+            </div>
+          </section>
+        </section>
+
+        <aside class="log-panel" aria-labelledby="log-title">
+          <div class="panel__header">
+            <div>
+              <span class="eyebrow">PAINEL DE LOGS</span>
+              <h2 id="log-title">Atividade</h2>
+            </div>
+            <span class="live-label"><span aria-hidden="true"></span> Ao vivo</span>
+          </div>
+          <ul id="log-list" class="log-list" aria-live="polite">
+            <li class="empty-state">Nenhuma atividade registrada.</li>
+          </ul>
+        </aside>
+      </main>
+    </div>
+
+    <script type="module" src="./index.js"></script>
+  </body>
+</html>

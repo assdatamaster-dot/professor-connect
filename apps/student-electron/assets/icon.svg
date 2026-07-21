@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Professor Connect">
+  <defs>
+    <linearGradient id="pc" x1="8" y1="5" x2="55" y2="59" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6f86f2" />
+      <stop offset="1" stop-color="#4059d2" />
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="18" fill="url(#pc)" />
+  <path d="M18 23.5 32 16l14 7.5L32 31l-14-7.5Z" fill="#fff" />
+  <path d="M22.5 28v8.4c0 3.3 4.3 6.1 9.5 6.1s9.5-2.8 9.5-6.1V28L32 33l-9.5-5Z" fill="#fff" fill-opacity=".88" />
+  <path d="M46 25v13" stroke="#fff" stroke-width="3" stroke-linecap="round" />
+  <circle cx="46" cy="41" r="3" fill="#fff" />
+</svg>
