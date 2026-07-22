@@ -65,21 +65,36 @@ const sessionApi: StudentSessionApi = {
 };
 
 const webRtcChannels = {
+  sendOffer: 'student:webrtc:send-offer',
   sendAnswer: 'student:webrtc:send-answer',
   sendIceCandidate: 'student:webrtc:send-ice-candidate',
+  sendScreenShareStart: 'student:screen-share:start',
+  sendScreenShareStop: 'student:screen-share:stop',
   offer: 'student:webrtc:offer',
+  answer: 'student:webrtc:answer',
   iceCandidate: 'student:webrtc:ice-candidate',
 } as const;
 
 const webRtcApi: StudentWebRtcApi = {
+  sendOffer: (payload) => ipcRenderer.invoke(webRtcChannels.sendOffer, payload) as Promise<void>,
   sendAnswer: (payload) => ipcRenderer.invoke(webRtcChannels.sendAnswer, payload) as Promise<void>,
   sendIceCandidate: (payload) =>
     ipcRenderer.invoke(webRtcChannels.sendIceCandidate, payload) as Promise<void>,
+  sendScreenShareStart: (payload) =>
+    ipcRenderer.invoke(webRtcChannels.sendScreenShareStart, payload) as Promise<void>,
+  sendScreenShareStop: (payload) =>
+    ipcRenderer.invoke(webRtcChannels.sendScreenShareStop, payload) as Promise<void>,
   onOffer(listener): () => void {
     const handler = (_event: IpcRendererEvent, payload: WebRtcDescriptionPayload): void =>
       listener(payload);
     ipcRenderer.on(webRtcChannels.offer, handler);
     return () => ipcRenderer.removeListener(webRtcChannels.offer, handler);
+  },
+  onAnswer(listener): () => void {
+    const handler = (_event: IpcRendererEvent, payload: WebRtcDescriptionPayload): void =>
+      listener(payload);
+    ipcRenderer.on(webRtcChannels.answer, handler);
+    return () => ipcRenderer.removeListener(webRtcChannels.answer, handler);
   },
   onIceCandidate(listener): () => void {
     const handler = (_event: IpcRendererEvent, payload: WebRtcIceCandidatePayload): void =>

@@ -42,13 +42,17 @@
             <p id="attendance-state">Aluno conectado</p>
             <strong id="active-student-name"></strong>
             <div id="webrtc-media" class="webrtc-media" hidden>
+              <figure id="screen-share-view" class="screen-share-view" hidden>
+                <video id="teacher-screen-video" autoplay playsinline></video>
+                <figcaption>Tela Compartilhada</figcaption>
+              </figure>
               <figure>
                 <video id="teacher-remote-video" autoplay playsinline></video>
-                <figcaption>Aluno</figcaption>
+                <figcaption>Vídeo do Aluno</figcaption>
               </figure>
               <figure>
                 <video id="teacher-local-video" autoplay muted playsinline></video>
-                <figcaption>Você</figcaption>
+                <figcaption>Vídeo do Professor</figcaption>
               </figure>
             </div>
             <button id="end-session" class="end-session-button" type="button">

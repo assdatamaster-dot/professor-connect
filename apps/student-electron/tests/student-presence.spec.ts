@@ -11,6 +11,7 @@ import { StudentPresenceController } from '../main/student-presence.controller.j
 import type {
   WebRtcDescriptionPayload,
   WebRtcIceCandidatePayload,
+  ScreenSharePayload,
 } from '../shared/webrtc-contracts.js';
 
 interface PresenceEvents {
@@ -20,7 +21,10 @@ interface PresenceEvents {
   'request:session': (payload: { readonly teacherId: string }) => void;
   'session:end': (payload: { readonly sessionId: string }) => void;
   'webrtc:answer': (payload: WebRtcDescriptionPayload) => void;
+  'webrtc:offer': (payload: WebRtcDescriptionPayload) => void;
   'webrtc:ice-candidate': (payload: WebRtcIceCandidatePayload) => void;
+  'screen-share:start': (payload: ScreenSharePayload) => void;
+  'screen-share:stop': (payload: ScreenSharePayload) => void;
 }
 
 interface SessionEvents {
@@ -34,6 +38,7 @@ interface SessionEvents {
   'session:started': (payload: SessionLifecyclePayload) => void;
   'session:ended': (payload: SessionLifecyclePayload) => void;
   'webrtc:offer': (payload: WebRtcDescriptionPayload) => void;
+  'webrtc:answer': (payload: WebRtcDescriptionPayload) => void;
   'webrtc:ice-candidate': (payload: WebRtcIceCandidatePayload) => void;
 }
 
@@ -63,7 +68,11 @@ test('conecta, registra, mantém heartbeat e desconecta o aluno automaticamente'
   const answers: WebRtcDescriptionPayload[] = [];
   const localCandidates: WebRtcIceCandidatePayload[] = [];
   const offers: WebRtcDescriptionPayload[] = [];
+  const renegotiationOffers: WebRtcDescriptionPayload[] = [];
+  const renegotiationAnswers: WebRtcDescriptionPayload[] = [];
   const remoteCandidates: WebRtcIceCandidatePayload[] = [];
+  const screenShareStarts: ScreenSharePayload[] = [];
+  const screenShareStops: ScreenSharePayload[] = [];
 
   socketServer.on('connection', (socket) => {
     socket.on('student:register', (payload) => registrations.push(payload));
@@ -94,7 +103,16 @@ test('conecta, registra, mantém heartbeat e desconecta o aluno automaticamente'
       });
     });
     socket.on('webrtc:answer', (payload) => answers.push(payload));
+    socket.on('webrtc:offer', (payload) => {
+      renegotiationOffers.push(payload);
+      socket.emit('webrtc:answer', {
+        sessionId: payload.sessionId,
+        description: { type: 'answer', sdp: 'renegotiation-answer-sdp' },
+      });
+    });
     socket.on('webrtc:ice-candidate', (payload) => localCandidates.push(payload));
+    socket.on('screen-share:start', (payload) => screenShareStarts.push(payload));
+    socket.on('screen-share:stop', (payload) => screenShareStops.push(payload));
     socket.on('session:end', ({ sessionId }) => {
       endedSessionIds.push(sessionId);
       socket.emit('session:ended', {
@@ -124,6 +142,7 @@ test('conecta, registra, mantém heartbeat e desconecta o aluno automaticamente'
   );
   controller.onWebRtcOffer((payload) => offers.push(payload));
   controller.onWebRtcIceCandidate((payload) => remoteCandidates.push(payload));
+  controller.onWebRtcAnswer((payload) => renegotiationAnswers.push(payload));
 
   try {
     await controller.connect();
@@ -154,6 +173,16 @@ test('conecta, registra, mantém heartbeat e desconecta o aluno automaticamente'
         usernameFragment: null,
       },
     });
+    controller.sendScreenShareStart({
+      sessionId: 'session-id',
+      streamId: 'screen-stream',
+      trackId: 'screen-track',
+    });
+    controller.sendWebRtcOffer({
+      sessionId: 'session-id',
+      description: { type: 'offer', sdp: 'renegotiation-offer-sdp' },
+    });
+    controller.sendScreenShareStop({ sessionId: 'session-id' });
     socketServer.emit('webrtc:ice-candidate', {
       sessionId: 'session-id',
       candidate: {
@@ -164,8 +193,17 @@ test('conecta, registra, mantém heartbeat e desconecta o aluno automaticamente'
       },
     });
     await waitUntil(
-      () => answers.length === 1 && localCandidates.length === 1 && remoteCandidates.length === 1,
+      () =>
+        answers.length === 1 &&
+        localCandidates.length === 1 &&
+        remoteCandidates.length === 1 &&
+        renegotiationOffers.length === 1 &&
+        renegotiationAnswers.length === 1 &&
+        screenShareStarts.length === 1 &&
+        screenShareStops.length === 1,
     );
+    assert.equal(renegotiationAnswers[0]?.description.sdp, 'renegotiation-answer-sdp');
+    assert.equal(screenShareStarts[0]?.trackId, 'screen-track');
 
     controller.endSession();
     await waitUntil(() => controller.getSessionSnapshot().status === 'ended');

@@ -20,12 +20,22 @@ export interface WebRtcIceCandidatePayload {
   readonly candidate: WebRtcIceCandidate;
 }
 
+export interface ScreenSharePayload {
+  readonly sessionId: string;
+  readonly streamId?: string;
+  readonly trackId?: string;
+}
+
 export type WebRtcDescriptionListener = (payload: WebRtcDescriptionPayload) => void;
 export type WebRtcIceCandidateListener = (payload: WebRtcIceCandidatePayload) => void;
 
 export interface StudentWebRtcApi {
+  sendOffer(payload: WebRtcDescriptionPayload): Promise<void>;
   sendAnswer(payload: WebRtcDescriptionPayload): Promise<void>;
   sendIceCandidate(payload: WebRtcIceCandidatePayload): Promise<void>;
+  sendScreenShareStart(payload: ScreenSharePayload): Promise<void>;
+  sendScreenShareStop(payload: ScreenSharePayload): Promise<void>;
   onOffer(listener: WebRtcDescriptionListener): () => void;
+  onAnswer(listener: WebRtcDescriptionListener): () => void;
   onIceCandidate(listener: WebRtcIceCandidateListener): () => void;
 }

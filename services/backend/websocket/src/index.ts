@@ -85,6 +85,7 @@ export type {
 export {
   WEBRTC_SIGNALING_EVENTS,
   WebRtcSignalingGateway,
+  type ScreenSharePayload,
   type WebRtcDescriptionPayload,
   type WebRtcIceCandidate,
   type WebRtcIceCandidatePayload,

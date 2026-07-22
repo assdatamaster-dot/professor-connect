@@ -59,6 +59,10 @@ export function registerPresenceIpc(
     assertSender(event);
     controller.sendWebRtcOffer(requireDescriptionPayload(payload));
   });
+  ipcMain.handle(PRESENCE_IPC_CHANNELS.WEBRTC_SEND_ANSWER, (event, payload: unknown) => {
+    assertSender(event);
+    controller.sendWebRtcAnswer(requireDescriptionPayload(payload, 'answer'));
+  });
   ipcMain.handle(PRESENCE_IPC_CHANNELS.WEBRTC_SEND_ICE, (event, payload: unknown) => {
     assertSender(event);
     controller.sendWebRtcIceCandidate(requireIceCandidatePayload(payload));
@@ -74,9 +78,24 @@ export function registerPresenceIpc(
       renderer.send(PRESENCE_IPC_CHANNELS.WEBRTC_ANSWER, payload);
     }
   });
+  const unsubscribeOffer = controller.onWebRtcOffer((payload) => {
+    if (!renderer.isDestroyed()) {
+      renderer.send(PRESENCE_IPC_CHANNELS.WEBRTC_OFFER, payload);
+    }
+  });
   const unsubscribeIce = controller.onWebRtcIceCandidate((payload) => {
     if (!renderer.isDestroyed()) {
       renderer.send(PRESENCE_IPC_CHANNELS.WEBRTC_ICE, payload);
+    }
+  });
+  const unsubscribeScreenShareStarted = controller.onScreenShareStarted((payload) => {
+    if (!renderer.isDestroyed()) {
+      renderer.send(PRESENCE_IPC_CHANNELS.SCREEN_SHARE_STARTED, payload);
+    }
+  });
+  const unsubscribeScreenShareStopped = controller.onScreenShareStopped((payload) => {
+    if (!renderer.isDestroyed()) {
+      renderer.send(PRESENCE_IPC_CHANNELS.SCREEN_SHARE_STOPPED, payload);
     }
   });
 
@@ -84,7 +103,10 @@ export function registerPresenceIpc(
     dispose(): void {
       unsubscribe();
       unsubscribeAnswer();
+      unsubscribeOffer();
       unsubscribeIce();
+      unsubscribeScreenShareStarted();
+      unsubscribeScreenShareStopped();
       ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.CONNECT);
       ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.DISCONNECT);
       ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.GET_STATE);
@@ -92,24 +114,28 @@ export function registerPresenceIpc(
       ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.REJECT_SESSION);
       ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.END_SESSION);
       ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.WEBRTC_SEND_OFFER);
+      ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.WEBRTC_SEND_ANSWER);
       ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.WEBRTC_SEND_ICE);
     },
   };
 }
 
-function requireDescriptionPayload(payload: unknown): WebRtcDescriptionPayload {
+function requireDescriptionPayload(
+  payload: unknown,
+  expectedType: 'offer' | 'answer' = 'offer',
+): WebRtcDescriptionPayload {
   const record = requireRecord(payload);
   const description = requireRecord(record.description);
   if (
     typeof record.sessionId !== 'string' ||
-    description.type !== 'offer' ||
+    description.type !== expectedType ||
     typeof description.sdp !== 'string'
   ) {
     throw new Error('Descrição WebRTC inválida');
   }
   return {
     sessionId: record.sessionId,
-    description: { type: 'offer', sdp: description.sdp },
+    description: { type: expectedType, sdp: description.sdp },
   };
 }
 

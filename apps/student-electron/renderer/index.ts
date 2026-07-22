@@ -23,6 +23,9 @@ const localVideo = requireElement<HTMLVideoElement>('local-video');
 const remoteVideo = requireElement<HTMLVideoElement>('remote-video');
 let peerConnection: RTCPeerConnection | undefined;
 let localStream: MediaStream | undefined;
+let screenStream: MediaStream | undefined;
+let screenSender: RTCRtpSender | undefined;
+let isStoppingScreenShare = false;
 let activeWebRtcSessionId: string | undefined;
 const pendingIceCandidates = new Map<string, RTCIceCandidateInit[]>();
 
@@ -37,8 +40,9 @@ function render(snapshot: DesktopWorkflowSnapshot): void {
   callButton.disabled = !view.isCallButtonEnabled || teacherSelect.value.length === 0;
   shareButton.disabled = !view.isShareButtonEnabled;
   endButton.disabled = !view.isEndButtonEnabled;
-  mediaSection.hidden = !view.isMediaVisible;
-  callSection.hidden = !view.isCallButtonVisible;
+  const hasActiveWebRtcSession = activeWebRtcSessionId !== undefined;
+  mediaSection.hidden = !hasActiveWebRtcSession && !view.isMediaVisible;
+  callSection.hidden = hasActiveWebRtcSession || !view.isCallButtonVisible;
   connectionBadge.dataset.status = snapshot.connectionStatus;
   renderLogs(snapshot);
 }
@@ -118,7 +122,20 @@ callButton.addEventListener('click', () => {
     });
 });
 shareButton.addEventListener('click', () => {
-  void runAction(() => window.professorConnect.shareScreen());
+  if (activeWebRtcSessionId === undefined) {
+    void runAction(() => window.professorConnect.shareScreen());
+    return;
+  }
+  shareButton.disabled = true;
+  const action = screenStream === undefined ? startScreenShare() : stopScreenShare(true);
+  void action
+    .catch((error: unknown) => {
+      statusMessage.textContent =
+        error instanceof Error ? error.message : 'Não foi possível alterar o compartilhamento.';
+    })
+    .finally(() => {
+      shareButton.disabled = activeWebRtcSessionId === undefined;
+    });
 });
 endButton.addEventListener('click', () => {
   if (activeWebRtcSessionId !== undefined) {
@@ -142,6 +159,8 @@ const unsubscribeSession = window.professorConnectSession.onStateChanged((snapsh
   teacherSelect.disabled = isSessionBusy;
   if (snapshot.status === 'connected') {
     endButton.disabled = false;
+    mediaSection.hidden = false;
+    callSection.hidden = true;
   }
   if (snapshot.status === 'ended') {
     closeWebRtcSession();
@@ -149,6 +168,11 @@ const unsubscribeSession = window.professorConnectSession.onStateChanged((snapsh
 });
 const unsubscribeOffer = window.professorConnectWebRtc.onOffer((payload) => {
   void handleWebRtcOffer(payload.sessionId, payload.description);
+});
+const unsubscribeAnswer = window.professorConnectWebRtc.onAnswer((payload) => {
+  void handleWebRtcAnswer(payload.sessionId, payload.description).catch(() => {
+    statusMessage.textContent = 'Não foi possível aplicar a resposta WebRTC.';
+  });
 });
 const unsubscribeIce = window.professorConnectWebRtc.onIceCandidate((payload) => {
   void handleRemoteIceCandidate(payload.sessionId, payload.candidate).catch(() => {
@@ -162,6 +186,7 @@ window.addEventListener(
     unsubscribe();
     unsubscribeSession();
     unsubscribeOffer();
+    unsubscribeAnswer();
     unsubscribeIce();
     closeWebRtcSession();
   },
@@ -230,6 +255,7 @@ async function handleWebRtcOffer(
       sessionId,
       description: { type: 'answer', sdp: answer.sdp },
     });
+    shareButton.disabled = false;
   } catch (error) {
     statusMessage.textContent =
       error instanceof Error ? error.message : 'Não foi possível iniciar áudio e vídeo.';
@@ -278,6 +304,126 @@ async function createStudentPeerConnection(sessionId: string): Promise<void> {
   endButton.disabled = false;
 }
 
+async function handleWebRtcAnswer(
+  sessionId: string,
+  description: RTCSessionDescriptionInit,
+): Promise<void> {
+  const connection = peerConnection;
+  if (connection === undefined || activeWebRtcSessionId !== sessionId) {
+    return;
+  }
+  await connection.setRemoteDescription(description);
+  await flushPendingIceCandidates(sessionId, connection);
+}
+
+async function startScreenShare(): Promise<void> {
+  const sessionId = activeWebRtcSessionId;
+  const connection = peerConnection;
+  if (sessionId === undefined || connection === undefined || screenStream !== undefined) {
+    return;
+  }
+  if (connection.signalingState !== 'stable') {
+    throw new Error('A conexão ainda está sendo preparada. Tente novamente.');
+  }
+
+  let professorWasNotified = false;
+  try {
+    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+    const track = stream.getVideoTracks()[0];
+    if (track === undefined) {
+      stopMediaStream(stream);
+      throw new Error('Nenhuma tela foi selecionada.');
+    }
+    if (activeWebRtcSessionId !== sessionId || peerConnection !== connection) {
+      stopMediaStream(stream);
+      return;
+    }
+
+    screenStream = stream;
+    screenSender = connection.addTrack(track, stream);
+    track.onended = () => {
+      void stopScreenShare(true).catch(() => {
+        statusMessage.textContent = 'Não foi possível finalizar o compartilhamento.';
+      });
+    };
+    shareButton.textContent = 'Parar Compartilhamento';
+    statusMessage.textContent = 'Compartilhando tela com o professor.';
+    await window.professorConnectWebRtc.sendScreenShareStart({
+      sessionId,
+      streamId: stream.id,
+      trackId: track.id,
+    });
+    professorWasNotified = true;
+    await renegotiateAsOfferer(sessionId, connection);
+  } catch (error) {
+    cleanupScreenShare(connection);
+    if (professorWasNotified && activeWebRtcSessionId === sessionId) {
+      await window.professorConnectWebRtc.sendScreenShareStop({ sessionId }).catch(() => undefined);
+    }
+    statusMessage.textContent =
+      error instanceof Error ? error.message : 'Não foi possível compartilhar a tela.';
+  }
+}
+
+async function stopScreenShare(notifyProfessor: boolean): Promise<void> {
+  if (isStoppingScreenShare) {
+    return;
+  }
+  const sessionId = activeWebRtcSessionId;
+  const connection = peerConnection;
+  if (screenStream === undefined) {
+    return;
+  }
+
+  isStoppingScreenShare = true;
+  try {
+    cleanupScreenShare(connection);
+    if (notifyProfessor && sessionId !== undefined) {
+      await window.professorConnectWebRtc.sendScreenShareStop({ sessionId });
+    }
+    if (
+      sessionId !== undefined &&
+      connection !== undefined &&
+      connection.signalingState === 'stable'
+    ) {
+      await renegotiateAsOfferer(sessionId, connection);
+    }
+    statusMessage.textContent = 'Compartilhamento de tela encerrado.';
+  } finally {
+    isStoppingScreenShare = false;
+  }
+}
+
+function cleanupScreenShare(connection = peerConnection): void {
+  if (screenSender !== undefined && connection?.signalingState !== 'closed') {
+    connection?.removeTrack(screenSender);
+  }
+  screenSender = undefined;
+  if (screenStream !== undefined) {
+    for (const track of screenStream.getTracks()) {
+      track.onended = null;
+      track.stop();
+    }
+    screenStream = undefined;
+  }
+  shareButton.textContent = 'Compartilhar Tela';
+}
+
+async function renegotiateAsOfferer(
+  sessionId: string,
+  connection: RTCPeerConnection,
+): Promise<void> {
+  const offer = await connection.createOffer();
+  await connection.setLocalDescription(offer);
+  if (offer.sdp === undefined) {
+    throw new Error('Offer de compartilhamento sem SDP');
+  }
+  await window.professorConnectWebRtc.sendOffer({
+    sessionId,
+    description: { type: 'offer', sdp: offer.sdp },
+  });
+}
+
 async function handleRemoteIceCandidate(
   sessionId: string,
   candidate: RTCIceCandidateInit,
@@ -324,6 +470,7 @@ function closeWebRtcSession(): void {
     pendingIceCandidates.delete(sessionId);
   }
   if (peerConnection !== undefined) {
+    cleanupScreenShare(peerConnection);
     peerConnection.onicecandidate = null;
     peerConnection.ontrack = null;
     peerConnection.close();
@@ -338,6 +485,7 @@ function closeWebRtcSession(): void {
   mediaSection.hidden = true;
   callSection.hidden = false;
   endButton.disabled = true;
+  shareButton.disabled = true;
 }
 
 function stopMediaStream(stream: MediaStream): void {

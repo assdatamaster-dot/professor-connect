@@ -13,6 +13,8 @@ import type {
   WebRtcDescriptionPayload,
   WebRtcIceCandidateListener,
   WebRtcIceCandidatePayload,
+  ScreenShareListener,
+  ScreenSharePayload,
 } from '../shared/webrtc-contracts.js';
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -24,6 +26,7 @@ interface ProfessorPresenceClientEvents {
   'session:reject': (payload: { readonly requestId: string }) => void;
   'session:end': (payload: { readonly sessionId: string }) => void;
   'webrtc:offer': (payload: WebRtcDescriptionPayload) => void;
+  'webrtc:answer': (payload: WebRtcDescriptionPayload) => void;
   'webrtc:ice-candidate': (payload: WebRtcIceCandidatePayload) => void;
 }
 
@@ -32,7 +35,10 @@ interface ProfessorPresenceServerEvents {
   'session:started': (payload: ProfessorActiveSession) => void;
   'session:ended': (payload: ProfessorActiveSession) => void;
   'webrtc:answer': (payload: WebRtcDescriptionPayload) => void;
+  'webrtc:offer': (payload: WebRtcDescriptionPayload) => void;
   'webrtc:ice-candidate': (payload: WebRtcIceCandidatePayload) => void;
+  'screen-share:start': (payload: ScreenSharePayload) => void;
+  'screen-share:stop': (payload: ScreenSharePayload) => void;
 }
 
 interface ProfessorConnectConfig {
@@ -46,7 +52,10 @@ export class ProfessorPresenceController {
   private connectionGeneration = 0;
   private readonly listeners = new Set<PresenceListener>();
   private readonly answerListeners = new Set<WebRtcDescriptionListener>();
+  private readonly offerListeners = new Set<WebRtcDescriptionListener>();
   private readonly iceCandidateListeners = new Set<WebRtcIceCandidateListener>();
+  private readonly screenShareStartedListeners = new Set<ScreenShareListener>();
+  private readonly screenShareStoppedListeners = new Set<ScreenShareListener>();
   private heartbeatTimer: NodeJS.Timeout | undefined;
   private professorName: string | undefined;
   private sessionRequests: ProfessorSessionRequest[] = [];
@@ -128,8 +137,23 @@ export class ProfessorPresenceController {
         listener(payload);
       }
     });
+    socket.on('webrtc:offer', (payload) => {
+      for (const listener of this.offerListeners) {
+        listener(payload);
+      }
+    });
     socket.on('webrtc:ice-candidate', (payload) => {
       for (const listener of this.iceCandidateListeners) {
+        listener(payload);
+      }
+    });
+    socket.on('screen-share:start', (payload) => {
+      for (const listener of this.screenShareStartedListeners) {
+        listener(payload);
+      }
+    });
+    socket.on('screen-share:stop', (payload) => {
+      for (const listener of this.screenShareStoppedListeners) {
         listener(payload);
       }
     });
@@ -182,6 +206,10 @@ export class ProfessorPresenceController {
     this.requireActiveSignalingSocket(payload.sessionId).emit('webrtc:offer', payload);
   }
 
+  public sendWebRtcAnswer(payload: WebRtcDescriptionPayload): void {
+    this.requireActiveSignalingSocket(payload.sessionId).emit('webrtc:answer', payload);
+  }
+
   public sendWebRtcIceCandidate(payload: WebRtcIceCandidatePayload): void {
     this.requireActiveSignalingSocket(payload.sessionId).emit('webrtc:ice-candidate', payload);
   }
@@ -189,6 +217,21 @@ export class ProfessorPresenceController {
   public onWebRtcAnswer(listener: WebRtcDescriptionListener): () => void {
     this.answerListeners.add(listener);
     return () => this.answerListeners.delete(listener);
+  }
+
+  public onWebRtcOffer(listener: WebRtcDescriptionListener): () => void {
+    this.offerListeners.add(listener);
+    return () => this.offerListeners.delete(listener);
+  }
+
+  public onScreenShareStarted(listener: ScreenShareListener): () => void {
+    this.screenShareStartedListeners.add(listener);
+    return () => this.screenShareStartedListeners.delete(listener);
+  }
+
+  public onScreenShareStopped(listener: ScreenShareListener): () => void {
+    this.screenShareStoppedListeners.add(listener);
+    return () => this.screenShareStoppedListeners.delete(listener);
   }
 
   public onWebRtcIceCandidate(listener: WebRtcIceCandidateListener): () => void {
@@ -201,7 +244,10 @@ export class ProfessorPresenceController {
     this.disconnectSocket();
     this.listeners.clear();
     this.answerListeners.clear();
+    this.offerListeners.clear();
     this.iceCandidateListeners.clear();
+    this.screenShareStartedListeners.clear();
+    this.screenShareStoppedListeners.clear();
   }
 
   private async loadConfig(): Promise<ProfessorConnectConfig> {

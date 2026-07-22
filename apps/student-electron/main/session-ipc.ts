@@ -6,6 +6,7 @@ import type { StudentPresenceController } from './student-presence.controller.js
 import type {
   WebRtcDescriptionPayload,
   WebRtcIceCandidatePayload,
+  ScreenSharePayload,
 } from '../shared/webrtc-contracts.js';
 
 export interface SessionIpcRegistration {
@@ -45,9 +46,21 @@ export function registerSessionIpc(
     assertSender(event);
     controller.sendWebRtcAnswer(requireDescriptionPayload(payload, 'answer'));
   });
+  ipcMain.handle(SESSION_IPC_CHANNELS.WEBRTC_SEND_OFFER, (event, payload: unknown) => {
+    assertSender(event);
+    controller.sendWebRtcOffer(requireDescriptionPayload(payload, 'offer'));
+  });
   ipcMain.handle(SESSION_IPC_CHANNELS.WEBRTC_SEND_ICE, (event, payload: unknown) => {
     assertSender(event);
     controller.sendWebRtcIceCandidate(requireIceCandidatePayload(payload));
+  });
+  ipcMain.handle(SESSION_IPC_CHANNELS.SCREEN_SHARE_START, (event, payload: unknown) => {
+    assertSender(event);
+    controller.sendScreenShareStart(requireScreenSharePayload(payload));
+  });
+  ipcMain.handle(SESSION_IPC_CHANNELS.SCREEN_SHARE_STOP, (event, payload: unknown) => {
+    assertSender(event);
+    controller.sendScreenShareStop(requireScreenSharePayload(payload));
   });
 
   const unsubscribe = controller.onSessionStateChanged((snapshot) => {
@@ -60,6 +73,11 @@ export function registerSessionIpc(
       renderer.send(SESSION_IPC_CHANNELS.WEBRTC_OFFER, payload);
     }
   });
+  const unsubscribeAnswer = controller.onWebRtcAnswer((payload) => {
+    if (!renderer.isDestroyed()) {
+      renderer.send(SESSION_IPC_CHANNELS.WEBRTC_ANSWER, payload);
+    }
+  });
   const unsubscribeIce = controller.onWebRtcIceCandidate((payload) => {
     if (!renderer.isDestroyed()) {
       renderer.send(SESSION_IPC_CHANNELS.WEBRTC_ICE, payload);
@@ -70,20 +88,24 @@ export function registerSessionIpc(
     dispose(): void {
       unsubscribe();
       unsubscribeOffer();
+      unsubscribeAnswer();
       unsubscribeIce();
       ipcMain.removeHandler(SESSION_IPC_CHANNELS.GET_TEACHERS);
       ipcMain.removeHandler(SESSION_IPC_CHANNELS.REQUEST);
       ipcMain.removeHandler(SESSION_IPC_CHANNELS.GET_STATE);
       ipcMain.removeHandler(SESSION_IPC_CHANNELS.END);
       ipcMain.removeHandler(SESSION_IPC_CHANNELS.WEBRTC_SEND_ANSWER);
+      ipcMain.removeHandler(SESSION_IPC_CHANNELS.WEBRTC_SEND_OFFER);
       ipcMain.removeHandler(SESSION_IPC_CHANNELS.WEBRTC_SEND_ICE);
+      ipcMain.removeHandler(SESSION_IPC_CHANNELS.SCREEN_SHARE_START);
+      ipcMain.removeHandler(SESSION_IPC_CHANNELS.SCREEN_SHARE_STOP);
     },
   };
 }
 
 function requireDescriptionPayload(
   payload: unknown,
-  expectedType: 'answer',
+  expectedType: 'offer' | 'answer',
 ): WebRtcDescriptionPayload {
   const record = requireRecord(payload);
   const description = requireRecord(record.description);
@@ -97,6 +119,18 @@ function requireDescriptionPayload(
   return {
     sessionId: record.sessionId,
     description: { type: expectedType, sdp: description.sdp },
+  };
+}
+
+function requireScreenSharePayload(payload: unknown): ScreenSharePayload {
+  const record = requireRecord(payload);
+  if (typeof record.sessionId !== 'string') {
+    throw new Error('Sessão do compartilhamento inválida');
+  }
+  return {
+    sessionId: record.sessionId,
+    ...(typeof record.streamId === 'string' ? { streamId: record.streamId } : {}),
+    ...(typeof record.trackId === 'string' ? { trackId: record.trackId } : {}),
   };
 }
 

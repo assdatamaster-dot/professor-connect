@@ -10,6 +10,7 @@ import { Server as SocketServer } from 'socket.io';
 import { ProfessorPresenceController } from '../main/professor-presence.controller.js';
 import { ProfessorPresenceStatus } from '../shared/presence-contracts.js';
 import type {
+  ScreenSharePayload,
   WebRtcDescriptionPayload,
   WebRtcIceCandidatePayload,
 } from '../shared/webrtc-contracts.js';
@@ -21,6 +22,7 @@ interface PresenceEvents {
   'session:reject': (payload: { readonly requestId: string }) => void;
   'session:end': (payload: { readonly sessionId: string }) => void;
   'webrtc:offer': (payload: WebRtcDescriptionPayload) => void;
+  'webrtc:answer': (payload: WebRtcDescriptionPayload) => void;
   'webrtc:ice-candidate': (payload: WebRtcIceCandidatePayload) => void;
 }
 
@@ -33,7 +35,10 @@ interface SessionEvents {
   'session:started': (payload: SessionLifecyclePayload) => void;
   'session:ended': (payload: SessionLifecyclePayload) => void;
   'webrtc:answer': (payload: WebRtcDescriptionPayload) => void;
+  'webrtc:offer': (payload: WebRtcDescriptionPayload) => void;
   'webrtc:ice-candidate': (payload: WebRtcIceCandidatePayload) => void;
+  'screen-share:start': (payload: ScreenSharePayload) => void;
+  'screen-share:stop': (payload: ScreenSharePayload) => void;
 }
 
 interface SessionLifecyclePayload {
@@ -57,7 +62,11 @@ test('lê config.json, registra o professor e desconecta pelo Socket.IO', async 
   const offers: WebRtcDescriptionPayload[] = [];
   const localCandidates: WebRtcIceCandidatePayload[] = [];
   const answers: WebRtcDescriptionPayload[] = [];
+  const sentAnswers: WebRtcDescriptionPayload[] = [];
+  const renegotiationOffers: WebRtcDescriptionPayload[] = [];
   const remoteCandidates: WebRtcIceCandidatePayload[] = [];
+  const screenShareStarts: ScreenSharePayload[] = [];
+  const screenShareStops: ScreenSharePayload[] = [];
 
   socketServer.on('connection', (socket) => {
     socket.on('professor:online', ({ name }) => {
@@ -90,6 +99,7 @@ test('lê config.json, registra o professor e desconecta pelo Socket.IO', async 
       });
     });
     socket.on('webrtc:offer', (payload) => offers.push(payload));
+    socket.on('webrtc:answer', (payload) => sentAnswers.push(payload));
     socket.on('webrtc:ice-candidate', (payload) => localCandidates.push(payload));
     socket.on('disconnect', () => {
       disconnectCount += 1;
@@ -108,7 +118,10 @@ test('lê config.json, registra o professor e desconecta pelo Socket.IO', async 
   );
   const controller = new ProfessorPresenceController(configPath);
   controller.onWebRtcAnswer((payload) => answers.push(payload));
+  controller.onWebRtcOffer((payload) => renegotiationOffers.push(payload));
   controller.onWebRtcIceCandidate((payload) => remoteCandidates.push(payload));
+  controller.onScreenShareStarted((payload) => screenShareStarts.push(payload));
+  controller.onScreenShareStopped((payload) => screenShareStops.push(payload));
 
   try {
     const initialSnapshot = await controller.connect('  Carlos  ');
@@ -153,13 +166,32 @@ test('lê config.json, registra o professor e desconecta pelo Socket.IO', async 
         usernameFragment: null,
       },
     });
+    socketServer.emit('screen-share:start', {
+      sessionId: 'session-id',
+      streamId: 'screen-stream',
+      trackId: 'screen-track',
+    });
+    socketServer.emit('webrtc:offer', {
+      sessionId: 'session-id',
+      description: { type: 'offer', sdp: 'renegotiation-offer-sdp' },
+    });
+    controller.sendWebRtcAnswer({
+      sessionId: 'session-id',
+      description: { type: 'answer', sdp: 'renegotiation-answer-sdp' },
+    });
+    socketServer.emit('screen-share:stop', { sessionId: 'session-id' });
     await waitUntil(
       () =>
         offers.length === 1 &&
         localCandidates.length === 1 &&
         answers.length === 1 &&
-        remoteCandidates.length === 1,
+        remoteCandidates.length === 1 &&
+        sentAnswers.length === 1 &&
+        renegotiationOffers.length === 1 &&
+        screenShareStarts.length === 1 &&
+        screenShareStops.length === 1,
     );
+    assert.equal(screenShareStarts[0]?.streamId, 'screen-stream');
     controller.endSession();
     await waitUntil(() => controller.getSnapshot().activeSession === undefined);
     assert.deepEqual(endedSessionIds, ['session-id']);

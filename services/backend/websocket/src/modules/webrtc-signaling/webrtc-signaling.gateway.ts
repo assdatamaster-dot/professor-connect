@@ -7,6 +7,8 @@ export const WEBRTC_SIGNALING_EVENTS = {
   OFFER: 'webrtc:offer',
   ANSWER: 'webrtc:answer',
   ICE_CANDIDATE: 'webrtc:ice-candidate',
+  SCREEN_SHARE_START: 'screen-share:start',
+  SCREEN_SHARE_STOP: 'screen-share:stop',
 } as const;
 
 export interface WebRtcSessionDescription {
@@ -31,10 +33,18 @@ export interface WebRtcIceCandidatePayload {
   readonly candidate: WebRtcIceCandidate;
 }
 
+export interface ScreenSharePayload {
+  readonly sessionId: string;
+  readonly streamId?: string;
+  readonly trackId?: string;
+}
+
 interface WebRtcClientEvents {
   [WEBRTC_SIGNALING_EVENTS.OFFER]: (payload: WebRtcDescriptionPayload) => void;
   [WEBRTC_SIGNALING_EVENTS.ANSWER]: (payload: WebRtcDescriptionPayload) => void;
   [WEBRTC_SIGNALING_EVENTS.ICE_CANDIDATE]: (payload: WebRtcIceCandidatePayload) => void;
+  [WEBRTC_SIGNALING_EVENTS.SCREEN_SHARE_START]: (payload: ScreenSharePayload) => void;
+  [WEBRTC_SIGNALING_EVENTS.SCREEN_SHARE_STOP]: (payload: ScreenSharePayload) => void;
 }
 
 type WebRtcSignalingServer = Server<WebRtcClientEvents, WebRtcClientEvents>;
@@ -86,6 +96,29 @@ export class WebRtcSignalingGateway {
           recipientSocketId: route.recipientSocketId,
         });
       });
+    });
+    socket.on(WEBRTC_SIGNALING_EVENTS.SCREEN_SHARE_START, (payload) => {
+      this.routeScreenShareEvent(socket, WEBRTC_SIGNALING_EVENTS.SCREEN_SHARE_START, payload);
+    });
+    socket.on(WEBRTC_SIGNALING_EVENTS.SCREEN_SHARE_STOP, (payload) => {
+      this.routeScreenShareEvent(socket, WEBRTC_SIGNALING_EVENTS.SCREEN_SHARE_STOP, payload);
+    });
+  }
+
+  private routeScreenShareEvent(
+    socket: WebRtcSignalingSocket,
+    event:
+      | typeof WEBRTC_SIGNALING_EVENTS.SCREEN_SHARE_START
+      | typeof WEBRTC_SIGNALING_EVENTS.SCREEN_SHARE_STOP,
+    payload: unknown,
+  ): void {
+    this.handleSafely('Evento de compartilhamento de tela inválido', () => {
+      const normalizedPayload = requireScreenSharePayload(payload);
+      const route = this.sessionManager.resolveSignalingRoute(
+        normalizedPayload.sessionId,
+        socket.id,
+      );
+      this.socketServer.to(route.recipientSocketId).emit(event, normalizedPayload);
     });
   }
 
@@ -164,6 +197,17 @@ function requireIceCandidatePayload(payload: unknown): WebRtcIceCandidatePayload
   };
 }
 
+function requireScreenSharePayload(payload: unknown): ScreenSharePayload {
+  const record = requireRecord(payload, 'Payload de compartilhamento de tela');
+  const streamId = requireOptionalText(record.streamId, 'streamId');
+  const trackId = requireOptionalText(record.trackId, 'trackId');
+  return {
+    sessionId: requireText(record.sessionId, 'sessionId'),
+    ...(streamId === undefined ? {} : { streamId }),
+    ...(trackId === undefined ? {} : { trackId }),
+  };
+}
+
 function requireRecord(value: unknown, name: string): Readonly<Record<string, unknown>> {
   if (typeof value !== 'object' || value === null) {
     throw new Error(`${name} deve ser um objeto`);
@@ -184,6 +228,16 @@ function requireNullableText(value: unknown, name: string): string | null {
   }
   if (typeof value !== 'string') {
     throw new Error(`${name} deve ser texto ou null`);
+  }
+  return value;
+}
+
+function requireOptionalText(value: unknown, name: string): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error(`${name} deve ser texto não vazio`);
   }
   return value;
 }

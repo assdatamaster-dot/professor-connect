@@ -20,6 +20,8 @@ const attendanceState = requireElement<HTMLElement>('attendance-state');
 const webRtcMedia = requireElement<HTMLElement>('webrtc-media');
 const localVideo = requireElement<HTMLVideoElement>('teacher-local-video');
 const remoteVideo = requireElement<HTMLVideoElement>('teacher-remote-video');
+const screenShareView = requireElement<HTMLElement>('screen-share-view');
+const screenVideo = requireElement<HTMLVideoElement>('teacher-screen-video');
 const sessionDialog = requireElement<HTMLDialogElement>('session-request-dialog');
 const requestStudentName = requireElement<HTMLElement>('request-student-name');
 const acceptSessionButton = requireElement<HTMLButtonElement>('accept-session');
@@ -29,6 +31,9 @@ let peerConnection: RTCPeerConnection | undefined;
 let localStream: MediaStream | undefined;
 let activeWebRtcSessionId: string | undefined;
 const pendingIceCandidates = new Map<string, RTCIceCandidateInit[]>();
+const remoteStreams = new Map<string, MediaStream>();
+let announcedScreenStreamId: string | undefined;
+let announcedScreenTrackId: string | undefined;
 
 function render(snapshot: ProfessorPresenceSnapshot): void {
   const isActive = snapshot.professorName !== undefined;
@@ -151,17 +156,49 @@ const unsubscribeAnswer = window.professorConnectWebRtc.onAnswer((payload) => {
     attendanceState.textContent = 'Não foi possível aplicar a resposta WebRTC.';
   });
 });
+const unsubscribeOffer = window.professorConnectWebRtc.onOffer((payload) => {
+  void handleWebRtcOffer(payload.sessionId, payload.description).catch(() => {
+    attendanceState.textContent = 'Não foi possível renegociar o compartilhamento.';
+  });
+});
 const unsubscribeIce = window.professorConnectWebRtc.onIceCandidate((payload) => {
   void handleRemoteIceCandidate(payload.sessionId, payload.candidate).catch(() => {
     attendanceState.textContent = 'Não foi possível aplicar o ICE Candidate.';
   });
 });
+const unsubscribeScreenShareStarted = window.professorConnectWebRtc.onScreenShareStarted(
+  (payload) => {
+    if (payload.sessionId !== activeWebRtcSessionId) {
+      return;
+    }
+    announcedScreenStreamId = payload.streamId;
+    announcedScreenTrackId = payload.trackId;
+    const announcedStream =
+      payload.streamId === undefined ? undefined : remoteStreams.get(payload.streamId);
+    if (announcedStream !== undefined) {
+      screenVideo.srcObject = announcedStream;
+    }
+    screenShareView.hidden = false;
+    attendanceState.textContent = 'Tela compartilhada';
+  },
+);
+const unsubscribeScreenShareStopped = window.professorConnectWebRtc.onScreenShareStopped(
+  (payload) => {
+    if (payload.sessionId === activeWebRtcSessionId) {
+      hideScreenShare();
+      attendanceState.textContent = 'Aluno conectado';
+    }
+  },
+);
 window.addEventListener(
   'beforeunload',
   () => {
     unsubscribe();
     unsubscribeAnswer();
+    unsubscribeOffer();
     unsubscribeIce();
+    unsubscribeScreenShareStarted();
+    unsubscribeScreenShareStopped();
     closeWebRtcSession();
   },
   { once: true },
@@ -190,10 +227,7 @@ async function startTeacherWebRtc(sessionId: string): Promise<void> {
     }
   };
   connection.ontrack = (event) => {
-    const [stream] = event.streams;
-    if (stream !== undefined) {
-      remoteVideo.srcObject = stream;
-    }
+    assignRemoteTrack(event);
   };
 
   try {
@@ -236,6 +270,53 @@ async function handleWebRtcAnswer(
   }
   await connection.setRemoteDescription(description);
   await flushPendingIceCandidates(sessionId, connection);
+}
+
+async function handleWebRtcOffer(
+  sessionId: string,
+  description: RTCSessionDescriptionInit,
+): Promise<void> {
+  const connection = peerConnection;
+  if (connection === undefined || activeWebRtcSessionId !== sessionId) {
+    return;
+  }
+  await connection.setRemoteDescription(description);
+  await flushPendingIceCandidates(sessionId, connection);
+  const answer = await connection.createAnswer();
+  await connection.setLocalDescription(answer);
+  if (answer.sdp === undefined) {
+    throw new Error('Answer de compartilhamento sem SDP');
+  }
+  await window.professorConnectWebRtc.sendAnswer({
+    sessionId,
+    description: { type: 'answer', sdp: answer.sdp },
+  });
+}
+
+function assignRemoteTrack(event: RTCTrackEvent): void {
+  const stream = event.streams[0] ?? new MediaStream([event.track]);
+  remoteStreams.set(stream.id, stream);
+  const isAnnouncedScreen =
+    stream.id === announcedScreenStreamId || event.track.id === announcedScreenTrackId;
+  const cameraStream = remoteVideo.srcObject;
+  const isAdditionalVideo =
+    event.track.kind === 'video' &&
+    cameraStream instanceof MediaStream &&
+    cameraStream.id !== stream.id;
+
+  if (isAnnouncedScreen || isAdditionalVideo) {
+    screenVideo.srcObject = stream;
+    screenShareView.hidden = false;
+    return;
+  }
+  remoteVideo.srcObject = stream;
+}
+
+function hideScreenShare(): void {
+  screenVideo.srcObject = null;
+  screenShareView.hidden = true;
+  announcedScreenStreamId = undefined;
+  announcedScreenTrackId = undefined;
 }
 
 async function handleRemoteIceCandidate(
@@ -295,6 +376,8 @@ function closeWebRtcSession(resetStatus = true): void {
   }
   localVideo.srcObject = null;
   remoteVideo.srcObject = null;
+  hideScreenShare();
+  remoteStreams.clear();
   webRtcMedia.hidden = true;
   if (resetStatus) {
     attendanceState.textContent = 'Aluno conectado';

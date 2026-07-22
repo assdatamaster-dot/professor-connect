@@ -5,7 +5,11 @@ export const SESSION_IPC_CHANNELS = {
   END: 'student:session:end',
   STATE_CHANGED: 'student:session:state-changed',
   WEBRTC_SEND_ANSWER: 'student:webrtc:send-answer',
+  WEBRTC_SEND_OFFER: 'student:webrtc:send-offer',
   WEBRTC_SEND_ICE: 'student:webrtc:send-ice-candidate',
+  SCREEN_SHARE_START: 'student:screen-share:start',
+  SCREEN_SHARE_STOP: 'student:screen-share:stop',
   WEBRTC_OFFER: 'student:webrtc:offer',
+  WEBRTC_ANSWER: 'student:webrtc:answer',
   WEBRTC_ICE: 'student:webrtc:ice-candidate',
 } as const;

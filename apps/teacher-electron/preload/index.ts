@@ -11,6 +11,7 @@ import type {
 } from '../shared/presence-contracts.js' with { 'resolution-mode': 'import' };
 import type {
   TeacherWebRtcApi,
+  ScreenSharePayload,
   WebRtcDescriptionPayload,
   WebRtcIceCandidatePayload,
 } from '../shared/webrtc-contracts.js' with { 'resolution-mode': 'import' };
@@ -84,15 +85,26 @@ const presenceApi: ProfessorPresenceApi = {
 
 const webRtcChannels = {
   sendOffer: 'teacher:webrtc:send-offer',
+  sendAnswer: 'teacher:webrtc:send-answer',
   sendIceCandidate: 'teacher:webrtc:send-ice-candidate',
+  offer: 'teacher:webrtc:offer',
   answer: 'teacher:webrtc:answer',
   iceCandidate: 'teacher:webrtc:ice-candidate',
+  screenShareStarted: 'teacher:screen-share:started',
+  screenShareStopped: 'teacher:screen-share:stopped',
 } as const;
 
 const webRtcApi: TeacherWebRtcApi = {
   sendOffer: (payload) => ipcRenderer.invoke(webRtcChannels.sendOffer, payload) as Promise<void>,
+  sendAnswer: (payload) => ipcRenderer.invoke(webRtcChannels.sendAnswer, payload) as Promise<void>,
   sendIceCandidate: (payload) =>
     ipcRenderer.invoke(webRtcChannels.sendIceCandidate, payload) as Promise<void>,
+  onOffer(listener): () => void {
+    const handler = (_event: IpcRendererEvent, payload: WebRtcDescriptionPayload): void =>
+      listener(payload);
+    ipcRenderer.on(webRtcChannels.offer, handler);
+    return () => ipcRenderer.removeListener(webRtcChannels.offer, handler);
+  },
   onAnswer(listener): () => void {
     const handler = (_event: IpcRendererEvent, payload: WebRtcDescriptionPayload): void =>
       listener(payload);
@@ -104,6 +116,18 @@ const webRtcApi: TeacherWebRtcApi = {
       listener(payload);
     ipcRenderer.on(webRtcChannels.iceCandidate, handler);
     return () => ipcRenderer.removeListener(webRtcChannels.iceCandidate, handler);
+  },
+  onScreenShareStarted(listener): () => void {
+    const handler = (_event: IpcRendererEvent, payload: ScreenSharePayload): void =>
+      listener(payload);
+    ipcRenderer.on(webRtcChannels.screenShareStarted, handler);
+    return () => ipcRenderer.removeListener(webRtcChannels.screenShareStarted, handler);
+  },
+  onScreenShareStopped(listener): () => void {
+    const handler = (_event: IpcRendererEvent, payload: ScreenSharePayload): void =>
+      listener(payload);
+    ipcRenderer.on(webRtcChannels.screenShareStopped, handler);
+    return () => ipcRenderer.removeListener(webRtcChannels.screenShareStopped, handler);
   },
 };
 

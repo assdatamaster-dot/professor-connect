@@ -13,6 +13,7 @@ import {
   type SessionRequestedPayload,
   type SessionResponsePayload,
   type SessionLifecyclePayload,
+  type ScreenSharePayload,
   type WebRtcDescriptionPayload,
   type WebRtcIceCandidatePayload,
 } from '../src/index.js';
@@ -27,6 +28,8 @@ interface ServerEvents {
   'webrtc:offer': (payload: WebRtcDescriptionPayload) => void;
   'webrtc:answer': (payload: WebRtcDescriptionPayload) => void;
   'webrtc:ice-candidate': (payload: WebRtcIceCandidatePayload) => void;
+  'screen-share:start': (payload: ScreenSharePayload) => void;
+  'screen-share:stop': (payload: ScreenSharePayload) => void;
 }
 
 interface ClientEvents {
@@ -39,6 +42,8 @@ interface ClientEvents {
   'webrtc:offer': (payload: WebRtcDescriptionPayload) => void;
   'webrtc:answer': (payload: WebRtcDescriptionPayload) => void;
   'webrtc:ice-candidate': (payload: WebRtcIceCandidatePayload) => void;
+  'screen-share:start': (payload: ScreenSharePayload) => void;
+  'screen-share:stop': (payload: ScreenSharePayload) => void;
 }
 
 type TestClient = Socket<ServerEvents, ClientEvents>;
@@ -133,6 +138,18 @@ test('entrega aceite, recusa e timeout em tempo real', async () => {
     teacher.emit('webrtc:ice-candidate', candidatePayload);
     assert.deepEqual(await studentCandidate, candidatePayload);
 
+    const screenSharePayload: ScreenSharePayload = {
+      sessionId: teacherSession.sessionId,
+      streamId: 'screen-stream',
+      trackId: 'screen-track',
+    };
+    const teacherScreenShareStarted = waitForScreenShare(teacher, 'screen-share:start');
+    student.emit('screen-share:start', screenSharePayload);
+    assert.deepEqual(await teacherScreenShareStarted, screenSharePayload);
+    const teacherScreenShareStopped = waitForScreenShare(teacher, 'screen-share:stop');
+    student.emit('screen-share:stop', { sessionId: teacherSession.sessionId });
+    assert.deepEqual(await teacherScreenShareStopped, { sessionId: teacherSession.sessionId });
+
     const teacherEnded = waitForEnded(teacher);
     const studentEnded = waitForEnded(student);
     teacher.emit('session:end', { sessionId: teacherSession.sessionId });
@@ -218,6 +235,13 @@ function waitForWebRtcAnswer(client: TestClient): Promise<WebRtcDescriptionPaylo
 
 function waitForWebRtcIceCandidate(client: TestClient): Promise<WebRtcIceCandidatePayload> {
   return new Promise((resolve) => client.once('webrtc:ice-candidate', resolve));
+}
+
+function waitForScreenShare(
+  client: TestClient,
+  event: 'screen-share:start' | 'screen-share:stop',
+): Promise<ScreenSharePayload> {
+  return new Promise((resolve) => client.once(event, resolve));
 }
 
 async function waitUntil(condition: () => boolean): Promise<void> {

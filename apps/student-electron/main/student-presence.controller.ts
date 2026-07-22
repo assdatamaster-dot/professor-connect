@@ -13,6 +13,7 @@ import type {
   WebRtcDescriptionPayload,
   WebRtcIceCandidateListener,
   WebRtcIceCandidatePayload,
+  ScreenSharePayload,
 } from '../shared/webrtc-contracts.js';
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -29,7 +30,10 @@ interface StudentPresenceClientEvents {
   'request:session': (payload: { readonly teacherId: string }) => void;
   'session:end': (payload: { readonly sessionId: string }) => void;
   'webrtc:answer': (payload: WebRtcDescriptionPayload) => void;
+  'webrtc:offer': (payload: WebRtcDescriptionPayload) => void;
   'webrtc:ice-candidate': (payload: WebRtcIceCandidatePayload) => void;
+  'screen-share:start': (payload: ScreenSharePayload) => void;
+  'screen-share:stop': (payload: ScreenSharePayload) => void;
 }
 
 interface StudentPresenceServerEvents {
@@ -39,6 +43,7 @@ interface StudentPresenceServerEvents {
   'session:started': (payload: SessionLifecyclePayload) => void;
   'session:ended': (payload: SessionLifecyclePayload) => void;
   'webrtc:offer': (payload: WebRtcDescriptionPayload) => void;
+  'webrtc:answer': (payload: WebRtcDescriptionPayload) => void;
   'webrtc:ice-candidate': (payload: WebRtcIceCandidatePayload) => void;
 }
 
@@ -65,6 +70,7 @@ type StudentPresenceSocket = Socket<StudentPresenceServerEvents, StudentPresence
 export class StudentPresenceController {
   private readonly sessionListeners = new Set<StudentSessionListener>();
   private readonly offerListeners = new Set<WebRtcDescriptionListener>();
+  private readonly answerListeners = new Set<WebRtcDescriptionListener>();
   private readonly iceCandidateListeners = new Set<WebRtcIceCandidateListener>();
   private heartbeatTimer: NodeJS.Timeout | undefined;
   private socket: StudentPresenceSocket | undefined;
@@ -112,6 +118,11 @@ export class StudentPresenceController {
     });
     socket.on('webrtc:offer', (payload) => {
       for (const listener of this.offerListeners) {
+        listener(payload);
+      }
+    });
+    socket.on('webrtc:answer', (payload) => {
+      for (const listener of this.answerListeners) {
         listener(payload);
       }
     });
@@ -179,6 +190,10 @@ export class StudentPresenceController {
     this.requireActiveSignalingSocket(payload.sessionId).emit('webrtc:answer', payload);
   }
 
+  public sendWebRtcOffer(payload: WebRtcDescriptionPayload): void {
+    this.requireActiveSignalingSocket(payload.sessionId).emit('webrtc:offer', payload);
+  }
+
   public sendWebRtcIceCandidate(payload: WebRtcIceCandidatePayload): void {
     this.requireActiveSignalingSocket(payload.sessionId).emit('webrtc:ice-candidate', payload);
   }
@@ -186,6 +201,19 @@ export class StudentPresenceController {
   public onWebRtcOffer(listener: WebRtcDescriptionListener): () => void {
     this.offerListeners.add(listener);
     return () => this.offerListeners.delete(listener);
+  }
+
+  public onWebRtcAnswer(listener: WebRtcDescriptionListener): () => void {
+    this.answerListeners.add(listener);
+    return () => this.answerListeners.delete(listener);
+  }
+
+  public sendScreenShareStart(payload: ScreenSharePayload): void {
+    this.requireActiveSignalingSocket(payload.sessionId).emit('screen-share:start', payload);
+  }
+
+  public sendScreenShareStop(payload: ScreenSharePayload): void {
+    this.requireActiveSignalingSocket(payload.sessionId).emit('screen-share:stop', payload);
   }
 
   public onWebRtcIceCandidate(listener: WebRtcIceCandidateListener): () => void {
@@ -197,6 +225,7 @@ export class StudentPresenceController {
     this.disconnectSocket();
     this.sessionListeners.clear();
     this.offerListeners.clear();
+    this.answerListeners.clear();
     this.iceCandidateListeners.clear();
   }
 

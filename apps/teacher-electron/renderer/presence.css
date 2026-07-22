@@ -45,7 +45,7 @@ input {
 }
 
 .presence-card:has(.webrtc-media:not([hidden])) {
-  width: min(780px, 100%);
+  width: min(980px, 100%);
 }
 
 .presence-card > img {
@@ -128,9 +128,18 @@ button:disabled {
 
 .webrtc-media {
   display: grid;
-  grid-template-columns: 2fr 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 10px;
   margin: 16px 0;
+}
+
+.webrtc-media .screen-share-view {
+  grid-column: 1 / -1;
+  min-height: 320px;
+}
+
+.screen-share-view video {
+  object-fit: contain;
 }
 
 .webrtc-media figure {
