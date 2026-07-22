@@ -5,6 +5,11 @@ import type {
   DesktopWorkflowApi,
   DesktopWorkflowSnapshot,
 } from '../shared/contracts.js' with { 'resolution-mode': 'import' };
+import type {
+  StudentSessionApi,
+  StudentSessionListener,
+  StudentSessionSnapshot,
+} from '../shared/session-contracts.js' with { 'resolution-mode': 'import' };
 
 const channels = {
   initialize: 'desktop:workflow:initialize',
@@ -31,4 +36,26 @@ const workflowApi: DesktopWorkflowApi = {
   },
 };
 
+const sessionChannels = {
+  getTeachers: 'student:session:get-teachers',
+  request: 'student:session:request',
+  getState: 'student:session:get-state',
+  stateChanged: 'student:session:state-changed',
+} as const;
+
+const sessionApi: StudentSessionApi = {
+  getOnlineTeachers: () => ipcRenderer.invoke(sessionChannels.getTeachers),
+  requestSession: (teacherId) =>
+    ipcRenderer.invoke(sessionChannels.request, teacherId) as Promise<StudentSessionSnapshot>,
+  getState: () => ipcRenderer.invoke(sessionChannels.getState) as Promise<StudentSessionSnapshot>,
+  onStateChanged(listener: StudentSessionListener): () => void {
+    const handler = (_event: IpcRendererEvent, snapshot: StudentSessionSnapshot): void => {
+      listener(snapshot);
+    };
+    ipcRenderer.on(sessionChannels.stateChanged, handler);
+    return () => ipcRenderer.removeListener(sessionChannels.stateChanged, handler);
+  },
+};
+
 contextBridge.exposeInMainWorld('professorConnect', workflowApi);
+contextBridge.exposeInMainWorld('professorConnectSession', sessionApi);

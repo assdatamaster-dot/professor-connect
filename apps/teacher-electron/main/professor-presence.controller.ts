@@ -4,6 +4,7 @@ import { io, type Socket } from 'socket.io-client';
 
 import {
   ProfessorPresenceStatus,
+  type ProfessorSessionRequest,
   type ProfessorPresenceSnapshot,
 } from '../shared/presence-contracts.js';
 
@@ -12,6 +13,12 @@ const HEARTBEAT_INTERVAL_MS = 30_000;
 interface ProfessorPresenceClientEvents {
   'professor:heartbeat': () => void;
   'professor:online': (payload: { readonly name: string }) => void;
+  'session:accept': (payload: { readonly requestId: string }) => void;
+  'session:reject': (payload: { readonly requestId: string }) => void;
+}
+
+interface ProfessorPresenceServerEvents {
+  'session:requested': (payload: ProfessorSessionRequest) => void;
 }
 
 interface ProfessorConnectConfig {
@@ -19,13 +26,14 @@ interface ProfessorConnectConfig {
 }
 
 type PresenceListener = (snapshot: ProfessorPresenceSnapshot) => void;
-type PresenceSocket = Socket<Record<never, never>, ProfessorPresenceClientEvents>;
+type PresenceSocket = Socket<ProfessorPresenceServerEvents, ProfessorPresenceClientEvents>;
 
 export class ProfessorPresenceController {
   private connectionGeneration = 0;
   private readonly listeners = new Set<PresenceListener>();
   private heartbeatTimer: NodeJS.Timeout | undefined;
   private professorName: string | undefined;
+  private sessionRequests: ProfessorSessionRequest[] = [];
   private socket: PresenceSocket | undefined;
   private status = ProfessorPresenceStatus.DISCONNECTED;
 
@@ -81,6 +89,13 @@ export class ProfessorPresenceController {
       this.status = ProfessorPresenceStatus.ERROR;
       this.notifyListeners();
     });
+    socket.on('session:requested', (request) => {
+      if (this.sessionRequests.some((item) => item.requestId === request.requestId)) {
+        return;
+      }
+      this.sessionRequests = [...this.sessionRequests, request];
+      this.notifyListeners();
+    });
     socket.connect();
 
     return this.getSnapshot();
@@ -100,7 +115,16 @@ export class ProfessorPresenceController {
       professorName: this.professorName,
       status: this.status,
       serverConnected: this.status === ProfessorPresenceStatus.CONNECTED,
+      sessionRequests: [...this.sessionRequests],
     };
+  }
+
+  public acceptSession(requestId: string): ProfessorPresenceSnapshot {
+    return this.respondToSession('session:accept', requestId);
+  }
+
+  public rejectSession(requestId: string): ProfessorPresenceSnapshot {
+    return this.respondToSession('session:reject', requestId);
   }
 
   public onStateChanged(listener: PresenceListener): () => void {
@@ -156,6 +180,30 @@ export class ProfessorPresenceController {
     this.socket?.disconnect();
     this.socket?.removeAllListeners();
     this.socket = undefined;
+    this.sessionRequests = [];
+  }
+
+  private respondToSession(
+    event: 'session:accept' | 'session:reject',
+    requestIdInput: string,
+  ): ProfessorPresenceSnapshot {
+    const requestId = requestIdInput.trim();
+    if (requestId.length === 0) {
+      throw new Error('Identificador da solicitação inválido.');
+    }
+    if (this.socket?.connected !== true) {
+      throw new Error('Professor não está conectado ao servidor.');
+    }
+    if (!this.sessionRequests.some((request) => request.requestId === requestId)) {
+      throw new Error('Solicitação não encontrada.');
+    }
+
+    this.socket.emit(event, { requestId });
+    this.sessionRequests = this.sessionRequests.filter(
+      (request) => request.requestId !== requestId,
+    );
+    this.notifyListeners();
+    return this.getSnapshot();
   }
 
   private notifyListeners(): void {

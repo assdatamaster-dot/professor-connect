@@ -4,6 +4,7 @@ import { environment } from '@professor-connect/config';
 import {
   initializeWebSocket,
   PresenceManager,
+  SessionRequestManager,
   StudentPresenceManager,
 } from '@professor-connect/websocket';
 
@@ -12,7 +13,13 @@ import { logger } from './utils/logger.js';
 
 const professorPresenceManager = new PresenceManager();
 const studentPresenceManager = new StudentPresenceManager();
-const httpServer = createServer(createApp(professorPresenceManager, studentPresenceManager));
+const sessionRequestManager = new SessionRequestManager(
+  professorPresenceManager,
+  studentPresenceManager,
+);
+const httpServer = createServer(
+  createApp(professorPresenceManager, studentPresenceManager, sessionRequestManager),
+);
 const communicationGateway = initializeWebSocket(
   httpServer,
   logger,
@@ -24,6 +31,7 @@ const communicationGateway = initializeWebSocket(
   },
   professorPresenceManager,
   studentPresenceManager,
+  sessionRequestManager,
 );
 
 httpServer.on('error', (error) => {

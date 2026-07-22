@@ -33,6 +33,20 @@ export function registerPresenceIpc(
     assertSender(event);
     return controller.getSnapshot();
   });
+  ipcMain.handle(PRESENCE_IPC_CHANNELS.ACCEPT_SESSION, (event, requestId: unknown) => {
+    assertSender(event);
+    if (typeof requestId !== 'string') {
+      throw new Error('Solicitação inválida');
+    }
+    return controller.acceptSession(requestId);
+  });
+  ipcMain.handle(PRESENCE_IPC_CHANNELS.REJECT_SESSION, (event, requestId: unknown) => {
+    assertSender(event);
+    if (typeof requestId !== 'string') {
+      throw new Error('Solicitação inválida');
+    }
+    return controller.rejectSession(requestId);
+  });
 
   const unsubscribe = controller.onStateChanged((snapshot) => {
     if (!renderer.isDestroyed()) {
@@ -46,6 +60,8 @@ export function registerPresenceIpc(
       ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.CONNECT);
       ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.DISCONNECT);
       ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.GET_STATE);
+      ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.ACCEPT_SESSION);
+      ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.REJECT_SESSION);
     },
   };
 }

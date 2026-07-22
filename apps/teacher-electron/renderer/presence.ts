@@ -13,6 +13,11 @@ const professorDisplayName = requireElement<HTMLElement>('professor-display-name
 const presenceStatus = requireElement<HTMLElement>('presence-status');
 const serverStatus = requireElement<HTMLElement>('server-status');
 const logoutButton = requireElement<HTMLButtonElement>('logout-button');
+const sessionDialog = requireElement<HTMLDialogElement>('session-request-dialog');
+const requestStudentName = requireElement<HTMLElement>('request-student-name');
+const acceptSessionButton = requireElement<HTMLButtonElement>('accept-session');
+const rejectSessionButton = requireElement<HTMLButtonElement>('reject-session');
+let activeRequestId: string | undefined;
 
 function render(snapshot: ProfessorPresenceSnapshot): void {
   const isActive = snapshot.professorName !== undefined;
@@ -29,6 +34,24 @@ function render(snapshot: ProfessorPresenceSnapshot): void {
   professorDisplayName.textContent = snapshot.professorName ?? '';
   presenceStatus.textContent = getPresenceLabel(snapshot.status);
   serverStatus.textContent = snapshot.serverConnected ? 'Conectado' : 'Desconectado';
+  renderSessionRequest(snapshot);
+}
+
+function renderSessionRequest(snapshot: ProfessorPresenceSnapshot): void {
+  const request = snapshot.sessionRequests[0];
+  activeRequestId = request?.requestId;
+
+  if (request === undefined) {
+    if (sessionDialog.open) {
+      sessionDialog.close();
+    }
+    return;
+  }
+
+  requestStudentName.textContent = request.studentName;
+  if (!sessionDialog.open) {
+    sessionDialog.showModal();
+  }
 }
 
 function getPresenceLabel(status: ProfessorPresenceStatus): string {
@@ -70,6 +93,30 @@ logoutButton.addEventListener('click', () => {
     logoutButton.disabled = false;
     nameInput.value = '';
     render(snapshot);
+  });
+});
+
+acceptSessionButton.addEventListener('click', () => {
+  if (activeRequestId === undefined) {
+    return;
+  }
+  acceptSessionButton.disabled = true;
+  rejectSessionButton.disabled = true;
+  void window.professorConnectPresence.acceptSession(activeRequestId).finally(() => {
+    acceptSessionButton.disabled = false;
+    rejectSessionButton.disabled = false;
+  });
+});
+
+rejectSessionButton.addEventListener('click', () => {
+  if (activeRequestId === undefined) {
+    return;
+  }
+  acceptSessionButton.disabled = true;
+  rejectSessionButton.disabled = true;
+  void window.professorConnectPresence.rejectSession(activeRequestId).finally(() => {
+    acceptSessionButton.disabled = false;
+    rejectSessionButton.disabled = false;
   });
 });
 

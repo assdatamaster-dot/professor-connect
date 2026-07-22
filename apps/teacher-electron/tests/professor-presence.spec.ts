@@ -13,16 +13,39 @@ import { ProfessorPresenceStatus } from '../shared/presence-contracts.js';
 interface PresenceEvents {
   'professor:heartbeat': () => void;
   'professor:online': (payload: { readonly name: string }) => void;
+  'session:accept': (payload: { readonly requestId: string }) => void;
+  'session:reject': (payload: { readonly requestId: string }) => void;
+}
+
+interface SessionEvents {
+  'session:requested': (payload: {
+    readonly requestId: string;
+    readonly studentId: string;
+    readonly studentName: string;
+  }) => void;
 }
 
 test('lê config.json, registra o professor e desconecta pelo Socket.IO', async () => {
   const httpServer = createServer();
-  const socketServer = new SocketServer<PresenceEvents>(httpServer, { serveClient: false });
+  const socketServer = new SocketServer<PresenceEvents, SessionEvents>(httpServer, {
+    serveClient: false,
+  });
   const receivedNames: string[] = [];
   let disconnectCount = 0;
+  const acceptedRequestIds: string[] = [];
+  const rejectedRequestIds: string[] = [];
 
   socketServer.on('connection', (socket) => {
-    socket.on('professor:online', ({ name }) => receivedNames.push(name));
+    socket.on('professor:online', ({ name }) => {
+      receivedNames.push(name);
+      socket.emit('session:requested', {
+        requestId: 'request-1',
+        studentId: 'student-id',
+        studentName: 'Ana',
+      });
+    });
+    socket.on('session:accept', ({ requestId }) => acceptedRequestIds.push(requestId));
+    socket.on('session:reject', ({ requestId }) => rejectedRequestIds.push(requestId));
     socket.on('disconnect', () => {
       disconnectCount += 1;
     });
@@ -50,6 +73,20 @@ test('lê config.json, registra o professor e desconecta pelo Socket.IO', async 
         receivedNames[0] === 'Carlos',
     );
     assert.equal(controller.getSnapshot().serverConnected, true);
+    await waitUntil(() => controller.getSnapshot().sessionRequests.length === 1);
+    assert.equal(controller.getSnapshot().sessionRequests[0]?.studentName, 'Ana');
+    controller.acceptSession('request-1');
+    await waitUntil(() => acceptedRequestIds.length === 1);
+    assert.deepEqual(controller.getSnapshot().sessionRequests, []);
+
+    socketServer.emit('session:requested', {
+      requestId: 'request-2',
+      studentId: 'student-id',
+      studentName: 'Ana',
+    });
+    await waitUntil(() => controller.getSnapshot().sessionRequests.length === 1);
+    controller.rejectSession('request-2');
+    await waitUntil(() => rejectedRequestIds.length === 1);
 
     const disconnectedSnapshot = controller.disconnect();
     await waitUntil(() => disconnectCount === 1);

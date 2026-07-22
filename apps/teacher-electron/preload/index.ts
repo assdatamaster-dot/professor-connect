@@ -56,6 +56,16 @@ const presenceApi: ProfessorPresenceApi = {
     ipcRenderer.invoke(presenceChannels.disconnect) as Promise<ProfessorPresenceSnapshot>,
   getState: () =>
     ipcRenderer.invoke(presenceChannels.getState) as Promise<ProfessorPresenceSnapshot>,
+  acceptSession: (requestId) =>
+    ipcRenderer.invoke(
+      'teacher:presence:accept-session',
+      requestId,
+    ) as Promise<ProfessorPresenceSnapshot>,
+  rejectSession: (requestId) =>
+    ipcRenderer.invoke(
+      'teacher:presence:reject-session',
+      requestId,
+    ) as Promise<ProfessorPresenceSnapshot>,
   onStateChanged(listener): () => void {
     const handler = (_event: IpcRendererEvent, snapshot: ProfessorPresenceSnapshot): void =>
       listener(snapshot);

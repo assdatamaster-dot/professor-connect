@@ -52,3 +52,19 @@ export {
   type OnlineStudent,
   type RegisterStudentInput,
 } from './modules/student-presence/student-presence.manager.js';
+export {
+  SESSION_REQUEST_EVENTS,
+  SessionRequestGateway,
+  type RequestSessionPayload,
+  type SessionRequestedPayload,
+  type SessionRequestReferencePayload,
+  type SessionResponsePayload,
+} from './modules/session-request/session-request.gateway.js';
+export { SessionRequestManager } from './modules/session-request/session-request.manager.js';
+export type {
+  SessionRequest,
+  SessionRequestDelivery,
+  SessionRequestExpirationHandler,
+  SessionRequestManagerOptions,
+  SessionRequestStatus,
+} from './modules/session-request/session-request.types.js';

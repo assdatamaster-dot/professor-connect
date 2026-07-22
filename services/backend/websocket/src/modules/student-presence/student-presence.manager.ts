@@ -60,6 +60,14 @@ export class StudentPresenceManager {
     return [...this.studentsBySocketId.values()];
   }
 
+  public findStudentById(studentId: string): OnlineStudent | undefined {
+    return this.getOnlineStudents().find((student) => student.id === studentId);
+  }
+
+  public findStudentBySocketId(socketId: string): OnlineStudent | undefined {
+    return this.studentsBySocketId.get(socketId);
+  }
+
   public removeStudentsWithoutHeartbeat(timeoutMs: number): readonly OnlineStudent[] {
     const expirationThreshold = this.clock().getTime() - timeoutMs;
     const expiredStudents = this.getOnlineStudents().filter(

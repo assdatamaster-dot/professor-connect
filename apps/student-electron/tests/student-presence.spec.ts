@@ -13,14 +13,33 @@ interface PresenceEvents {
   'student:disconnect': (acknowledge: () => void) => void;
   'student:heartbeat': () => void;
   'student:register': (payload: { readonly id: string; readonly name: string }) => void;
+  'request:session': (payload: { readonly teacherId: string }) => void;
+}
+
+interface SessionEvents {
+  'session:accepted': (payload: {
+    readonly requestId: string;
+    readonly teacherId: string;
+    readonly teacherName: string;
+  }) => void;
+  'session:rejected': () => void;
+  'session:timeout': () => void;
 }
 
 test('conecta, registra, mantém heartbeat e desconecta o aluno automaticamente', async () => {
-  const httpServer = createServer();
-  const socketServer = new SocketServer<PresenceEvents>(httpServer, { serveClient: false });
+  const httpServer = createServer((request, response) => {
+    if (request.url === '/api/professors/online') {
+      response.setHeader('content-type', 'application/json');
+      response.end(JSON.stringify({ professors: [{ id: 'teacher-id', name: 'Carlos' }] }));
+    }
+  });
+  const socketServer = new SocketServer<PresenceEvents, SessionEvents>(httpServer, {
+    serveClient: false,
+  });
   const registrations: Array<{ readonly id: string; readonly name: string }> = [];
   let heartbeatCount = 0;
   let studentDisconnectCount = 0;
+  const requestedTeacherIds: string[] = [];
 
   socketServer.on('connection', (socket) => {
     socket.on('student:register', (payload) => registrations.push(payload));
@@ -30,6 +49,14 @@ test('conecta, registra, mantém heartbeat e desconecta o aluno automaticamente'
     socket.on('student:disconnect', (acknowledge) => {
       studentDisconnectCount += 1;
       acknowledge();
+    });
+    socket.on('request:session', ({ teacherId }) => {
+      requestedTeacherIds.push(teacherId);
+      socket.emit('session:accepted', {
+        requestId: 'request-id',
+        teacherId,
+        teacherName: 'Carlos',
+      });
     });
   });
   await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve));
@@ -54,6 +81,13 @@ test('conecta, registra, mantém heartbeat e desconecta o aluno automaticamente'
     await waitUntil(() => registrations.length === 1 && heartbeatCount > 0);
 
     assert.deepEqual(registrations[0], { id: 'student-id', name: 'Ana' });
+    assert.deepEqual(await controller.getOnlineTeachers(), [{ id: 'teacher-id', name: 'Carlos' }]);
+
+    const waiting = controller.requestSession('teacher-id');
+    assert.equal(waiting.message, 'Aguardando resposta...');
+    await waitUntil(() => controller.getSessionSnapshot().status === 'accepted');
+    assert.deepEqual(requestedTeacherIds, ['teacher-id']);
+    assert.equal(controller.getSessionSnapshot().message, 'Professor aceitou');
 
     controller.dispose();
     await waitUntil(() => studentDisconnectCount === 1);

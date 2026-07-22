@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import { registerDesktopIpc, type DesktopIpcRegistration } from './ipc.js';
 import { StudentPresenceController } from './student-presence.controller.js';
+import { registerSessionIpc, type SessionIpcRegistration } from './session-ipc.js';
 import { StudentWorkflowController } from './student-workflow.controller.js';
 import { createWindowOptions } from './window-options.js';
 import {
@@ -15,6 +16,7 @@ const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 let mainWindow: BrowserWindow | undefined;
 let ipcRegistration: DesktopIpcRegistration | undefined;
 let presenceController: StudentPresenceController | undefined;
+let sessionIpcRegistration: SessionIpcRegistration | undefined;
 let workflowController: StudentWorkflowController | undefined;
 
 async function createMainWindow(): Promise<void> {
@@ -29,6 +31,7 @@ async function createMainWindow(): Promise<void> {
   mainWindow = new BrowserWindow(createWindowOptions(preloadPath));
   ipcRegistration = registerDesktopIpc(workflowController, mainWindow.webContents);
   presenceController = new StudentPresenceController(configPath);
+  sessionIpcRegistration = registerSessionIpc(presenceController, mainWindow.webContents);
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   mainWindow.webContents.on('will-navigate', (event) => event.preventDefault());
@@ -36,9 +39,11 @@ async function createMainWindow(): Promise<void> {
   mainWindow.on('closed', () => {
     ipcRegistration?.dispose();
     presenceController?.dispose();
+    sessionIpcRegistration?.dispose();
     workflowController?.dispose();
     ipcRegistration = undefined;
     presenceController = undefined;
+    sessionIpcRegistration = undefined;
     workflowController = undefined;
     mainWindow = undefined;
   });

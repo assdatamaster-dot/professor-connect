@@ -65,6 +65,14 @@ export class PresenceManager {
     return [...this.professorsBySocketId.values()];
   }
 
+  public findProfessorById(professorId: string): Professor | undefined {
+    return this.getOnlineProfessors().find((professor) => professor.id === professorId);
+  }
+
+  public findProfessorBySocketId(socketId: string): Professor | undefined {
+    return this.professorsBySocketId.get(socketId);
+  }
+
   public removeProfessorsWithoutHeartbeat(timeoutMs: number): readonly Professor[] {
     const expirationThreshold = this.clock().getTime() - timeoutMs;
     const expiredProfessors = this.getOnlineProfessors().filter(

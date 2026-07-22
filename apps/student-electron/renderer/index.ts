@@ -13,6 +13,7 @@ const attendanceText = requireElement<HTMLElement>('attendance-text');
 const statusMessage = requireElement<HTMLElement>('status-message');
 const remoteControlText = requireElement<HTMLElement>('remote-control-text');
 const callButton = requireElement<HTMLButtonElement>('call-professor');
+const teacherSelect = requireElement<HTMLSelectElement>('teacher-select');
 const shareButton = requireElement<HTMLButtonElement>('share-screen');
 const endButton = requireElement<HTMLButtonElement>('end-attendance');
 const mediaSection = requireElement<HTMLElement>('media-section');
@@ -27,7 +28,7 @@ function render(snapshot: DesktopWorkflowSnapshot): void {
   statusMessage.textContent = view.statusMessage;
   remoteControlText.textContent = view.remoteControlLabel;
   shareButton.textContent = view.screenShareLabel;
-  callButton.disabled = !view.isCallButtonEnabled;
+  callButton.disabled = !view.isCallButtonEnabled || teacherSelect.value.length === 0;
   shareButton.disabled = !view.isShareButtonEnabled;
   endButton.disabled = !view.isEndButtonEnabled;
   mediaSection.hidden = !view.isMediaVisible;
@@ -99,7 +100,16 @@ function requireElement<TElement extends HTMLElement>(id: string): TElement {
 }
 
 callButton.addEventListener('click', () => {
-  void runAction(() => window.professorConnect.callProfessor());
+  callButton.disabled = true;
+  teacherSelect.disabled = true;
+  void window.professorConnectSession
+    .requestSession(teacherSelect.value)
+    .catch((error: unknown) => {
+      statusMessage.textContent =
+        error instanceof Error ? error.message : 'Não foi possível solicitar atendimento.';
+      callButton.disabled = teacherSelect.value.length === 0;
+      teacherSelect.disabled = false;
+    });
 });
 shareButton.addEventListener('click', () => {
   void runAction(() => window.professorConnect.shareScreen());
@@ -109,8 +119,50 @@ endButton.addEventListener('click', () => {
 });
 
 const unsubscribe = window.professorConnect.onStateChanged(render);
+const unsubscribeSession = window.professorConnectSession.onStateChanged((snapshot) => {
+  statusMessage.textContent = snapshot.message;
+  const isWaiting = snapshot.status === 'waiting';
+  callButton.disabled = isWaiting || teacherSelect.value.length === 0;
+  teacherSelect.disabled = isWaiting;
+});
 
-window.addEventListener('beforeunload', unsubscribe, { once: true });
+window.addEventListener(
+  'beforeunload',
+  () => {
+    unsubscribe();
+    unsubscribeSession();
+  },
+  { once: true },
+);
+void window.professorConnectSession
+  .getOnlineTeachers()
+  .then((teachers) => {
+    const options = teachers.map((teacher) => {
+      const option = document.createElement('option');
+
+      option.value = teacher.id;
+      option.textContent = teacher.name;
+      return option;
+    });
+    const placeholder = document.createElement('option');
+
+    placeholder.value = '';
+    placeholder.textContent =
+      teachers.length > 0 ? 'Selecione um professor' : 'Nenhum professor online';
+    teacherSelect.replaceChildren(placeholder, ...options);
+    callButton.disabled = true;
+  })
+  .catch(() => {
+    const option = document.createElement('option');
+
+    option.value = '';
+    option.textContent = 'Não foi possível carregar professores';
+    teacherSelect.replaceChildren(option);
+    callButton.disabled = true;
+  });
+teacherSelect.addEventListener('change', () => {
+  callButton.disabled = teacherSelect.value.length === 0;
+});
 void window.professorConnect
   .initialize()
   .then(render)

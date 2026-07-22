@@ -35,6 +35,8 @@ import { ProfessorPresenceGateway } from './modules/professor-presence/presence.
 import { PresenceManager } from './modules/professor-presence/presence.manager.js';
 import { StudentPresenceGateway } from './modules/student-presence/student-presence.gateway.js';
 import { StudentPresenceManager } from './modules/student-presence/student-presence.manager.js';
+import { SessionRequestGateway } from './modules/session-request/session-request.gateway.js';
+import { SessionRequestManager } from './modules/session-request/session-request.manager.js';
 
 export function initializeWebSocket(
   httpServer: HttpServer,
@@ -47,6 +49,10 @@ export function initializeWebSocket(
   },
   professorPresenceManager = new PresenceManager(),
   studentPresenceManager = new StudentPresenceManager(),
+  sessionRequestManager = new SessionRequestManager(
+    professorPresenceManager,
+    studentPresenceManager,
+  ),
 ): CommunicationGateway {
   const socketServer = new SocketServer<ClientToServerEvents, ServerToClientEvents>(httpServer, {
     serveClient: false,
@@ -104,20 +110,34 @@ export function initializeWebSocket(
 
   communicationGateway.registerEvents();
   signalingGateway.registerEvents();
-  new ProfessorPresenceGateway(
+  const professorPresenceGateway = new ProfessorPresenceGateway(
     socketServer,
     professorPresenceManager,
     logger,
     heartbeatSettings.timeoutMs,
     heartbeatSettings.intervalMs,
-  ).registerEvents();
-  new StudentPresenceGateway(
+  );
+  professorPresenceGateway.registerEvents();
+  const studentPresenceGateway = new StudentPresenceGateway(
     socketServer,
     studentPresenceManager,
     logger,
     heartbeatSettings.timeoutMs,
     heartbeatSettings.intervalMs,
-  ).registerEvents();
+  );
+  studentPresenceGateway.registerEvents();
+  const sessionRequestGateway = new SessionRequestGateway(
+    socketServer,
+    sessionRequestManager,
+    logger,
+  );
+  sessionRequestGateway.registerEvents();
+
+  httpServer.once('close', () => {
+    professorPresenceGateway.dispose();
+    studentPresenceGateway.dispose();
+    sessionRequestGateway.dispose();
+  });
 
   return communicationGateway;
 }

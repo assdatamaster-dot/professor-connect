@@ -133,6 +133,37 @@ button:disabled {
   font-size: 0.82rem;
 }
 
+.session-dialog {
+  width: min(420px, calc(100% - 32px));
+  padding: 30px;
+  border: 0;
+  border-radius: 18px;
+  color: #17213a;
+  box-shadow: 0 24px 70px rgb(18 31 66 / 28%);
+}
+
+.session-dialog::backdrop {
+  background: rgb(21 30 52 / 55%);
+}
+
+.session-dialog h2,
+.session-dialog p {
+  margin-top: 0;
+  text-align: center;
+}
+
+.dialog-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.reject-button {
+  background: #edf1ff;
+  color: #344fb0;
+}
+
 [hidden] {
   display: none !important;
 }
