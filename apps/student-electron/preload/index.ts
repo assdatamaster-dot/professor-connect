@@ -40,6 +40,7 @@ const sessionChannels = {
   getTeachers: 'student:session:get-teachers',
   request: 'student:session:request',
   getState: 'student:session:get-state',
+  end: 'student:session:end',
   stateChanged: 'student:session:state-changed',
 } as const;
 
@@ -48,6 +49,7 @@ const sessionApi: StudentSessionApi = {
   requestSession: (teacherId) =>
     ipcRenderer.invoke(sessionChannels.request, teacherId) as Promise<StudentSessionSnapshot>,
   getState: () => ipcRenderer.invoke(sessionChannels.getState) as Promise<StudentSessionSnapshot>,
+  endSession: () => ipcRenderer.invoke(sessionChannels.end) as Promise<StudentSessionSnapshot>,
   onStateChanged(listener: StudentSessionListener): () => void {
     const handler = (_event: IpcRendererEvent, snapshot: StudentSessionSnapshot): void => {
       listener(snapshot);

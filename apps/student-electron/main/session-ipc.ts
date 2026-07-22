@@ -33,6 +33,10 @@ export function registerSessionIpc(
     assertSender(event);
     return controller.getSessionSnapshot();
   });
+  ipcMain.handle(SESSION_IPC_CHANNELS.END, (event): StudentSessionSnapshot => {
+    assertSender(event);
+    return controller.endSession();
+  });
 
   const unsubscribe = controller.onSessionStateChanged((snapshot) => {
     if (!renderer.isDestroyed()) {
@@ -46,6 +50,7 @@ export function registerSessionIpc(
       ipcMain.removeHandler(SESSION_IPC_CHANNELS.GET_TEACHERS);
       ipcMain.removeHandler(SESSION_IPC_CHANNELS.REQUEST);
       ipcMain.removeHandler(SESSION_IPC_CHANNELS.GET_STATE);
+      ipcMain.removeHandler(SESSION_IPC_CHANNELS.END);
     },
   };
 }

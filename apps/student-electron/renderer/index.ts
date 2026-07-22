@@ -121,9 +121,12 @@ endButton.addEventListener('click', () => {
 const unsubscribe = window.professorConnect.onStateChanged(render);
 const unsubscribeSession = window.professorConnectSession.onStateChanged((snapshot) => {
   statusMessage.textContent = snapshot.message;
-  const isWaiting = snapshot.status === 'waiting';
-  callButton.disabled = isWaiting || teacherSelect.value.length === 0;
-  teacherSelect.disabled = isWaiting;
+  const isSessionBusy =
+    snapshot.status === 'waiting' ||
+    snapshot.status === 'accepted' ||
+    snapshot.status === 'connected';
+  callButton.disabled = isSessionBusy || teacherSelect.value.length === 0;
+  teacherSelect.disabled = isSessionBusy;
 });
 
 window.addEventListener(

@@ -2,6 +2,7 @@ import express, { type Express } from 'express';
 
 import {
   PresenceManager,
+  SessionManager,
   SessionRequestManager,
   StudentPresenceManager,
 } from '@professor-connect/websocket';
@@ -19,13 +20,14 @@ export function createApp(
     professorPresenceManager,
     studentPresenceManager,
   ),
+  activeSessionManager = new SessionManager(professorPresenceManager, studentPresenceManager),
 ): Express {
   const app = express();
 
   app.use('/health', healthRouter);
   app.use('/api/professors', createProfessorsRouter(professorPresenceManager));
   app.use('/api/students', createStudentsRouter(studentPresenceManager));
-  app.use('/api/sessions', createSessionsRouter(sessionRequestManager));
+  app.use('/api/sessions', createSessionsRouter(sessionRequestManager, activeSessionManager));
   app.use(globalErrorMiddleware);
 
   return app;

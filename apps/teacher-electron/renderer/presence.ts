@@ -13,6 +13,9 @@ const professorDisplayName = requireElement<HTMLElement>('professor-display-name
 const presenceStatus = requireElement<HTMLElement>('presence-status');
 const serverStatus = requireElement<HTMLElement>('server-status');
 const logoutButton = requireElement<HTMLButtonElement>('logout-button');
+const activeAttendance = requireElement<HTMLElement>('active-attendance');
+const activeStudentName = requireElement<HTMLElement>('active-student-name');
+const endSessionButton = requireElement<HTMLButtonElement>('end-session');
 const sessionDialog = requireElement<HTMLDialogElement>('session-request-dialog');
 const requestStudentName = requireElement<HTMLElement>('request-student-name');
 const acceptSessionButton = requireElement<HTMLButtonElement>('accept-session');
@@ -34,6 +37,8 @@ function render(snapshot: ProfessorPresenceSnapshot): void {
   professorDisplayName.textContent = snapshot.professorName ?? '';
   presenceStatus.textContent = getPresenceLabel(snapshot.status);
   serverStatus.textContent = snapshot.serverConnected ? 'Conectado' : 'Desconectado';
+  activeAttendance.hidden = snapshot.activeSession === undefined;
+  activeStudentName.textContent = snapshot.activeSession?.studentName ?? '';
   renderSessionRequest(snapshot);
 }
 
@@ -117,6 +122,13 @@ rejectSessionButton.addEventListener('click', () => {
   void window.professorConnectPresence.rejectSession(activeRequestId).finally(() => {
     acceptSessionButton.disabled = false;
     rejectSessionButton.disabled = false;
+  });
+});
+
+endSessionButton.addEventListener('click', () => {
+  endSessionButton.disabled = true;
+  void window.professorConnectPresence.endSession().finally(() => {
+    endSessionButton.disabled = false;
   });
 });
 

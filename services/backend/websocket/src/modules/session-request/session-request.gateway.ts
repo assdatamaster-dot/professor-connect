@@ -1,6 +1,7 @@
 import type { Server, Socket } from 'socket.io';
 
 import type { CommunicationLogger } from '../communication/communication.types.js';
+import type { SessionGateway } from '../active-session/session.gateway.js';
 import type { SessionRequestManager } from './session-request.manager.js';
 
 export const SESSION_REQUEST_EVENTS = {
@@ -56,6 +57,7 @@ export class SessionRequestGateway {
     private readonly socketServer: SessionRequestServer,
     private readonly manager: SessionRequestManager,
     private readonly logger: CommunicationLogger,
+    private readonly sessionGateway: SessionGateway,
   ) {
     this.stopListeningForExpiration = manager.onExpired((delivery) => {
       const { request, studentSocketId } = delivery;
@@ -111,6 +113,7 @@ export class SessionRequestGateway {
         const delivery = this.manager.acceptRequest(requireText(payload, 'requestId'), socket.id);
         this.emitStudentResponse(SESSION_REQUEST_EVENTS.ACCEPTED, delivery);
         this.logger.info('Solicitação aceita', { requestId: delivery.request.requestId });
+        this.sessionGateway.startSession(delivery);
       });
     });
 

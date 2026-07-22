@@ -21,18 +21,29 @@ interface StudentPresenceClientEvents {
   'student:heartbeat': () => void;
   'student:register': (payload: StudentIdentity) => void;
   'request:session': (payload: { readonly teacherId: string }) => void;
+  'session:end': (payload: { readonly sessionId: string }) => void;
 }
 
 interface StudentPresenceServerEvents {
   'session:accepted': (payload: SessionResponsePayload) => void;
   'session:rejected': (payload: SessionResponsePayload) => void;
   'session:timeout': (payload: SessionResponsePayload) => void;
+  'session:started': (payload: SessionLifecyclePayload) => void;
+  'session:ended': (payload: SessionLifecyclePayload) => void;
 }
 
 interface SessionResponsePayload {
   readonly requestId: string;
   readonly teacherId: string;
   readonly teacherName: string;
+}
+
+interface SessionLifecyclePayload {
+  readonly sessionId: string;
+  readonly teacherId: string;
+  readonly teacherName: string;
+  readonly studentId: string;
+  readonly studentName: string;
 }
 
 interface StudentConnectConfig {
@@ -48,6 +59,7 @@ export class StudentPresenceController {
   private sessionState: StudentSessionSnapshot = {
     status: 'idle',
     message: 'Pronto para solicitar atendimento.',
+    activeSessionId: undefined,
   };
 
   public constructor(
@@ -77,6 +89,14 @@ export class StudentPresenceController {
     });
     socket.on('session:timeout', () => {
       this.updateSessionState('timeout', 'Tempo esgotado');
+    });
+    socket.on('session:started', (session) => {
+      this.updateSessionState('connected', 'Conectado ao professor', session.sessionId);
+    });
+    socket.on('session:ended', (session) => {
+      if (this.sessionState.activeSessionId === session.sessionId) {
+        this.updateSessionState('ended', 'Atendimento encerrado', undefined);
+      }
     });
     socket.connect();
   }
@@ -119,6 +139,15 @@ export class StudentPresenceController {
     return { ...this.sessionState };
   }
 
+  public endSession(): StudentSessionSnapshot {
+    const sessionId = this.sessionState.activeSessionId;
+    if (sessionId === undefined || this.socket?.connected !== true) {
+      throw new Error('Não há atendimento ativo.');
+    }
+    this.socket.emit('session:end', { sessionId });
+    return this.getSessionSnapshot();
+  }
+
   public onSessionStateChanged(listener: StudentSessionListener): () => void {
     this.sessionListeners.add(listener);
     return () => this.sessionListeners.delete(listener);
@@ -129,8 +158,12 @@ export class StudentPresenceController {
     this.sessionListeners.clear();
   }
 
-  private updateSessionState(status: StudentSessionSnapshot['status'], message: string): void {
-    this.sessionState = { status, message };
+  private updateSessionState(
+    status: StudentSessionSnapshot['status'],
+    message: string,
+    activeSessionId = this.sessionState.activeSessionId,
+  ): void {
+    this.sessionState = { status, message, activeSessionId };
     const snapshot = this.getSessionSnapshot();
     for (const listener of this.sessionListeners) {
       listener(snapshot);

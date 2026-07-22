@@ -66,6 +66,8 @@ const presenceApi: ProfessorPresenceApi = {
       'teacher:presence:reject-session',
       requestId,
     ) as Promise<ProfessorPresenceSnapshot>,
+  endSession: () =>
+    ipcRenderer.invoke('teacher:presence:end-session') as Promise<ProfessorPresenceSnapshot>,
   onStateChanged(listener): () => void {
     const handler = (_event: IpcRendererEvent, snapshot: ProfessorPresenceSnapshot): void =>
       listener(snapshot);

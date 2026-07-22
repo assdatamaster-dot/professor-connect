@@ -98,6 +98,30 @@ button:disabled {
   color: #344fb0;
 }
 
+.active-attendance {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid #cfe8dc;
+  border-radius: 14px;
+  background: #f2fbf7;
+  text-align: center;
+}
+
+.active-attendance p {
+  margin: 0 0 5px;
+  color: #24704c;
+  font-weight: 800;
+}
+
+.active-attendance strong {
+  display: block;
+  margin-bottom: 14px;
+}
+
+.end-session-button {
+  background: #d84b5b;
+}
+
 .eyebrow {
   margin: 0 0 5px;
   color: #69748b;

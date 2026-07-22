@@ -68,3 +68,16 @@ export type {
   SessionRequestManagerOptions,
   SessionRequestStatus,
 } from './modules/session-request/session-request.types.js';
+export {
+  SESSION_EVENTS,
+  SessionGateway,
+  type SessionEndPayload,
+  type SessionLifecyclePayload,
+} from './modules/active-session/session.gateway.js';
+export { SessionManager } from './modules/active-session/session.manager.js';
+export type {
+  AttendanceSession,
+  SessionDelivery,
+  SessionManagerOptions,
+  SessionStatus,
+} from './modules/active-session/session.types.js';

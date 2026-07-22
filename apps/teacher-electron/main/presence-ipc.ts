@@ -47,6 +47,10 @@ export function registerPresenceIpc(
     }
     return controller.rejectSession(requestId);
   });
+  ipcMain.handle(PRESENCE_IPC_CHANNELS.END_SESSION, (event) => {
+    assertSender(event);
+    return controller.endSession();
+  });
 
   const unsubscribe = controller.onStateChanged((snapshot) => {
     if (!renderer.isDestroyed()) {
@@ -62,6 +66,7 @@ export function registerPresenceIpc(
       ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.GET_STATE);
       ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.ACCEPT_SESSION);
       ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.REJECT_SESSION);
+      ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.END_SESSION);
     },
   };
 }

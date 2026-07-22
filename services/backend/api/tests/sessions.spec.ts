@@ -4,6 +4,7 @@ import { test } from 'node:test';
 
 import {
   PresenceManager,
+  SessionManager,
   SessionRequestManager,
   StudentPresenceManager,
 } from '@professor-connect/websocket';
@@ -20,11 +21,15 @@ test('expõe solicitações pendentes e o histórico completo', async () => {
     idFactory: () => 'request-id',
     timeoutMs: 30_000,
   });
+  const activeSessions = new SessionManager(professors, students, {
+    clock: () => new Date('2026-07-23T12:00:00.000Z'),
+    idFactory: () => 'session-id',
+  });
   professors.registerProfessor({ name: 'Carlos', socketId: 'teacher-socket' });
   students.registerStudent({ id: 'student-id', name: 'Ana', socketId: 'student-socket' });
   manager.createRequest('student-socket', 'teacher-id');
 
-  const server = createServer(createApp(professors, students, manager));
+  const server = createServer(createApp(professors, students, manager, activeSessions));
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
 
   try {
@@ -36,12 +41,37 @@ test('expõe solicitações pendentes e o histórico completo', async () => {
     assert.equal(pending.length, 1);
     assert.equal((pending[0] as { status: string }).status, 'pending');
 
-    manager.acceptRequest('request-id', 'teacher-socket');
+    const acceptedRequest = manager.acceptRequest('request-id', 'teacher-socket');
+    activeSessions.createSession(acceptedRequest.request);
 
     assert.deepEqual(await (await fetch(`${baseUrl}/api/sessions/pending`)).json(), []);
     const history = (await (await fetch(`${baseUrl}/api/sessions/history`)).json()) as unknown[];
     assert.equal(history.length, 1);
     assert.equal((history[0] as { status: string }).status, 'accepted');
+
+    assert.deepEqual(await (await fetch(`${baseUrl}/api/sessions/active`)).json(), [
+      {
+        sessionId: 'session-id',
+        teacherName: 'Carlos',
+        studentName: 'Ana',
+        createdAt: '2026-07-23T12:00:00.000Z',
+        status: 'active',
+      },
+    ]);
+    const details = (await (await fetch(`${baseUrl}/api/sessions/session-id`)).json()) as Record<
+      string,
+      unknown
+    >;
+    assert.equal(details.requestId, 'request-id');
+    assert.equal(details.teacherId, 'teacher-id');
+    assert.equal(details.studentId, 'student-id');
+
+    activeSessions.endSession('session-id', 'student-socket');
+    assert.deepEqual(await (await fetch(`${baseUrl}/api/sessions/active`)).json(), []);
+    const finishedDetails = (await (
+      await fetch(`${baseUrl}/api/sessions/session-id`)
+    ).json()) as Record<string, unknown>;
+    assert.equal(finishedDetails.status, 'finished');
   } finally {
     manager.close();
     await new Promise<void>((resolve, reject) => {

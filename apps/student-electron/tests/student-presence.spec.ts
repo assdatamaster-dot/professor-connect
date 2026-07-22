@@ -14,6 +14,7 @@ interface PresenceEvents {
   'student:heartbeat': () => void;
   'student:register': (payload: { readonly id: string; readonly name: string }) => void;
   'request:session': (payload: { readonly teacherId: string }) => void;
+  'session:end': (payload: { readonly sessionId: string }) => void;
 }
 
 interface SessionEvents {
@@ -24,6 +25,16 @@ interface SessionEvents {
   }) => void;
   'session:rejected': () => void;
   'session:timeout': () => void;
+  'session:started': (payload: SessionLifecyclePayload) => void;
+  'session:ended': (payload: SessionLifecyclePayload) => void;
+}
+
+interface SessionLifecyclePayload {
+  readonly sessionId: string;
+  readonly teacherId: string;
+  readonly teacherName: string;
+  readonly studentId: string;
+  readonly studentName: string;
 }
 
 test('conecta, registra, mantém heartbeat e desconecta o aluno automaticamente', async () => {
@@ -40,6 +51,7 @@ test('conecta, registra, mantém heartbeat e desconecta o aluno automaticamente'
   let heartbeatCount = 0;
   let studentDisconnectCount = 0;
   const requestedTeacherIds: string[] = [];
+  const endedSessionIds: string[] = [];
 
   socketServer.on('connection', (socket) => {
     socket.on('student:register', (payload) => registrations.push(payload));
@@ -56,6 +68,23 @@ test('conecta, registra, mantém heartbeat e desconecta o aluno automaticamente'
         requestId: 'request-id',
         teacherId,
         teacherName: 'Carlos',
+      });
+      socket.emit('session:started', {
+        sessionId: 'session-id',
+        teacherId,
+        teacherName: 'Carlos',
+        studentId: 'student-id',
+        studentName: 'Ana',
+      });
+    });
+    socket.on('session:end', ({ sessionId }) => {
+      endedSessionIds.push(sessionId);
+      socket.emit('session:ended', {
+        sessionId,
+        teacherId: 'teacher-id',
+        teacherName: 'Carlos',
+        studentId: 'student-id',
+        studentName: 'Ana',
       });
     });
   });
@@ -85,9 +114,15 @@ test('conecta, registra, mantém heartbeat e desconecta o aluno automaticamente'
 
     const waiting = controller.requestSession('teacher-id');
     assert.equal(waiting.message, 'Aguardando resposta...');
-    await waitUntil(() => controller.getSessionSnapshot().status === 'accepted');
+    await waitUntil(() => controller.getSessionSnapshot().status === 'connected');
     assert.deepEqual(requestedTeacherIds, ['teacher-id']);
-    assert.equal(controller.getSessionSnapshot().message, 'Professor aceitou');
+    assert.equal(controller.getSessionSnapshot().message, 'Conectado ao professor');
+    assert.equal(controller.getSessionSnapshot().activeSessionId, 'session-id');
+
+    controller.endSession();
+    await waitUntil(() => controller.getSessionSnapshot().status === 'ended');
+    assert.deepEqual(endedSessionIds, ['session-id']);
+    assert.equal(controller.getSessionSnapshot().message, 'Atendimento encerrado');
 
     controller.dispose();
     await waitUntil(() => studentDisconnectCount === 1);

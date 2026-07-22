@@ -7,10 +7,12 @@ import { io, type Socket } from 'socket.io-client';
 import {
   initializeWebSocket,
   PresenceManager,
+  SessionManager,
   SessionRequestManager,
   StudentPresenceManager,
   type SessionRequestedPayload,
   type SessionResponsePayload,
+  type SessionLifecyclePayload,
 } from '../src/index.js';
 
 interface ServerEvents {
@@ -18,6 +20,8 @@ interface ServerEvents {
   'session:accepted': (payload: SessionResponsePayload) => void;
   'session:rejected': (payload: SessionResponsePayload) => void;
   'session:timeout': (payload: SessionResponsePayload) => void;
+  'session:started': (payload: SessionLifecyclePayload) => void;
+  'session:ended': (payload: SessionLifecyclePayload) => void;
 }
 
 interface ClientEvents {
@@ -26,6 +30,7 @@ interface ClientEvents {
   'request:session': (payload: { readonly teacherId: string }) => void;
   'session:accept': (payload: { readonly requestId: string }) => void;
   'session:reject': (payload: { readonly requestId: string }) => void;
+  'session:end': (payload: { readonly sessionId: string }) => void;
 }
 
 type TestClient = Socket<ServerEvents, ClientEvents>;
@@ -38,6 +43,9 @@ test('entrega aceite, recusa e timeout em tempo real', async () => {
   const sessionRequests = new SessionRequestManager(professors, students, {
     idFactory: () => `request-${++requestSequence}`,
     timeoutMs: 500,
+  });
+  const activeSessions = new SessionManager(professors, students, {
+    idFactory: () => 'session-1',
   });
   const messages: string[] = [];
   const gateway = initializeWebSocket(
@@ -55,6 +63,7 @@ test('entrega aceite, recusa e timeout em tempo real', async () => {
     professors,
     students,
     sessionRequests,
+    activeSessions,
   );
 
   await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve));
@@ -78,8 +87,22 @@ test('entrega aceite, recusa e timeout em tempo real', async () => {
     const firstRequest = await requestedForAccept;
     assert.equal(firstRequest.studentName, 'Ana');
     const accepted = waitForAccepted(student);
+    const teacherStarted = waitForStarted(teacher);
+    const studentStarted = waitForStarted(student);
     teacher.emit('session:accept', { requestId: firstRequest.requestId });
     assert.equal((await accepted).requestId, firstRequest.requestId);
+    const [teacherSession, studentSession] = await Promise.all([teacherStarted, studentStarted]);
+    assert.equal(teacherSession.sessionId, 'session-1');
+    assert.deepEqual(teacherSession, studentSession);
+    assert.equal(activeSessions.listActiveSessions().length, 1);
+
+    const teacherEnded = waitForEnded(teacher);
+    const studentEnded = waitForEnded(student);
+    teacher.emit('session:end', { sessionId: teacherSession.sessionId });
+    const [endedForTeacher, endedForStudent] = await Promise.all([teacherEnded, studentEnded]);
+    assert.deepEqual(endedForTeacher, endedForStudent);
+    assert.deepEqual(activeSessions.listActiveSessions(), []);
+    assert.equal(activeSessions.listHistory()[0]?.status, 'finished');
 
     const requestedForReject = waitForRequested(teacher);
     student.emit('request:session', { teacherId: 'teacher-id' });
@@ -103,6 +126,10 @@ test('entrega aceite, recusa e timeout em tempo real', async () => {
     assert(messages.includes('Solicitação aceita'));
     assert(messages.includes('Solicitação recusada'));
     assert(messages.includes('Solicitação expirada'));
+    assert(messages.includes('Sessão criada'));
+    assert(messages.includes('Participantes conectados'));
+    assert(messages.includes('Sessão encerrada'));
+    assert(messages.includes('Sessão removida'));
   } finally {
     teacher.disconnect();
     student.disconnect();
@@ -131,6 +158,14 @@ function waitForRejected(client: TestClient): Promise<SessionResponsePayload> {
 
 function waitForTimeout(client: TestClient): Promise<SessionResponsePayload> {
   return new Promise((resolve) => client.once('session:timeout', resolve));
+}
+
+function waitForStarted(client: TestClient): Promise<SessionLifecyclePayload> {
+  return new Promise((resolve) => client.once('session:started', resolve));
+}
+
+function waitForEnded(client: TestClient): Promise<SessionLifecyclePayload> {
+  return new Promise((resolve) => client.once('session:ended', resolve));
 }
 
 async function waitUntil(condition: () => boolean): Promise<void> {

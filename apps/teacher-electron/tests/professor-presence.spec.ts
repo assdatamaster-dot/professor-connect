@@ -15,6 +15,7 @@ interface PresenceEvents {
   'professor:online': (payload: { readonly name: string }) => void;
   'session:accept': (payload: { readonly requestId: string }) => void;
   'session:reject': (payload: { readonly requestId: string }) => void;
+  'session:end': (payload: { readonly sessionId: string }) => void;
 }
 
 interface SessionEvents {
@@ -23,6 +24,16 @@ interface SessionEvents {
     readonly studentId: string;
     readonly studentName: string;
   }) => void;
+  'session:started': (payload: SessionLifecyclePayload) => void;
+  'session:ended': (payload: SessionLifecyclePayload) => void;
+}
+
+interface SessionLifecyclePayload {
+  readonly sessionId: string;
+  readonly teacherId: string;
+  readonly teacherName: string;
+  readonly studentId: string;
+  readonly studentName: string;
 }
 
 test('lê config.json, registra o professor e desconecta pelo Socket.IO', async () => {
@@ -34,6 +45,7 @@ test('lê config.json, registra o professor e desconecta pelo Socket.IO', async 
   let disconnectCount = 0;
   const acceptedRequestIds: string[] = [];
   const rejectedRequestIds: string[] = [];
+  const endedSessionIds: string[] = [];
 
   socketServer.on('connection', (socket) => {
     socket.on('professor:online', ({ name }) => {
@@ -44,8 +56,27 @@ test('lê config.json, registra o professor e desconecta pelo Socket.IO', async 
         studentName: 'Ana',
       });
     });
-    socket.on('session:accept', ({ requestId }) => acceptedRequestIds.push(requestId));
+    socket.on('session:accept', ({ requestId }) => {
+      acceptedRequestIds.push(requestId);
+      socket.emit('session:started', {
+        sessionId: 'session-id',
+        teacherId: 'teacher-id',
+        teacherName: 'Carlos',
+        studentId: 'student-id',
+        studentName: 'Ana',
+      });
+    });
     socket.on('session:reject', ({ requestId }) => rejectedRequestIds.push(requestId));
+    socket.on('session:end', ({ sessionId }) => {
+      endedSessionIds.push(sessionId);
+      socket.emit('session:ended', {
+        sessionId,
+        teacherId: 'teacher-id',
+        teacherName: 'Carlos',
+        studentId: 'student-id',
+        studentName: 'Ana',
+      });
+    });
     socket.on('disconnect', () => {
       disconnectCount += 1;
     });
@@ -78,6 +109,11 @@ test('lê config.json, registra o professor e desconecta pelo Socket.IO', async 
     controller.acceptSession('request-1');
     await waitUntil(() => acceptedRequestIds.length === 1);
     assert.deepEqual(controller.getSnapshot().sessionRequests, []);
+    await waitUntil(() => controller.getSnapshot().activeSession !== undefined);
+    assert.equal(controller.getSnapshot().activeSession?.studentName, 'Ana');
+    controller.endSession();
+    await waitUntil(() => controller.getSnapshot().activeSession === undefined);
+    assert.deepEqual(endedSessionIds, ['session-id']);
 
     socketServer.emit('session:requested', {
       requestId: 'request-2',
