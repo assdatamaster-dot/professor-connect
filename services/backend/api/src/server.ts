@@ -1,13 +1,18 @@
 import { createServer } from 'node:http';
 
 import { environment } from '@professor-connect/config';
-import { initializeWebSocket, PresenceManager } from '@professor-connect/websocket';
+import {
+  initializeWebSocket,
+  PresenceManager,
+  StudentPresenceManager,
+} from '@professor-connect/websocket';
 
 import { createApp } from './app.js';
 import { logger } from './utils/logger.js';
 
 const professorPresenceManager = new PresenceManager();
-const httpServer = createServer(createApp(professorPresenceManager));
+const studentPresenceManager = new StudentPresenceManager();
+const httpServer = createServer(createApp(professorPresenceManager, studentPresenceManager));
 const communicationGateway = initializeWebSocket(
   httpServer,
   logger,
@@ -18,6 +23,7 @@ const communicationGateway = initializeWebSocket(
     reconnectWindowMs: environment.reconnectWindowMs,
   },
   professorPresenceManager,
+  studentPresenceManager,
 );
 
 httpServer.on('error', (error) => {

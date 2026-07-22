@@ -33,6 +33,8 @@ import { SignalingManager } from './modules/signaling/signaling.manager.js';
 import { SignalingService } from './modules/signaling/signaling.service.js';
 import { ProfessorPresenceGateway } from './modules/professor-presence/presence.gateway.js';
 import { PresenceManager } from './modules/professor-presence/presence.manager.js';
+import { StudentPresenceGateway } from './modules/student-presence/student-presence.gateway.js';
+import { StudentPresenceManager } from './modules/student-presence/student-presence.manager.js';
 
 export function initializeWebSocket(
   httpServer: HttpServer,
@@ -44,6 +46,7 @@ export function initializeWebSocket(
     reconnectWindowMs: 90_000,
   },
   professorPresenceManager = new PresenceManager(),
+  studentPresenceManager = new StudentPresenceManager(),
 ): CommunicationGateway {
   const socketServer = new SocketServer<ClientToServerEvents, ServerToClientEvents>(httpServer, {
     serveClient: false,
@@ -104,6 +107,13 @@ export function initializeWebSocket(
   new ProfessorPresenceGateway(
     socketServer,
     professorPresenceManager,
+    logger,
+    heartbeatSettings.timeoutMs,
+    heartbeatSettings.intervalMs,
+  ).registerEvents();
+  new StudentPresenceGateway(
+    socketServer,
+    studentPresenceManager,
     logger,
     heartbeatSettings.timeoutMs,
     heartbeatSettings.intervalMs,

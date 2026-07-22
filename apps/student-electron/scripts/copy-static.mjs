@@ -7,6 +7,10 @@ await cp(
   new URL('../dist/preload/package.json', import.meta.url),
 );
 await cp(
+  new URL('../config.json', import.meta.url),
+  new URL('../dist/config.json', import.meta.url),
+);
+await cp(
   new URL('../renderer/index.html', import.meta.url),
   new URL('../dist/renderer/index.html', import.meta.url),
 );

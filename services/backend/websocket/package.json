@@ -19,7 +19,7 @@
     "pretest": "npm run build --workspace=@professor-connect/protocol --workspace=@professor-connect/services",
     "presence:client": "tsx tests/presence-client.ts",
     "request:client": "tsx tests/request-client.ts",
-    "test": "tsx --test tests/communication.spec.ts tests/heartbeat.spec.ts tests/presence.spec.ts tests/professor-presence.spec.ts tests/request.spec.ts tests/session.spec.ts tests/signaling.spec.ts",
+    "test": "tsx --test tests/communication.spec.ts tests/heartbeat.spec.ts tests/presence.spec.ts tests/professor-presence.spec.ts tests/request.spec.ts tests/session.spec.ts tests/signaling.spec.ts tests/student-presence.spec.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tests/tsconfig.json --noEmit"
   },
   "dependencies": {

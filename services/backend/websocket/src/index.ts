@@ -42,3 +42,13 @@ export {
   type Professor,
   type RegisterProfessorInput,
 } from './modules/professor-presence/presence.manager.js';
+export {
+  STUDENT_PRESENCE_EVENTS,
+  StudentPresenceGateway,
+  type StudentRegisterPayload,
+} from './modules/student-presence/student-presence.gateway.js';
+export {
+  StudentPresenceManager,
+  type OnlineStudent,
+  type RegisterStudentInput,
+} from './modules/student-presence/student-presence.manager.js';
