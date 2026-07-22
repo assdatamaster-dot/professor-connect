@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 
 import type {
   DesktopStateListener,
@@ -22,10 +22,7 @@ const workflowApi: DesktopWorkflowApi = {
   endAttendance: () =>
     ipcRenderer.invoke(channels.endAttendance) as Promise<DesktopWorkflowSnapshot>,
   onStateChanged(listener: DesktopStateListener): () => void {
-    const handler = (
-      _event: Electron.IpcRendererEvent,
-      snapshot: DesktopWorkflowSnapshot,
-    ): void => {
+    const handler = (_event: IpcRendererEvent, snapshot: DesktopWorkflowSnapshot): void => {
       listener(snapshot);
     };
 
