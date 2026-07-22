@@ -1,0 +1,9 @@
+[phases.install]
+cmds = ["npm ci --include=dev"]
+
+[phases.build]
+dependsOn = ["install"]
+cmds = ["npx turbo run build"]
+
+[start]
+cmd = "npm run start"
