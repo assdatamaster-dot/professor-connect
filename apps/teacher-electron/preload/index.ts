@@ -5,6 +5,10 @@ import type {
   TeacherWorkflowApi,
   TeacherWorkflowSnapshot,
 } from '../shared/contracts.js' with { 'resolution-mode': 'import' };
+import type {
+  ProfessorPresenceApi,
+  ProfessorPresenceSnapshot,
+} from '../shared/presence-contracts.js' with { 'resolution-mode': 'import' };
 
 const channels = {
   initialize: 'teacher:workflow:initialize',
@@ -41,4 +45,30 @@ const workflowApi: TeacherWorkflowApi = {
   },
 };
 
+const presenceChannels = {
+  connect: 'teacher:presence:connect',
+  disconnect: 'teacher:presence:disconnect',
+  getState: 'teacher:presence:get-state',
+  stateChanged: 'teacher:presence:state-changed',
+} as const;
+
+const presenceApi: ProfessorPresenceApi = {
+  connect: (name) =>
+    ipcRenderer.invoke(presenceChannels.connect, name) as Promise<ProfessorPresenceSnapshot>,
+  disconnect: () =>
+    ipcRenderer.invoke(presenceChannels.disconnect) as Promise<ProfessorPresenceSnapshot>,
+  getState: () =>
+    ipcRenderer.invoke(presenceChannels.getState) as Promise<ProfessorPresenceSnapshot>,
+  onStateChanged(listener): () => void {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      snapshot: ProfessorPresenceSnapshot,
+    ): void => listener(snapshot);
+
+    ipcRenderer.on(presenceChannels.stateChanged, handler);
+    return () => ipcRenderer.removeListener(presenceChannels.stateChanged, handler);
+  },
+};
+
 contextBridge.exposeInMainWorld('professorConnectTeacher', workflowApi);
+contextBridge.exposeInMainWorld('professorConnectPresence', presenceApi);

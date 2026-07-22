@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Professor Connect</title>
+    <link rel="stylesheet" href="./presence.css" />
+  </head>
+  <body>
+    <main class="presence-shell">
+      <section class="presence-card" aria-labelledby="app-title">
+        <img src="../assets/icon.svg" width="64" height="64" alt="" />
+
+        <div id="login-view">
+          <h1 id="app-title">Professor Connect</h1>
+          <form id="login-form">
+            <label for="professor-name">Nome:</label>
+            <input id="professor-name" name="professorName" autocomplete="name" required />
+            <p id="login-error" class="error-message" role="alert" hidden></p>
+            <button id="login-button" type="submit">Entrar</button>
+          </form>
+        </div>
+
+        <div id="online-view" hidden>
+          <p class="eyebrow">Professor</p>
+          <h1 id="professor-display-name"></h1>
+          <dl class="status-list">
+            <div>
+              <dt>Status:</dt>
+              <dd id="presence-status">🟢 Online</dd>
+            </div>
+            <div>
+              <dt>Servidor:</dt>
+              <dd id="server-status">Conectado</dd>
+            </div>
+          </dl>
+          <button id="logout-button" class="secondary-button" type="button">Sair</button>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="./presence.js"></script>
+  </body>
+</html>

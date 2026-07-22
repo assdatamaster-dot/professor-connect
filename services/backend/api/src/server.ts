@@ -1,17 +1,24 @@
 import { createServer } from 'node:http';
 
 import { environment } from '@professor-connect/config';
-import { initializeWebSocket } from '@professor-connect/websocket';
+import { initializeWebSocket, PresenceManager } from '@professor-connect/websocket';
 
 import { createApp } from './app.js';
 import { logger } from './utils/logger.js';
 
-const httpServer = createServer(createApp());
-const communicationGateway = initializeWebSocket(httpServer, logger, environment.requestTimeoutMs, {
-  intervalMs: environment.heartbeatIntervalMs,
-  timeoutMs: environment.heartbeatTimeoutMs,
-  reconnectWindowMs: environment.reconnectWindowMs,
-});
+const professorPresenceManager = new PresenceManager();
+const httpServer = createServer(createApp(professorPresenceManager));
+const communicationGateway = initializeWebSocket(
+  httpServer,
+  logger,
+  environment.requestTimeoutMs,
+  {
+    intervalMs: environment.heartbeatIntervalMs,
+    timeoutMs: environment.heartbeatTimeoutMs,
+    reconnectWindowMs: environment.reconnectWindowMs,
+  },
+  professorPresenceManager,
+);
 
 httpServer.on('error', (error) => {
   logger.error('Não foi possível iniciar o servidor', error);

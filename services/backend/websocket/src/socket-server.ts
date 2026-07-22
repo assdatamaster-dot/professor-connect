@@ -10,7 +10,7 @@ import {
   ConnectionService,
   HeartbeatManager,
   HeartbeatService,
-  PresenceManager,
+  PresenceManager as WorkflowPresenceManager,
   PresenceService,
   RequestManager,
   RequestService,
@@ -31,6 +31,8 @@ import type {
 import { SignalingGateway } from './modules/signaling/signaling.gateway.js';
 import { SignalingManager } from './modules/signaling/signaling.manager.js';
 import { SignalingService } from './modules/signaling/signaling.service.js';
+import { ProfessorPresenceGateway } from './modules/professor-presence/presence.gateway.js';
+import { PresenceManager } from './modules/professor-presence/presence.manager.js';
 
 export function initializeWebSocket(
   httpServer: HttpServer,
@@ -41,6 +43,7 @@ export function initializeWebSocket(
     timeoutMs: 90_000,
     reconnectWindowMs: 90_000,
   },
+  professorPresenceManager = new PresenceManager(),
 ): CommunicationGateway {
   const socketServer = new SocketServer<ClientToServerEvents, ServerToClientEvents>(httpServer, {
     serveClient: false,
@@ -48,7 +51,7 @@ export function initializeWebSocket(
 
   const communicationService = new CommunicationService();
   const connectionService = new ConnectionService(new ConnectionManager());
-  const presenceService = new PresenceService(new PresenceManager(), connectionService);
+  const presenceService = new PresenceService(new WorkflowPresenceManager(), connectionService);
   const requestService = new RequestService(
     new RequestManager(new RequestStore(), { stateMachineLogger: logger }),
     presenceService,
@@ -98,6 +101,13 @@ export function initializeWebSocket(
 
   communicationGateway.registerEvents();
   signalingGateway.registerEvents();
+  new ProfessorPresenceGateway(
+    socketServer,
+    professorPresenceManager,
+    logger,
+    heartbeatSettings.timeoutMs,
+    heartbeatSettings.intervalMs,
+  ).registerEvents();
 
   return communicationGateway;
 }
