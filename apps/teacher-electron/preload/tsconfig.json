@@ -7,7 +7,7 @@
     "moduleResolution": "Node16",
     "outDir": "../dist",
     "rootDir": "..",
-    "types": ["node"],
+    "types": ["node", "electron"],
     "verbatimModuleSyntax": false
   },
   "include": ["./index.ts"]

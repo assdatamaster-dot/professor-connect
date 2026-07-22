@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 
 import type {
   TeacherStateListener,
@@ -33,10 +33,7 @@ const workflowApi: TeacherWorkflowApi = {
   endAttendance: () =>
     ipcRenderer.invoke(channels.endAttendance) as Promise<TeacherWorkflowSnapshot>,
   onStateChanged(listener: TeacherStateListener): () => void {
-    const handler = (
-      _event: Electron.IpcRendererEvent,
-      snapshot: TeacherWorkflowSnapshot,
-    ): void => {
+    const handler = (_event: IpcRendererEvent, snapshot: TeacherWorkflowSnapshot): void => {
       listener(snapshot);
     };
 
@@ -60,10 +57,8 @@ const presenceApi: ProfessorPresenceApi = {
   getState: () =>
     ipcRenderer.invoke(presenceChannels.getState) as Promise<ProfessorPresenceSnapshot>,
   onStateChanged(listener): () => void {
-    const handler = (
-      _event: Electron.IpcRendererEvent,
-      snapshot: ProfessorPresenceSnapshot,
-    ): void => listener(snapshot);
+    const handler = (_event: IpcRendererEvent, snapshot: ProfessorPresenceSnapshot): void =>
+      listener(snapshot);
 
     ipcRenderer.on(presenceChannels.stateChanged, handler);
     return () => ipcRenderer.removeListener(presenceChannels.stateChanged, handler);
