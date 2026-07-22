@@ -3,7 +3,12 @@ import { randomUUID } from 'node:crypto';
 import { PresenceManager } from '../professor-presence/presence.manager.js';
 import { StudentPresenceManager } from '../student-presence/student-presence.manager.js';
 import type { SessionRequest } from '../session-request/session-request.types.js';
-import type { AttendanceSession, SessionDelivery, SessionManagerOptions } from './session.types.js';
+import type {
+  AttendanceSession,
+  SessionDelivery,
+  SessionManagerOptions,
+  SessionSignalingRoute,
+} from './session.types.js';
 
 export class SessionManager {
   private readonly activeSessions = new Map<string, AttendanceSession>();
@@ -73,6 +78,33 @@ export class SessionManager {
     this.activeSessions.delete(sessionId);
     this.history.set(sessionId, finishedSession);
     return this.createDelivery(finishedSession);
+  }
+
+  public resolveSignalingRoute(sessionId: string, senderSocketId: string): SessionSignalingRoute {
+    const session = this.activeSessions.get(sessionId);
+    if (session === undefined) {
+      throw new Error(`Sessão ativa não encontrada: ${sessionId}`);
+    }
+
+    const teacher = this.professorPresenceManager.findProfessorBySocketId(senderSocketId);
+    if (teacher?.id === session.teacherId) {
+      const student = this.studentPresenceManager.findStudentById(session.studentId);
+      if (student === undefined) {
+        throw new Error('Aluno destinatário não está online');
+      }
+      return { session, recipientSocketId: student.socketId };
+    }
+
+    const student = this.studentPresenceManager.findStudentBySocketId(senderSocketId);
+    if (student?.id === session.studentId) {
+      const recipientTeacher = this.professorPresenceManager.findProfessorById(session.teacherId);
+      if (recipientTeacher === undefined) {
+        throw new Error('Professor destinatário não está online');
+      }
+      return { session, recipientSocketId: recipientTeacher.socketId };
+    }
+
+    throw new Error('Remetente não pertence à sessão');
   }
 
   private createDelivery(session: AttendanceSession): SessionDelivery {

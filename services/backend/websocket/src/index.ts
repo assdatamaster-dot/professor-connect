@@ -79,5 +79,14 @@ export type {
   AttendanceSession,
   SessionDelivery,
   SessionManagerOptions,
+  SessionSignalingRoute,
   SessionStatus,
 } from './modules/active-session/session.types.js';
+export {
+  WEBRTC_SIGNALING_EVENTS,
+  WebRtcSignalingGateway,
+  type WebRtcDescriptionPayload,
+  type WebRtcIceCandidate,
+  type WebRtcIceCandidatePayload,
+  type WebRtcSessionDescription,
+} from './modules/webrtc-signaling/webrtc-signaling.gateway.js';

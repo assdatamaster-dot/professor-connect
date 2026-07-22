@@ -16,11 +16,19 @@ const logoutButton = requireElement<HTMLButtonElement>('logout-button');
 const activeAttendance = requireElement<HTMLElement>('active-attendance');
 const activeStudentName = requireElement<HTMLElement>('active-student-name');
 const endSessionButton = requireElement<HTMLButtonElement>('end-session');
+const attendanceState = requireElement<HTMLElement>('attendance-state');
+const webRtcMedia = requireElement<HTMLElement>('webrtc-media');
+const localVideo = requireElement<HTMLVideoElement>('teacher-local-video');
+const remoteVideo = requireElement<HTMLVideoElement>('teacher-remote-video');
 const sessionDialog = requireElement<HTMLDialogElement>('session-request-dialog');
 const requestStudentName = requireElement<HTMLElement>('request-student-name');
 const acceptSessionButton = requireElement<HTMLButtonElement>('accept-session');
 const rejectSessionButton = requireElement<HTMLButtonElement>('reject-session');
 let activeRequestId: string | undefined;
+let peerConnection: RTCPeerConnection | undefined;
+let localStream: MediaStream | undefined;
+let activeWebRtcSessionId: string | undefined;
+const pendingIceCandidates = new Map<string, RTCIceCandidateInit[]>();
 
 function render(snapshot: ProfessorPresenceSnapshot): void {
   const isActive = snapshot.professorName !== undefined;
@@ -39,6 +47,11 @@ function render(snapshot: ProfessorPresenceSnapshot): void {
   serverStatus.textContent = snapshot.serverConnected ? 'Conectado' : 'Desconectado';
   activeAttendance.hidden = snapshot.activeSession === undefined;
   activeStudentName.textContent = snapshot.activeSession?.studentName ?? '';
+  if (snapshot.activeSession === undefined) {
+    closeWebRtcSession();
+  } else if (activeWebRtcSessionId !== snapshot.activeSession.sessionId) {
+    void startTeacherWebRtc(snapshot.activeSession.sessionId);
+  }
   renderSessionRequest(snapshot);
 }
 
@@ -133,5 +146,163 @@ endSessionButton.addEventListener('click', () => {
 });
 
 const unsubscribe = window.professorConnectPresence.onStateChanged(render);
-window.addEventListener('beforeunload', unsubscribe, { once: true });
+const unsubscribeAnswer = window.professorConnectWebRtc.onAnswer((payload) => {
+  void handleWebRtcAnswer(payload.sessionId, payload.description).catch(() => {
+    attendanceState.textContent = 'Não foi possível aplicar a resposta WebRTC.';
+  });
+});
+const unsubscribeIce = window.professorConnectWebRtc.onIceCandidate((payload) => {
+  void handleRemoteIceCandidate(payload.sessionId, payload.candidate).catch(() => {
+    attendanceState.textContent = 'Não foi possível aplicar o ICE Candidate.';
+  });
+});
+window.addEventListener(
+  'beforeunload',
+  () => {
+    unsubscribe();
+    unsubscribeAnswer();
+    unsubscribeIce();
+    closeWebRtcSession();
+  },
+  { once: true },
+);
 void window.professorConnectPresence.getState().then(render);
+
+async function startTeacherWebRtc(sessionId: string): Promise<void> {
+  closeWebRtcSession();
+  activeWebRtcSessionId = sessionId;
+  attendanceState.textContent = 'Conectando câmera e microfone...';
+  const connection = new RTCPeerConnection({
+    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+  });
+
+  peerConnection = connection;
+  connection.onicecandidate = (event) => {
+    if (event.candidate !== null && activeWebRtcSessionId === sessionId) {
+      void window.professorConnectWebRtc
+        .sendIceCandidate({
+          sessionId,
+          candidate: serializeIceCandidate(event.candidate),
+        })
+        .catch(() => {
+          attendanceState.textContent = 'Não foi possível enviar o ICE Candidate.';
+        });
+    }
+  };
+  connection.ontrack = (event) => {
+    const [stream] = event.streams;
+    if (stream !== undefined) {
+      remoteVideo.srcObject = stream;
+    }
+  };
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    if (activeWebRtcSessionId !== sessionId || peerConnection !== connection) {
+      stopMediaStream(stream);
+      return;
+    }
+    localStream = stream;
+    localVideo.srcObject = stream;
+    for (const track of stream.getTracks()) {
+      connection.addTrack(track, stream);
+    }
+    webRtcMedia.hidden = false;
+    attendanceState.textContent = 'Aluno conectado';
+
+    const offer = await connection.createOffer();
+    await connection.setLocalDescription(offer);
+    if (offer.sdp === undefined) {
+      throw new Error('Offer sem SDP');
+    }
+    await window.professorConnectWebRtc.sendOffer({
+      sessionId,
+      description: { type: 'offer', sdp: offer.sdp },
+    });
+  } catch (error) {
+    attendanceState.textContent =
+      error instanceof Error ? error.message : 'Não foi possível acessar câmera e microfone.';
+    closeWebRtcSession(false);
+  }
+}
+
+async function handleWebRtcAnswer(
+  sessionId: string,
+  description: RTCSessionDescriptionInit,
+): Promise<void> {
+  const connection = peerConnection;
+  if (connection === undefined || activeWebRtcSessionId !== sessionId) {
+    return;
+  }
+  await connection.setRemoteDescription(description);
+  await flushPendingIceCandidates(sessionId, connection);
+}
+
+async function handleRemoteIceCandidate(
+  sessionId: string,
+  candidate: RTCIceCandidateInit,
+): Promise<void> {
+  const connection = peerConnection;
+  if (
+    connection === undefined ||
+    activeWebRtcSessionId !== sessionId ||
+    connection.remoteDescription === null
+  ) {
+    const pending = pendingIceCandidates.get(sessionId) ?? [];
+    pending.push(candidate);
+    pendingIceCandidates.set(sessionId, pending);
+    return;
+  }
+  await connection.addIceCandidate(candidate);
+}
+
+async function flushPendingIceCandidates(
+  sessionId: string,
+  connection: RTCPeerConnection,
+): Promise<void> {
+  const candidates = pendingIceCandidates.get(sessionId) ?? [];
+  pendingIceCandidates.delete(sessionId);
+  for (const candidate of candidates) {
+    await connection.addIceCandidate(candidate);
+  }
+}
+
+function serializeIceCandidate(candidate: RTCIceCandidate) {
+  const value = candidate.toJSON();
+  return {
+    candidate: value.candidate ?? '',
+    sdpMid: value.sdpMid ?? null,
+    sdpMLineIndex: value.sdpMLineIndex ?? null,
+    usernameFragment: value.usernameFragment ?? null,
+  };
+}
+
+function closeWebRtcSession(resetStatus = true): void {
+  const sessionId = activeWebRtcSessionId;
+  activeWebRtcSessionId = undefined;
+  if (sessionId !== undefined) {
+    pendingIceCandidates.delete(sessionId);
+  }
+  if (peerConnection !== undefined) {
+    peerConnection.onicecandidate = null;
+    peerConnection.ontrack = null;
+    peerConnection.close();
+    peerConnection = undefined;
+  }
+  if (localStream !== undefined) {
+    stopMediaStream(localStream);
+    localStream = undefined;
+  }
+  localVideo.srcObject = null;
+  remoteVideo.srcObject = null;
+  webRtcMedia.hidden = true;
+  if (resetStatus) {
+    attendanceState.textContent = 'Aluno conectado';
+  }
+}
+
+function stopMediaStream(stream: MediaStream): void {
+  for (const track of stream.getTracks()) {
+    track.stop();
+  }
+}

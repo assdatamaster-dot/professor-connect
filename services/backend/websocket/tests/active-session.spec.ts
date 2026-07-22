@@ -38,6 +38,14 @@ test('cria, localiza, lista e encerra uma sessão ativa', () => {
   });
   assert.equal(manager.findSession('session-id')?.status, 'active');
   assert.equal(manager.listActiveSessions().length, 1);
+  assert.equal(
+    manager.resolveSignalingRoute('session-id', 'teacher-socket').recipientSocketId,
+    'student-socket',
+  );
+  assert.equal(
+    manager.resolveSignalingRoute('session-id', 'student-socket').recipientSocketId,
+    'teacher-socket',
+  );
 
   const finished = manager.endSession('session-id', 'student-socket');
 
@@ -45,6 +53,10 @@ test('cria, localiza, lista e encerra uma sessão ativa', () => {
   assert.deepEqual(manager.listActiveSessions(), []);
   assert.equal(manager.listHistory()[0]?.status, 'finished');
   assert.equal(manager.findSession('session-id')?.status, 'finished');
+  assert.throws(
+    () => manager.resolveSignalingRoute('session-id', 'teacher-socket'),
+    /Sessão ativa não encontrada/,
+  );
 });
 
 test('somente professor ou aluno participantes podem encerrar', () => {
@@ -66,6 +78,10 @@ test('somente professor ou aluno participantes podem encerrar', () => {
   assert.throws(
     () => manager.endSession('session-id', 'unknown-socket'),
     /Somente um participante/,
+  );
+  assert.throws(
+    () => manager.resolveSignalingRoute('session-id', 'unknown-socket'),
+    /Remetente não pertence/,
   );
   assert.equal(manager.listActiveSessions().length, 1);
 });

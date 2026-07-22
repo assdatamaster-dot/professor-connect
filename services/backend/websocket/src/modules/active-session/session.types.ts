@@ -21,3 +21,8 @@ export interface SessionManagerOptions {
   readonly clock?: () => Date;
   readonly idFactory?: () => string;
 }
+
+export interface SessionSignalingRoute {
+  readonly session: AttendanceSession;
+  readonly recipientSocketId: string;
+}

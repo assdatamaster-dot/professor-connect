@@ -47,6 +47,9 @@ async function createMainWindow(): Promise<void> {
 }
 
 app.whenReady().then(async () => {
+  session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
+    return webContents?.id === mainWindow?.webContents.id && permission === 'media';
+  });
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
     const isMainRenderer = webContents.id === mainWindow?.webContents.id;
 

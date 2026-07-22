@@ -8,6 +8,12 @@ import {
   type ProfessorSessionRequest,
   type ProfessorPresenceSnapshot,
 } from '../shared/presence-contracts.js';
+import type {
+  WebRtcDescriptionListener,
+  WebRtcDescriptionPayload,
+  WebRtcIceCandidateListener,
+  WebRtcIceCandidatePayload,
+} from '../shared/webrtc-contracts.js';
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
@@ -17,12 +23,16 @@ interface ProfessorPresenceClientEvents {
   'session:accept': (payload: { readonly requestId: string }) => void;
   'session:reject': (payload: { readonly requestId: string }) => void;
   'session:end': (payload: { readonly sessionId: string }) => void;
+  'webrtc:offer': (payload: WebRtcDescriptionPayload) => void;
+  'webrtc:ice-candidate': (payload: WebRtcIceCandidatePayload) => void;
 }
 
 interface ProfessorPresenceServerEvents {
   'session:requested': (payload: ProfessorSessionRequest) => void;
   'session:started': (payload: ProfessorActiveSession) => void;
   'session:ended': (payload: ProfessorActiveSession) => void;
+  'webrtc:answer': (payload: WebRtcDescriptionPayload) => void;
+  'webrtc:ice-candidate': (payload: WebRtcIceCandidatePayload) => void;
 }
 
 interface ProfessorConnectConfig {
@@ -35,6 +45,8 @@ type PresenceSocket = Socket<ProfessorPresenceServerEvents, ProfessorPresenceCli
 export class ProfessorPresenceController {
   private connectionGeneration = 0;
   private readonly listeners = new Set<PresenceListener>();
+  private readonly answerListeners = new Set<WebRtcDescriptionListener>();
+  private readonly iceCandidateListeners = new Set<WebRtcIceCandidateListener>();
   private heartbeatTimer: NodeJS.Timeout | undefined;
   private professorName: string | undefined;
   private sessionRequests: ProfessorSessionRequest[] = [];
@@ -111,6 +123,16 @@ export class ProfessorPresenceController {
         this.notifyListeners();
       }
     });
+    socket.on('webrtc:answer', (payload) => {
+      for (const listener of this.answerListeners) {
+        listener(payload);
+      }
+    });
+    socket.on('webrtc:ice-candidate', (payload) => {
+      for (const listener of this.iceCandidateListeners) {
+        listener(payload);
+      }
+    });
     socket.connect();
 
     return this.getSnapshot();
@@ -156,10 +178,30 @@ export class ProfessorPresenceController {
     return () => this.listeners.delete(listener);
   }
 
+  public sendWebRtcOffer(payload: WebRtcDescriptionPayload): void {
+    this.requireActiveSignalingSocket(payload.sessionId).emit('webrtc:offer', payload);
+  }
+
+  public sendWebRtcIceCandidate(payload: WebRtcIceCandidatePayload): void {
+    this.requireActiveSignalingSocket(payload.sessionId).emit('webrtc:ice-candidate', payload);
+  }
+
+  public onWebRtcAnswer(listener: WebRtcDescriptionListener): () => void {
+    this.answerListeners.add(listener);
+    return () => this.answerListeners.delete(listener);
+  }
+
+  public onWebRtcIceCandidate(listener: WebRtcIceCandidateListener): () => void {
+    this.iceCandidateListeners.add(listener);
+    return () => this.iceCandidateListeners.delete(listener);
+  }
+
   public dispose(): void {
     this.connectionGeneration += 1;
     this.disconnectSocket();
     this.listeners.clear();
+    this.answerListeners.clear();
+    this.iceCandidateListeners.clear();
   }
 
   private async loadConfig(): Promise<ProfessorConnectConfig> {
@@ -229,6 +271,13 @@ export class ProfessorPresenceController {
     );
     this.notifyListeners();
     return this.getSnapshot();
+  }
+
+  private requireActiveSignalingSocket(sessionId: string): PresenceSocket {
+    if (this.socket?.connected !== true || this.activeSession?.sessionId !== sessionId) {
+      throw new Error('Sessão WebRTC não está ativa.');
+    }
+    return this.socket;
   }
 
   private notifyListeners(): void {

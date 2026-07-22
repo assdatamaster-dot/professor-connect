@@ -39,6 +39,7 @@ import { SessionRequestGateway } from './modules/session-request/session-request
 import { SessionRequestManager } from './modules/session-request/session-request.manager.js';
 import { SessionGateway } from './modules/active-session/session.gateway.js';
 import { SessionManager } from './modules/active-session/session.manager.js';
+import { WebRtcSignalingGateway } from './modules/webrtc-signaling/webrtc-signaling.gateway.js';
 
 export function initializeWebSocket(
   httpServer: HttpServer,
@@ -131,6 +132,7 @@ export function initializeWebSocket(
   studentPresenceGateway.registerEvents();
   const activeSessionGateway = new SessionGateway(socketServer, activeSessionManager, logger);
   activeSessionGateway.registerEvents();
+  new WebRtcSignalingGateway(socketServer, activeSessionManager, logger).registerEvents();
   const sessionRequestGateway = new SessionRequestGateway(
     socketServer,
     sessionRequestManager,

@@ -9,6 +9,11 @@ import type {
   ProfessorPresenceApi,
   ProfessorPresenceSnapshot,
 } from '../shared/presence-contracts.js' with { 'resolution-mode': 'import' };
+import type {
+  TeacherWebRtcApi,
+  WebRtcDescriptionPayload,
+  WebRtcIceCandidatePayload,
+} from '../shared/webrtc-contracts.js' with { 'resolution-mode': 'import' };
 
 const channels = {
   initialize: 'teacher:workflow:initialize',
@@ -77,5 +82,31 @@ const presenceApi: ProfessorPresenceApi = {
   },
 };
 
+const webRtcChannels = {
+  sendOffer: 'teacher:webrtc:send-offer',
+  sendIceCandidate: 'teacher:webrtc:send-ice-candidate',
+  answer: 'teacher:webrtc:answer',
+  iceCandidate: 'teacher:webrtc:ice-candidate',
+} as const;
+
+const webRtcApi: TeacherWebRtcApi = {
+  sendOffer: (payload) => ipcRenderer.invoke(webRtcChannels.sendOffer, payload) as Promise<void>,
+  sendIceCandidate: (payload) =>
+    ipcRenderer.invoke(webRtcChannels.sendIceCandidate, payload) as Promise<void>,
+  onAnswer(listener): () => void {
+    const handler = (_event: IpcRendererEvent, payload: WebRtcDescriptionPayload): void =>
+      listener(payload);
+    ipcRenderer.on(webRtcChannels.answer, handler);
+    return () => ipcRenderer.removeListener(webRtcChannels.answer, handler);
+  },
+  onIceCandidate(listener): () => void {
+    const handler = (_event: IpcRendererEvent, payload: WebRtcIceCandidatePayload): void =>
+      listener(payload);
+    ipcRenderer.on(webRtcChannels.iceCandidate, handler);
+    return () => ipcRenderer.removeListener(webRtcChannels.iceCandidate, handler);
+  },
+};
+
 contextBridge.exposeInMainWorld('professorConnectTeacher', workflowApi);
 contextBridge.exposeInMainWorld('professorConnectPresence', presenceApi);
+contextBridge.exposeInMainWorld('professorConnectWebRtc', webRtcApi);

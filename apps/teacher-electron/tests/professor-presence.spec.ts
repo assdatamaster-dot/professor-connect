@@ -9,6 +9,10 @@ import { Server as SocketServer } from 'socket.io';
 
 import { ProfessorPresenceController } from '../main/professor-presence.controller.js';
 import { ProfessorPresenceStatus } from '../shared/presence-contracts.js';
+import type {
+  WebRtcDescriptionPayload,
+  WebRtcIceCandidatePayload,
+} from '../shared/webrtc-contracts.js';
 
 interface PresenceEvents {
   'professor:heartbeat': () => void;
@@ -16,6 +20,8 @@ interface PresenceEvents {
   'session:accept': (payload: { readonly requestId: string }) => void;
   'session:reject': (payload: { readonly requestId: string }) => void;
   'session:end': (payload: { readonly sessionId: string }) => void;
+  'webrtc:offer': (payload: WebRtcDescriptionPayload) => void;
+  'webrtc:ice-candidate': (payload: WebRtcIceCandidatePayload) => void;
 }
 
 interface SessionEvents {
@@ -26,6 +32,8 @@ interface SessionEvents {
   }) => void;
   'session:started': (payload: SessionLifecyclePayload) => void;
   'session:ended': (payload: SessionLifecyclePayload) => void;
+  'webrtc:answer': (payload: WebRtcDescriptionPayload) => void;
+  'webrtc:ice-candidate': (payload: WebRtcIceCandidatePayload) => void;
 }
 
 interface SessionLifecyclePayload {
@@ -46,6 +54,10 @@ test('lê config.json, registra o professor e desconecta pelo Socket.IO', async 
   const acceptedRequestIds: string[] = [];
   const rejectedRequestIds: string[] = [];
   const endedSessionIds: string[] = [];
+  const offers: WebRtcDescriptionPayload[] = [];
+  const localCandidates: WebRtcIceCandidatePayload[] = [];
+  const answers: WebRtcDescriptionPayload[] = [];
+  const remoteCandidates: WebRtcIceCandidatePayload[] = [];
 
   socketServer.on('connection', (socket) => {
     socket.on('professor:online', ({ name }) => {
@@ -77,6 +89,8 @@ test('lê config.json, registra o professor e desconecta pelo Socket.IO', async 
         studentName: 'Ana',
       });
     });
+    socket.on('webrtc:offer', (payload) => offers.push(payload));
+    socket.on('webrtc:ice-candidate', (payload) => localCandidates.push(payload));
     socket.on('disconnect', () => {
       disconnectCount += 1;
     });
@@ -93,6 +107,8 @@ test('lê config.json, registra o professor e desconecta pelo Socket.IO', async 
     'utf8',
   );
   const controller = new ProfessorPresenceController(configPath);
+  controller.onWebRtcAnswer((payload) => answers.push(payload));
+  controller.onWebRtcIceCandidate((payload) => remoteCandidates.push(payload));
 
   try {
     const initialSnapshot = await controller.connect('  Carlos  ');
@@ -111,6 +127,39 @@ test('lê config.json, registra o professor e desconecta pelo Socket.IO', async 
     assert.deepEqual(controller.getSnapshot().sessionRequests, []);
     await waitUntil(() => controller.getSnapshot().activeSession !== undefined);
     assert.equal(controller.getSnapshot().activeSession?.studentName, 'Ana');
+    controller.sendWebRtcOffer({
+      sessionId: 'session-id',
+      description: { type: 'offer', sdp: 'offer-sdp' },
+    });
+    controller.sendWebRtcIceCandidate({
+      sessionId: 'session-id',
+      candidate: {
+        candidate: 'candidate-value',
+        sdpMid: '0',
+        sdpMLineIndex: 0,
+        usernameFragment: null,
+      },
+    });
+    socketServer.emit('webrtc:answer', {
+      sessionId: 'session-id',
+      description: { type: 'answer', sdp: 'answer-sdp' },
+    });
+    socketServer.emit('webrtc:ice-candidate', {
+      sessionId: 'session-id',
+      candidate: {
+        candidate: 'remote-candidate',
+        sdpMid: '0',
+        sdpMLineIndex: 0,
+        usernameFragment: null,
+      },
+    });
+    await waitUntil(
+      () =>
+        offers.length === 1 &&
+        localCandidates.length === 1 &&
+        answers.length === 1 &&
+        remoteCandidates.length === 1,
+    );
     controller.endSession();
     await waitUntil(() => controller.getSnapshot().activeSession === undefined);
     assert.deepEqual(endedSessionIds, ['session-id']);

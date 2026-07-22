@@ -8,6 +8,10 @@ import { test } from 'node:test';
 import { Server as SocketServer } from 'socket.io';
 
 import { StudentPresenceController } from '../main/student-presence.controller.js';
+import type {
+  WebRtcDescriptionPayload,
+  WebRtcIceCandidatePayload,
+} from '../shared/webrtc-contracts.js';
 
 interface PresenceEvents {
   'student:disconnect': (acknowledge: () => void) => void;
@@ -15,6 +19,8 @@ interface PresenceEvents {
   'student:register': (payload: { readonly id: string; readonly name: string }) => void;
   'request:session': (payload: { readonly teacherId: string }) => void;
   'session:end': (payload: { readonly sessionId: string }) => void;
+  'webrtc:answer': (payload: WebRtcDescriptionPayload) => void;
+  'webrtc:ice-candidate': (payload: WebRtcIceCandidatePayload) => void;
 }
 
 interface SessionEvents {
@@ -27,6 +33,8 @@ interface SessionEvents {
   'session:timeout': () => void;
   'session:started': (payload: SessionLifecyclePayload) => void;
   'session:ended': (payload: SessionLifecyclePayload) => void;
+  'webrtc:offer': (payload: WebRtcDescriptionPayload) => void;
+  'webrtc:ice-candidate': (payload: WebRtcIceCandidatePayload) => void;
 }
 
 interface SessionLifecyclePayload {
@@ -52,6 +60,10 @@ test('conecta, registra, mantém heartbeat e desconecta o aluno automaticamente'
   let studentDisconnectCount = 0;
   const requestedTeacherIds: string[] = [];
   const endedSessionIds: string[] = [];
+  const answers: WebRtcDescriptionPayload[] = [];
+  const localCandidates: WebRtcIceCandidatePayload[] = [];
+  const offers: WebRtcDescriptionPayload[] = [];
+  const remoteCandidates: WebRtcIceCandidatePayload[] = [];
 
   socketServer.on('connection', (socket) => {
     socket.on('student:register', (payload) => registrations.push(payload));
@@ -76,7 +88,13 @@ test('conecta, registra, mantém heartbeat e desconecta o aluno automaticamente'
         studentId: 'student-id',
         studentName: 'Ana',
       });
+      socket.emit('webrtc:offer', {
+        sessionId: 'session-id',
+        description: { type: 'offer', sdp: 'offer-sdp' },
+      });
     });
+    socket.on('webrtc:answer', (payload) => answers.push(payload));
+    socket.on('webrtc:ice-candidate', (payload) => localCandidates.push(payload));
     socket.on('session:end', ({ sessionId }) => {
       endedSessionIds.push(sessionId);
       socket.emit('session:ended', {
@@ -104,6 +122,8 @@ test('conecta, registra, mantém heartbeat e desconecta o aluno automaticamente'
     { id: 'student-id', name: 'Ana' },
     20,
   );
+  controller.onWebRtcOffer((payload) => offers.push(payload));
+  controller.onWebRtcIceCandidate((payload) => remoteCandidates.push(payload));
 
   try {
     await controller.connect();
@@ -118,6 +138,34 @@ test('conecta, registra, mantém heartbeat e desconecta o aluno automaticamente'
     assert.deepEqual(requestedTeacherIds, ['teacher-id']);
     assert.equal(controller.getSessionSnapshot().message, 'Conectado ao professor');
     assert.equal(controller.getSessionSnapshot().activeSessionId, 'session-id');
+    await waitUntil(() => offers.length === 1);
+    assert.equal(offers[0]?.description.sdp, 'offer-sdp');
+
+    controller.sendWebRtcAnswer({
+      sessionId: 'session-id',
+      description: { type: 'answer', sdp: 'answer-sdp' },
+    });
+    controller.sendWebRtcIceCandidate({
+      sessionId: 'session-id',
+      candidate: {
+        candidate: 'candidate-value',
+        sdpMid: '0',
+        sdpMLineIndex: 0,
+        usernameFragment: null,
+      },
+    });
+    socketServer.emit('webrtc:ice-candidate', {
+      sessionId: 'session-id',
+      candidate: {
+        candidate: 'remote-candidate',
+        sdpMid: '0',
+        sdpMLineIndex: 0,
+        usernameFragment: null,
+      },
+    });
+    await waitUntil(
+      () => answers.length === 1 && localCandidates.length === 1 && remoteCandidates.length === 1,
+    );
 
     controller.endSession();
     await waitUntil(() => controller.getSessionSnapshot().status === 'ended');

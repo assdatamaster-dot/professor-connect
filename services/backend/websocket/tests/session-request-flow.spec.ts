@@ -13,6 +13,8 @@ import {
   type SessionRequestedPayload,
   type SessionResponsePayload,
   type SessionLifecyclePayload,
+  type WebRtcDescriptionPayload,
+  type WebRtcIceCandidatePayload,
 } from '../src/index.js';
 
 interface ServerEvents {
@@ -22,6 +24,9 @@ interface ServerEvents {
   'session:timeout': (payload: SessionResponsePayload) => void;
   'session:started': (payload: SessionLifecyclePayload) => void;
   'session:ended': (payload: SessionLifecyclePayload) => void;
+  'webrtc:offer': (payload: WebRtcDescriptionPayload) => void;
+  'webrtc:answer': (payload: WebRtcDescriptionPayload) => void;
+  'webrtc:ice-candidate': (payload: WebRtcIceCandidatePayload) => void;
 }
 
 interface ClientEvents {
@@ -31,6 +36,9 @@ interface ClientEvents {
   'session:accept': (payload: { readonly requestId: string }) => void;
   'session:reject': (payload: { readonly requestId: string }) => void;
   'session:end': (payload: { readonly sessionId: string }) => void;
+  'webrtc:offer': (payload: WebRtcDescriptionPayload) => void;
+  'webrtc:answer': (payload: WebRtcDescriptionPayload) => void;
+  'webrtc:ice-candidate': (payload: WebRtcIceCandidatePayload) => void;
 }
 
 type TestClient = Socket<ServerEvents, ClientEvents>;
@@ -96,6 +104,35 @@ test('entrega aceite, recusa e timeout em tempo real', async () => {
     assert.deepEqual(teacherSession, studentSession);
     assert.equal(activeSessions.listActiveSessions().length, 1);
 
+    const offerPayload: WebRtcDescriptionPayload = {
+      sessionId: teacherSession.sessionId,
+      description: { type: 'offer', sdp: 'teacher-offer-sdp' },
+    };
+    const studentOffer = waitForWebRtcOffer(student);
+    teacher.emit('webrtc:offer', offerPayload);
+    assert.deepEqual(await studentOffer, offerPayload);
+
+    const answerPayload: WebRtcDescriptionPayload = {
+      sessionId: teacherSession.sessionId,
+      description: { type: 'answer', sdp: 'student-answer-sdp' },
+    };
+    const teacherAnswer = waitForWebRtcAnswer(teacher);
+    student.emit('webrtc:answer', answerPayload);
+    assert.deepEqual(await teacherAnswer, answerPayload);
+
+    const candidatePayload: WebRtcIceCandidatePayload = {
+      sessionId: teacherSession.sessionId,
+      candidate: {
+        candidate: 'candidate:1 1 UDP 1 192.0.2.1 5000 typ host',
+        sdpMid: '0',
+        sdpMLineIndex: 0,
+        usernameFragment: 'fragment',
+      },
+    };
+    const studentCandidate = waitForWebRtcIceCandidate(student);
+    teacher.emit('webrtc:ice-candidate', candidatePayload);
+    assert.deepEqual(await studentCandidate, candidatePayload);
+
     const teacherEnded = waitForEnded(teacher);
     const studentEnded = waitForEnded(student);
     teacher.emit('session:end', { sessionId: teacherSession.sessionId });
@@ -130,6 +167,9 @@ test('entrega aceite, recusa e timeout em tempo real', async () => {
     assert(messages.includes('Participantes conectados'));
     assert(messages.includes('Sessão encerrada'));
     assert(messages.includes('Sessão removida'));
+    assert(messages.includes('Offer enviada'));
+    assert(messages.includes('Answer enviada'));
+    assert(messages.includes('ICE Candidate encaminhado'));
   } finally {
     teacher.disconnect();
     student.disconnect();
@@ -166,6 +206,18 @@ function waitForStarted(client: TestClient): Promise<SessionLifecyclePayload> {
 
 function waitForEnded(client: TestClient): Promise<SessionLifecyclePayload> {
   return new Promise((resolve) => client.once('session:ended', resolve));
+}
+
+function waitForWebRtcOffer(client: TestClient): Promise<WebRtcDescriptionPayload> {
+  return new Promise((resolve) => client.once('webrtc:offer', resolve));
+}
+
+function waitForWebRtcAnswer(client: TestClient): Promise<WebRtcDescriptionPayload> {
+  return new Promise((resolve) => client.once('webrtc:answer', resolve));
+}
+
+function waitForWebRtcIceCandidate(client: TestClient): Promise<WebRtcIceCandidatePayload> {
+  return new Promise((resolve) => client.once('webrtc:ice-candidate', resolve));
 }
 
 async function waitUntil(condition: () => boolean): Promise<void> {

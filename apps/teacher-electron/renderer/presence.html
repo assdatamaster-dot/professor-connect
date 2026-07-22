@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Professor Connect</title>
@@ -41,6 +41,16 @@
           <section id="active-attendance" class="active-attendance" hidden>
             <p id="attendance-state">Aluno conectado</p>
             <strong id="active-student-name"></strong>
+            <div id="webrtc-media" class="webrtc-media" hidden>
+              <figure>
+                <video id="teacher-remote-video" autoplay playsinline></video>
+                <figcaption>Aluno</figcaption>
+              </figure>
+              <figure>
+                <video id="teacher-local-video" autoplay muted playsinline></video>
+                <figcaption>Você</figcaption>
+              </figure>
+            </div>
             <button id="end-session" class="end-session-button" type="button">
               Encerrar Atendimento
             </button>

@@ -8,6 +8,12 @@ import type {
   StudentSessionListener,
   StudentSessionSnapshot,
 } from '../shared/session-contracts.js';
+import type {
+  WebRtcDescriptionListener,
+  WebRtcDescriptionPayload,
+  WebRtcIceCandidateListener,
+  WebRtcIceCandidatePayload,
+} from '../shared/webrtc-contracts.js';
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
@@ -22,6 +28,8 @@ interface StudentPresenceClientEvents {
   'student:register': (payload: StudentIdentity) => void;
   'request:session': (payload: { readonly teacherId: string }) => void;
   'session:end': (payload: { readonly sessionId: string }) => void;
+  'webrtc:answer': (payload: WebRtcDescriptionPayload) => void;
+  'webrtc:ice-candidate': (payload: WebRtcIceCandidatePayload) => void;
 }
 
 interface StudentPresenceServerEvents {
@@ -30,6 +38,8 @@ interface StudentPresenceServerEvents {
   'session:timeout': (payload: SessionResponsePayload) => void;
   'session:started': (payload: SessionLifecyclePayload) => void;
   'session:ended': (payload: SessionLifecyclePayload) => void;
+  'webrtc:offer': (payload: WebRtcDescriptionPayload) => void;
+  'webrtc:ice-candidate': (payload: WebRtcIceCandidatePayload) => void;
 }
 
 interface SessionResponsePayload {
@@ -54,6 +64,8 @@ type StudentPresenceSocket = Socket<StudentPresenceServerEvents, StudentPresence
 
 export class StudentPresenceController {
   private readonly sessionListeners = new Set<StudentSessionListener>();
+  private readonly offerListeners = new Set<WebRtcDescriptionListener>();
+  private readonly iceCandidateListeners = new Set<WebRtcIceCandidateListener>();
   private heartbeatTimer: NodeJS.Timeout | undefined;
   private socket: StudentPresenceSocket | undefined;
   private sessionState: StudentSessionSnapshot = {
@@ -96,6 +108,16 @@ export class StudentPresenceController {
     socket.on('session:ended', (session) => {
       if (this.sessionState.activeSessionId === session.sessionId) {
         this.updateSessionState('ended', 'Atendimento encerrado', undefined);
+      }
+    });
+    socket.on('webrtc:offer', (payload) => {
+      for (const listener of this.offerListeners) {
+        listener(payload);
+      }
+    });
+    socket.on('webrtc:ice-candidate', (payload) => {
+      for (const listener of this.iceCandidateListeners) {
+        listener(payload);
       }
     });
     socket.connect();
@@ -153,9 +175,29 @@ export class StudentPresenceController {
     return () => this.sessionListeners.delete(listener);
   }
 
+  public sendWebRtcAnswer(payload: WebRtcDescriptionPayload): void {
+    this.requireActiveSignalingSocket(payload.sessionId).emit('webrtc:answer', payload);
+  }
+
+  public sendWebRtcIceCandidate(payload: WebRtcIceCandidatePayload): void {
+    this.requireActiveSignalingSocket(payload.sessionId).emit('webrtc:ice-candidate', payload);
+  }
+
+  public onWebRtcOffer(listener: WebRtcDescriptionListener): () => void {
+    this.offerListeners.add(listener);
+    return () => this.offerListeners.delete(listener);
+  }
+
+  public onWebRtcIceCandidate(listener: WebRtcIceCandidateListener): () => void {
+    this.iceCandidateListeners.add(listener);
+    return () => this.iceCandidateListeners.delete(listener);
+  }
+
   public dispose(): void {
     this.disconnectSocket();
     this.sessionListeners.clear();
+    this.offerListeners.clear();
+    this.iceCandidateListeners.clear();
   }
 
   private updateSessionState(
@@ -168,6 +210,13 @@ export class StudentPresenceController {
     for (const listener of this.sessionListeners) {
       listener(snapshot);
     }
+  }
+
+  private requireActiveSignalingSocket(sessionId: string): StudentPresenceSocket {
+    if (this.socket?.connected !== true || this.sessionState.activeSessionId !== sessionId) {
+      throw new Error('Sessão WebRTC não está ativa.');
+    }
+    return this.socket;
   }
 
   private async loadConfig(): Promise<StudentConnectConfig> {
