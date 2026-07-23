@@ -12,4 +12,7 @@ export const SESSION_IPC_CHANNELS = {
   WEBRTC_OFFER: 'student:webrtc:offer',
   WEBRTC_ANSWER: 'student:webrtc:answer',
   WEBRTC_ICE: 'student:webrtc:ice-candidate',
+  REMOTE_CONTROL_APPROVE: 'student:remote-control:approve',
+  REMOTE_CONTROL_DENY: 'student:remote-control:deny',
+  REMOTE_CONTROL_STOP: 'student:remote-control:stop',
 } as const;

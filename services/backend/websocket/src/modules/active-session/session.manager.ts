@@ -6,6 +6,7 @@ import type { SessionRequest } from '../session-request/session-request.types.js
 import type {
   AttendanceSession,
   SessionDelivery,
+  SessionEndedListener,
   SessionManagerOptions,
   SessionSignalingRoute,
 } from './session.types.js';
@@ -14,6 +15,7 @@ export class SessionManager {
   private readonly activeSessions = new Map<string, AttendanceSession>();
   private readonly history = new Map<string, AttendanceSession>();
   private readonly sessionIdsByRequestId = new Map<string, string>();
+  private readonly endedListeners = new Set<SessionEndedListener>();
   private readonly clock: () => Date;
   private readonly idFactory: () => string;
 
@@ -77,7 +79,11 @@ export class SessionManager {
     const finishedSession: AttendanceSession = { ...session, status: 'finished' };
     this.activeSessions.delete(sessionId);
     this.history.set(sessionId, finishedSession);
-    return this.createDelivery(finishedSession);
+    const delivery = this.createDelivery(finishedSession);
+    for (const listener of this.endedListeners) {
+      listener(delivery);
+    }
+    return delivery;
   }
 
   public resolveSignalingRoute(sessionId: string, senderSocketId: string): SessionSignalingRoute {
@@ -92,7 +98,7 @@ export class SessionManager {
       if (student === undefined) {
         throw new Error('Aluno destinatário não está online');
       }
-      return { session, recipientSocketId: student.socketId };
+      return { session, recipientSocketId: student.socketId, senderRole: 'teacher' };
     }
 
     const student = this.studentPresenceManager.findStudentBySocketId(senderSocketId);
@@ -101,10 +107,15 @@ export class SessionManager {
       if (recipientTeacher === undefined) {
         throw new Error('Professor destinatário não está online');
       }
-      return { session, recipientSocketId: recipientTeacher.socketId };
+      return { session, recipientSocketId: recipientTeacher.socketId, senderRole: 'student' };
     }
 
     throw new Error('Remetente não pertence à sessão');
+  }
+
+  public onSessionEnded(listener: SessionEndedListener): () => void {
+    this.endedListeners.add(listener);
+    return () => this.endedListeners.delete(listener);
   }
 
   private createDelivery(session: AttendanceSession): SessionDelivery {

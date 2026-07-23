@@ -472,6 +472,12 @@ select {
   font-size: 0.85rem;
 }
 
+.remote-status small {
+  max-width: 260px;
+  color: #8a93a6;
+  font-size: 0.64rem;
+}
+
 .button-group {
   display: flex;
   gap: 10px;
@@ -562,6 +568,86 @@ select {
   text-align: center;
 }
 
+.confirmation-dialog {
+  width: min(460px, calc(100% - 32px));
+  padding: 30px;
+  border: 0;
+  border-radius: 18px;
+  color: #17213a;
+  box-shadow: 0 24px 70px rgb(18 31 66 / 28%);
+}
+
+.confirmation-dialog::backdrop {
+  background: rgb(21 30 52 / 58%);
+}
+
+.confirmation-dialog h2,
+.confirmation-dialog p {
+  margin-top: 0;
+  text-align: center;
+}
+
+.confirmation-dialog__notice {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f3f5fb;
+  color: #69748b;
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+
+.confirmation-dialog__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.remote-control-bar {
+  position: fixed;
+  z-index: 1000;
+  top: 16px;
+  left: 50%;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  width: min(620px, calc(100% - 32px));
+  padding: 12px 14px;
+  border: 1px solid #62d39a;
+  border-radius: 14px;
+  background: #eafbf2;
+  color: #123d2a;
+  box-shadow: 0 12px 32px rgb(25 96 61 / 24%);
+  transform: translateX(-50%);
+}
+
+.remote-control-bar__indicator {
+  width: 12px;
+  height: 12px;
+  margin-right: 12px;
+  border: 3px solid #bdf2d5;
+  border-radius: 50%;
+  background: #19a760;
+  box-shadow: 0 0 0 4px rgb(25 167 96 / 12%);
+}
+
+.remote-control-bar__content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.78rem;
+}
+
+.remote-control-bar__content strong {
+  font-size: 0.9rem;
+}
+
+.remote-control-bar__stop {
+  margin-left: 18px;
+  background: #146c43;
+  color: #fff;
+}
+
 [hidden] {
   display: none !important;
 }
@@ -622,6 +708,16 @@ select {
 
   .media-panel__notice {
     text-align: left;
+  }
+
+  .remote-control-bar {
+    grid-template-columns: auto 1fr;
+  }
+
+  .remote-control-bar__stop {
+    grid-column: 1 / -1;
+    width: 100%;
+    margin: 10px 0 0;
   }
 }
 

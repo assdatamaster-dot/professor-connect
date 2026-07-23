@@ -25,4 +25,7 @@ export interface SessionManagerOptions {
 export interface SessionSignalingRoute {
   readonly session: AttendanceSession;
   readonly recipientSocketId: string;
+  readonly senderRole: 'teacher' | 'student';
 }
+
+export type SessionEndedListener = (delivery: SessionDelivery) => void;

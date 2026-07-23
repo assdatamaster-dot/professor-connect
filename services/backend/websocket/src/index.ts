@@ -78,6 +78,7 @@ export { SessionManager } from './modules/active-session/session.manager.js';
 export type {
   AttendanceSession,
   SessionDelivery,
+  SessionEndedListener,
   SessionManagerOptions,
   SessionSignalingRoute,
   SessionStatus,
@@ -91,3 +92,4 @@ export {
   type WebRtcIceCandidatePayload,
   type WebRtcSessionDescription,
 } from './modules/webrtc-signaling/webrtc-signaling.gateway.js';
+export { RemoteControlGateway } from './modules/remote-control/remote-control.gateway.js';

@@ -10,6 +10,7 @@ import {
   DesktopLogLevel,
   type DesktopWorkflowSnapshot,
 } from '../shared/contracts.js';
+import type { StudentRemoteControlSnapshot } from '../shared/remote-control-contracts.js';
 import { getTranslations } from './i18n.js';
 import { createDesktopViewModel } from './view-model.js';
 
@@ -40,6 +41,12 @@ const microphoneButton = requireElement<HTMLButtonElement>('toggle-microphone');
 const screenStatus = requireElement<HTMLElement>('screen-status');
 const screenIndicator = requireElement<HTMLElement>('screen-indicator');
 const deviceScanMessage = requireElement<HTMLElement>('device-scan-message');
+const remoteControlDialog = requireElement<HTMLDialogElement>('remote-control-dialog');
+const approveRemoteControlButton = requireElement<HTMLButtonElement>('approve-remote-control');
+const denyRemoteControlButton = requireElement<HTMLButtonElement>('deny-remote-control');
+const stopRemoteControlButton = requireElement<HTMLButtonElement>('stop-remote-control');
+const remoteControlBar = requireElement<HTMLElement>('remote-control-bar');
+const remoteControlTeacher = requireElement<HTMLElement>('remote-control-teacher');
 const mediaDeviceManager = new MediaDeviceManager();
 let peerConnection: RTCPeerConnection | undefined;
 let cameraSender: RTCRtpSender | undefined;
@@ -51,15 +58,23 @@ let lastMediaSnapshot: MediaDeviceSnapshot | undefined;
 let activeWebRtcSessionId: string | undefined;
 let remoteMediaStream = new MediaStream();
 let renegotiationQueue = Promise.resolve();
+let lastWorkflowSnapshot: DesktopWorkflowSnapshot | undefined;
+let activeTeacherName: string | undefined;
+let remoteControlSnapshot: StudentRemoteControlSnapshot = {
+  status: 'inactive',
+  sessionId: undefined,
+  requestId: undefined,
+  logs: [],
+};
 const pendingIceCandidates = new Map<string, RTCIceCandidateInit[]>();
 
 function render(snapshot: DesktopWorkflowSnapshot): void {
   const view = createDesktopViewModel(snapshot, translations);
+  lastWorkflowSnapshot = snapshot;
 
   connectionText.textContent = view.connectionLabel;
   attendanceText.textContent = view.attendanceLabel;
   statusMessage.textContent = view.statusMessage;
-  remoteControlText.textContent = view.remoteControlLabel;
   callButton.disabled = !view.isCallButtonEnabled || teacherSelect.value.length === 0;
   shareButton.disabled = activeWebRtcSessionId === undefined && !view.isShareButtonEnabled;
   endButton.disabled = !view.isEndButtonEnabled;
@@ -72,21 +87,35 @@ function render(snapshot: DesktopWorkflowSnapshot): void {
 
 function renderLogs(snapshot: DesktopWorkflowSnapshot): void {
   const fragment = document.createDocumentFragment();
+  const entries = [
+    ...snapshot.logs.map((entry) => ({
+      timestamp: entry.timestamp,
+      category: entry.category,
+      message: entry.message,
+      isError: entry.level === DesktopLogLevel.ERROR,
+    })),
+    ...remoteControlSnapshot.logs.map((entry) => ({
+      timestamp: entry.timestamp,
+      category: 'CONTROLE REMOTO',
+      message: entry.message,
+      isError: false,
+    })),
+  ].sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp));
 
-  if (snapshot.logs.length === 0) {
+  if (entries.length === 0) {
     const empty = document.createElement('li');
 
     empty.className = 'log-empty';
     empty.textContent = translations.noLogs;
     fragment.append(empty);
   } else {
-    for (const entry of [...snapshot.logs].reverse()) {
+    for (const entry of entries) {
       const item = document.createElement('li');
       const header = document.createElement('span');
       const message = document.createElement('span');
 
       item.className = 'log-entry';
-      if (entry.level === DesktopLogLevel.ERROR) {
+      if (entry.isError) {
         item.classList.add('log-entry--error');
       }
       header.className = 'log-entry__header';
@@ -98,6 +127,32 @@ function renderLogs(snapshot: DesktopWorkflowSnapshot): void {
   }
 
   logList.replaceChildren(fragment);
+}
+
+function renderRemoteControl(snapshot: StudentRemoteControlSnapshot): void {
+  remoteControlSnapshot = snapshot;
+  remoteControlText.textContent =
+    snapshot.status === 'active'
+      ? 'Controle Remoto Ativo'
+      : snapshot.status === 'pending'
+        ? 'Autorização pendente'
+        : 'Controle Remoto Inativo';
+  stopRemoteControlButton.hidden = snapshot.status !== 'active';
+  stopRemoteControlButton.disabled = snapshot.status !== 'active';
+  remoteControlBar.hidden = snapshot.status !== 'active';
+  remoteControlTeacher.textContent = activeTeacherName ?? 'Professor';
+
+  if (snapshot.status === 'pending') {
+    if (!remoteControlDialog.open) {
+      remoteControlDialog.showModal();
+    }
+  } else if (remoteControlDialog.open) {
+    remoteControlDialog.close();
+  }
+
+  if (lastWorkflowSnapshot !== undefined) {
+    renderLogs(lastWorkflowSnapshot);
+  }
 }
 
 async function runAction(action: () => Promise<DesktopWorkflowSnapshot>): Promise<void> {
@@ -206,10 +261,62 @@ endButton.addEventListener('click', () => {
   }
   void runAction(() => window.professorConnect.endAttendance());
 });
+approveRemoteControlButton.addEventListener('click', () => {
+  approveRemoteControlButton.disabled = true;
+  denyRemoteControlButton.disabled = true;
+  void window.professorConnectSession
+    .approveRemoteControl()
+    .then((snapshot) => {
+      renderRemoteControl(snapshot.remoteControl);
+    })
+    .catch((error: unknown) => {
+      statusMessage.textContent =
+        error instanceof Error ? error.message : 'Não foi possível autorizar o controle remoto.';
+    })
+    .finally(() => {
+      approveRemoteControlButton.disabled = false;
+      denyRemoteControlButton.disabled = false;
+    });
+});
+denyRemoteControlButton.addEventListener('click', () => {
+  approveRemoteControlButton.disabled = true;
+  denyRemoteControlButton.disabled = true;
+  void window.professorConnectSession
+    .denyRemoteControl()
+    .then((snapshot) => {
+      renderRemoteControl(snapshot.remoteControl);
+    })
+    .catch((error: unknown) => {
+      statusMessage.textContent =
+        error instanceof Error ? error.message : 'Não foi possível negar o controle remoto.';
+    })
+    .finally(() => {
+      approveRemoteControlButton.disabled = false;
+      denyRemoteControlButton.disabled = false;
+    });
+});
+stopRemoteControlButton.addEventListener('click', () => {
+  stopRemoteControlButton.disabled = true;
+  void window.professorConnectSession
+    .stopRemoteControl()
+    .then((snapshot) => {
+      renderRemoteControl(snapshot.remoteControl);
+    })
+    .catch((error: unknown) => {
+      statusMessage.textContent =
+        error instanceof Error ? error.message : 'Não foi possível encerrar o controle remoto.';
+      stopRemoteControlButton.disabled = false;
+    });
+});
+remoteControlDialog.addEventListener('cancel', (event) => {
+  event.preventDefault();
+});
 
 const unsubscribe = window.professorConnect.onStateChanged(render);
 const unsubscribeSession = window.professorConnectSession.onStateChanged((snapshot) => {
   statusMessage.textContent = snapshot.message;
+  activeTeacherName = snapshot.activeTeacherName;
+  renderRemoteControl(snapshot.remoteControl);
   const isSessionBusy =
     snapshot.status === 'waiting' ||
     snapshot.status === 'accepted' ||
@@ -254,6 +361,9 @@ window.addEventListener(
     unsubscribeAnswer();
     unsubscribeIce();
     unsubscribeMediaDevices();
+    if (remoteControlDialog.open) {
+      remoteControlDialog.close();
+    }
     closeWebRtcSession();
     mediaDeviceManager.dispose();
   },
@@ -285,6 +395,10 @@ void window.professorConnectSession
     teacherSelect.replaceChildren(option);
     callButton.disabled = true;
   });
+void window.professorConnectSession.getState().then((snapshot) => {
+  activeTeacherName = snapshot.activeTeacherName;
+  renderRemoteControl(snapshot.remoteControl);
+});
 teacherSelect.addEventListener('change', () => {
   callButton.disabled = teacherSelect.value.length === 0;
 });

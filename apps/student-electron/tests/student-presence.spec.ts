@@ -6,8 +6,17 @@ import path from 'node:path';
 import { test } from 'node:test';
 
 import { Server as SocketServer } from 'socket.io';
+import type {
+  RemoteControlApproved,
+  RemoteControlDenied,
+  RemoteControlKeyboardPayload,
+  RemoteControlMousePayload,
+  RemoteControlRequest,
+  RemoteControlStopPayload,
+} from '@professor-connect/protocol';
 
 import { StudentPresenceController } from '../main/student-presence.controller.js';
+import { RemoteControlReceiver } from '../main/remote-control.receiver.js';
 import type {
   WebRtcDescriptionPayload,
   WebRtcIceCandidatePayload,
@@ -25,6 +34,9 @@ interface PresenceEvents {
   'webrtc:ice-candidate': (payload: WebRtcIceCandidatePayload) => void;
   'screen-share:start': (payload: ScreenSharePayload) => void;
   'screen-share:stop': (payload: ScreenSharePayload) => void;
+  'remote-control:approved': (payload: RemoteControlApproved) => void;
+  'remote-control:denied': (payload: RemoteControlDenied) => void;
+  'remote-control:stop': (payload: RemoteControlStopPayload) => void;
 }
 
 interface SessionEvents {
@@ -40,6 +52,10 @@ interface SessionEvents {
   'webrtc:offer': (payload: WebRtcDescriptionPayload) => void;
   'webrtc:answer': (payload: WebRtcDescriptionPayload) => void;
   'webrtc:ice-candidate': (payload: WebRtcIceCandidatePayload) => void;
+  'remote-control:request': (payload: RemoteControlRequest) => void;
+  'remote-control:mouse': (payload: RemoteControlMousePayload) => void;
+  'remote-control:keyboard': (payload: RemoteControlKeyboardPayload) => void;
+  'remote-control:stop': (payload: RemoteControlStopPayload) => void;
 }
 
 interface SessionLifecyclePayload {
@@ -73,6 +89,9 @@ test('conecta, registra, mantém heartbeat e desconecta o aluno automaticamente'
   const remoteCandidates: WebRtcIceCandidatePayload[] = [];
   const screenShareStarts: ScreenSharePayload[] = [];
   const screenShareStops: ScreenSharePayload[] = [];
+  const remoteControlApprovals: RemoteControlApproved[] = [];
+  const remoteControlDenials: RemoteControlDenied[] = [];
+  const remoteControlStops: RemoteControlStopPayload[] = [];
 
   socketServer.on('connection', (socket) => {
     socket.on('student:register', (payload) => registrations.push(payload));
@@ -113,6 +132,9 @@ test('conecta, registra, mantém heartbeat e desconecta o aluno automaticamente'
     socket.on('webrtc:ice-candidate', (payload) => localCandidates.push(payload));
     socket.on('screen-share:start', (payload) => screenShareStarts.push(payload));
     socket.on('screen-share:stop', (payload) => screenShareStops.push(payload));
+    socket.on('remote-control:approved', (payload) => remoteControlApprovals.push(payload));
+    socket.on('remote-control:denied', (payload) => remoteControlDenials.push(payload));
+    socket.on('remote-control:stop', (payload) => remoteControlStops.push(payload));
     socket.on('session:end', ({ sessionId }) => {
       endedSessionIds.push(sessionId);
       socket.emit('session:ended', {
@@ -139,6 +161,35 @@ test('conecta, registra, mantém heartbeat e desconecta o aluno automaticamente'
     configPath,
     { id: 'student-id', name: 'Ana' },
     20,
+    new RemoteControlReceiver({
+      mouseController: {
+        start(): void {
+          return;
+        },
+        receive(event) {
+          if (event.type === 'mousemove') {
+            return 'MouseMove';
+          }
+          if (event.type === 'wheel') {
+            return 'Wheel';
+          }
+          if (event.type === 'dblclick') {
+            return 'DoubleClick';
+          }
+          return event.type === 'mouseup'
+            ? event.button === 2
+              ? 'ClickRight'
+              : 'ClickLeft'
+            : undefined;
+        },
+        stop(): void {
+          return;
+        },
+        isActive(): boolean {
+          return true;
+        },
+      },
+    }),
   );
   controller.onWebRtcOffer((payload) => offers.push(payload));
   controller.onWebRtcIceCandidate((payload) => remoteCandidates.push(payload));
@@ -204,6 +255,49 @@ test('conecta, registra, mantém heartbeat e desconecta o aluno automaticamente'
     );
     assert.equal(renegotiationAnswers[0]?.description.sdp, 'renegotiation-answer-sdp');
     assert.equal(screenShareStarts[0]?.trackId, 'screen-track');
+
+    const remoteReference = { sessionId: 'session-id', requestId: 'remote-request-1' };
+    socketServer.emit('remote-control:request', remoteReference);
+    await waitUntil(() => controller.getSessionSnapshot().remoteControl.status === 'pending');
+    controller.approveRemoteControl();
+    await waitUntil(() => remoteControlApprovals.length === 1);
+    assert.equal(controller.getSessionSnapshot().remoteControl.status, 'active');
+    socketServer.emit('remote-control:mouse', {
+      ...remoteReference,
+      event: { type: 'mousemove', x: 0.5, y: 0.5, button: 0, buttons: 0 },
+    });
+    socketServer.emit('remote-control:keyboard', {
+      ...remoteReference,
+      event: {
+        type: 'keyup',
+        key: 'a',
+        code: 'KeyA',
+        repeat: false,
+        altKey: false,
+        ctrlKey: false,
+        shiftKey: false,
+        metaKey: false,
+      },
+    });
+    await waitUntil(() => {
+      const messages = controller
+        .getSessionSnapshot()
+        .remoteControl.logs.map(({ message }) => message);
+      return (
+        messages.includes('Evento recebido: MouseMove') &&
+        messages.includes('Evento recebido: KeyUp (somente log, não executado)')
+      );
+    });
+    controller.stopRemoteControl();
+    await waitUntil(() => remoteControlStops.length === 1);
+    assert.equal(controller.getSessionSnapshot().remoteControl.status, 'inactive');
+
+    const deniedReference = { sessionId: 'session-id', requestId: 'remote-request-2' };
+    socketServer.emit('remote-control:request', deniedReference);
+    await waitUntil(() => controller.getSessionSnapshot().remoteControl.status === 'pending');
+    controller.denyRemoteControl();
+    await waitUntil(() => remoteControlDenials.length === 1);
+    assert.equal(controller.getSessionSnapshot().remoteControl.status, 'inactive');
 
     controller.endSession();
     await waitUntil(() => controller.getSessionSnapshot().status === 'ended');

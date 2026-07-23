@@ -14,4 +14,8 @@ export const PRESENCE_IPC_CHANNELS = {
   WEBRTC_ICE: 'teacher:webrtc:ice-candidate',
   SCREEN_SHARE_STARTED: 'teacher:screen-share:started',
   SCREEN_SHARE_STOPPED: 'teacher:screen-share:stopped',
+  REMOTE_CONTROL_REQUEST: 'teacher:remote-control:request',
+  REMOTE_CONTROL_MOUSE: 'teacher:remote-control:mouse',
+  REMOTE_CONTROL_KEYBOARD: 'teacher:remote-control:keyboard',
+  REMOTE_CONTROL_STOP: 'teacher:remote-control:stop',
 } as const;

@@ -21,6 +21,8 @@
   },
   "dependencies": {
     "@professor-connect/engine": "0.1.0",
+    "@professor-connect/protocol": "0.1.0",
+    "koffi": "3.1.2",
     "socket.io-client": "4.8.3"
   },
   "devDependencies": {
@@ -33,6 +35,10 @@
     "productName": "Professor Connect - Aluno",
     "copyright": "Copyright (c) 2026 Professor Connect",
     "asar": true,
+    "asarUnpack": [
+      "node_modules/koffi/**/*",
+      "node_modules/@koromix/koffi-win32-x64/**/*"
+    ],
     "npmRebuild": false,
     "directories": {
       "buildResources": "assets",

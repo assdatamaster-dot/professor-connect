@@ -34,11 +34,24 @@ export {
   type ServiceRequest,
 } from './request.js';
 export {
+  REMOTE_CONTROL_CHANNEL_EVENTS,
   RemoteControlFailureCode,
+  type RemoteControlApproved,
   type RemoteControlAuthorizationPayload,
+  type RemoteControlChannelEvent,
+  type RemoteControlChannelReference,
+  type RemoteControlDenied,
   type RemoteControlFailedPayload,
+  type RemoteControlKeyboardEvent,
+  type RemoteControlKeyboardEventType,
+  type RemoteControlKeyboardPayload,
+  type RemoteControlMouseEvent,
+  type RemoteControlMouseEventType,
+  type RemoteControlMousePayload,
   type RemoteControlReferencePayload,
+  type RemoteControlRequest,
   type RemoteControlRequestPayload,
+  type RemoteControlStopPayload,
 } from './remote-control.js';
 export type { SocketMessage } from './socket-message.js';
 export {

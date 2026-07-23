@@ -53,6 +53,10 @@ const presenceChannels = {
   disconnect: 'teacher:presence:disconnect',
   getState: 'teacher:presence:get-state',
   stateChanged: 'teacher:presence:state-changed',
+  remoteControlRequest: 'teacher:remote-control:request',
+  remoteControlMouse: 'teacher:remote-control:mouse',
+  remoteControlKeyboard: 'teacher:remote-control:keyboard',
+  remoteControlStop: 'teacher:remote-control:stop',
 } as const;
 
 const presenceApi: ProfessorPresenceApi = {
@@ -74,6 +78,14 @@ const presenceApi: ProfessorPresenceApi = {
     ) as Promise<ProfessorPresenceSnapshot>,
   endSession: () =>
     ipcRenderer.invoke('teacher:presence:end-session') as Promise<ProfessorPresenceSnapshot>,
+  requestRemoteControl: () =>
+    ipcRenderer.invoke(presenceChannels.remoteControlRequest) as Promise<ProfessorPresenceSnapshot>,
+  sendRemoteControlMouse: (event) =>
+    ipcRenderer.invoke(presenceChannels.remoteControlMouse, event) as Promise<void>,
+  sendRemoteControlKeyboard: (event) =>
+    ipcRenderer.invoke(presenceChannels.remoteControlKeyboard, event) as Promise<void>,
+  stopRemoteControl: () =>
+    ipcRenderer.invoke(presenceChannels.remoteControlStop) as Promise<ProfessorPresenceSnapshot>,
   onStateChanged(listener): () => void {
     const handler = (_event: IpcRendererEvent, snapshot: ProfessorPresenceSnapshot): void =>
       listener(snapshot);

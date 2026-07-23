@@ -16,6 +16,7 @@ export interface SessionIpcRegistration {
 export function registerSessionIpc(
   controller: StudentPresenceController,
   renderer: WebContents,
+  onScreenShareStopped: () => void = () => undefined,
 ): SessionIpcRegistration {
   const assertSender = (event: IpcMainInvokeEvent): void => {
     if (event.sender.id !== renderer.id) {
@@ -61,6 +62,19 @@ export function registerSessionIpc(
   ipcMain.handle(SESSION_IPC_CHANNELS.SCREEN_SHARE_STOP, (event, payload: unknown) => {
     assertSender(event);
     controller.sendScreenShareStop(requireScreenSharePayload(payload));
+    onScreenShareStopped();
+  });
+  ipcMain.handle(SESSION_IPC_CHANNELS.REMOTE_CONTROL_APPROVE, (event) => {
+    assertSender(event);
+    return controller.approveRemoteControl();
+  });
+  ipcMain.handle(SESSION_IPC_CHANNELS.REMOTE_CONTROL_DENY, (event) => {
+    assertSender(event);
+    return controller.denyRemoteControl();
+  });
+  ipcMain.handle(SESSION_IPC_CHANNELS.REMOTE_CONTROL_STOP, (event) => {
+    assertSender(event);
+    return controller.stopRemoteControl();
   });
 
   const unsubscribe = controller.onSessionStateChanged((snapshot) => {
@@ -99,6 +113,9 @@ export function registerSessionIpc(
       ipcMain.removeHandler(SESSION_IPC_CHANNELS.WEBRTC_SEND_ICE);
       ipcMain.removeHandler(SESSION_IPC_CHANNELS.SCREEN_SHARE_START);
       ipcMain.removeHandler(SESSION_IPC_CHANNELS.SCREEN_SHARE_STOP);
+      ipcMain.removeHandler(SESSION_IPC_CHANNELS.REMOTE_CONTROL_APPROVE);
+      ipcMain.removeHandler(SESSION_IPC_CHANNELS.REMOTE_CONTROL_DENY);
+      ipcMain.removeHandler(SESSION_IPC_CHANNELS.REMOTE_CONTROL_STOP);
     },
   };
 }

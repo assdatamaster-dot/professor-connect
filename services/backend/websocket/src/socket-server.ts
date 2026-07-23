@@ -40,6 +40,7 @@ import { SessionRequestManager } from './modules/session-request/session-request
 import { SessionGateway } from './modules/active-session/session.gateway.js';
 import { SessionManager } from './modules/active-session/session.manager.js';
 import { WebRtcSignalingGateway } from './modules/webrtc-signaling/webrtc-signaling.gateway.js';
+import { RemoteControlGateway } from './modules/remote-control/remote-control.gateway.js';
 
 export function initializeWebSocket(
   httpServer: HttpServer,
@@ -133,6 +134,8 @@ export function initializeWebSocket(
   const activeSessionGateway = new SessionGateway(socketServer, activeSessionManager, logger);
   activeSessionGateway.registerEvents();
   new WebRtcSignalingGateway(socketServer, activeSessionManager, logger).registerEvents();
+  const remoteControlGateway = new RemoteControlGateway(socketServer, activeSessionManager, logger);
+  remoteControlGateway.registerEvents();
   const sessionRequestGateway = new SessionRequestGateway(
     socketServer,
     sessionRequestManager,
@@ -145,6 +148,7 @@ export function initializeWebSocket(
     professorPresenceGateway.dispose();
     studentPresenceGateway.dispose();
     sessionRequestGateway.dispose();
+    remoteControlGateway.dispose();
   });
 
   return communicationGateway;

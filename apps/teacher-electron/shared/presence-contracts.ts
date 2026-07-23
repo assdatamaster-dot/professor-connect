@@ -1,3 +1,9 @@
+import type {
+  RemoteControlKeyboardEvent,
+  RemoteControlMouseEvent,
+  TeacherRemoteControlSnapshot,
+} from './remote-control-contracts.js';
+
 export enum ProfessorPresenceStatus {
   DISCONNECTED = 'DISCONNECTED',
   CONNECTING = 'CONNECTING',
@@ -11,6 +17,7 @@ export interface ProfessorPresenceSnapshot {
   readonly serverConnected: boolean;
   readonly sessionRequests: readonly ProfessorSessionRequest[];
   readonly activeSession: ProfessorActiveSession | undefined;
+  readonly remoteControl: TeacherRemoteControlSnapshot;
 }
 
 export interface ProfessorSessionRequest {
@@ -36,5 +43,9 @@ export interface ProfessorPresenceApi {
   acceptSession(requestId: string): Promise<ProfessorPresenceSnapshot>;
   rejectSession(requestId: string): Promise<ProfessorPresenceSnapshot>;
   endSession(): Promise<ProfessorPresenceSnapshot>;
+  requestRemoteControl(): Promise<ProfessorPresenceSnapshot>;
+  sendRemoteControlMouse(event: RemoteControlMouseEvent): Promise<void>;
+  sendRemoteControlKeyboard(event: RemoteControlKeyboardEvent): Promise<void>;
+  stopRemoteControl(): Promise<ProfessorPresenceSnapshot>;
   onStateChanged(listener: ProfessorPresenceListener): () => void;
 }

@@ -3,6 +3,7 @@ import {
   BrowserWindow,
   desktopCapturer,
   Menu,
+  screen,
   session,
   webContents,
   type DesktopCapturerSource,
@@ -12,6 +13,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { registerDesktopIpc, type DesktopIpcRegistration } from './ipc.js';
+import { RemoteControlReceiver } from './remote-control.receiver.js';
+import { createRemoteMouseController } from './remote-mouse/create-remote-mouse-controller.js';
+import { ScreenCaptureTargetRegistry } from './screen-capture-target.registry.js';
 import { StudentPresenceController } from './student-presence.controller.js';
 import { registerSessionIpc, type SessionIpcRegistration } from './session-ipc.js';
 import { StudentWorkflowController } from './student-workflow.controller.js';
@@ -27,6 +31,8 @@ let ipcRegistration: DesktopIpcRegistration | undefined;
 let presenceController: StudentPresenceController | undefined;
 let sessionIpcRegistration: SessionIpcRegistration | undefined;
 let workflowController: StudentWorkflowController | undefined;
+let screenCaptureTargetRegistry: ScreenCaptureTargetRegistry | undefined;
+let unsubscribeCaptureSession: (() => void) | undefined;
 
 async function createMainWindow(): Promise<void> {
   const preloadPath = path.join(currentDirectory, '..', 'preload', 'index.js');
@@ -39,14 +45,32 @@ async function createMainWindow(): Promise<void> {
   });
   mainWindow = new BrowserWindow(createWindowOptions(preloadPath));
   ipcRegistration = registerDesktopIpc(workflowController, mainWindow.webContents);
-  presenceController = new StudentPresenceController(configPath);
-  sessionIpcRegistration = registerSessionIpc(presenceController, mainWindow.webContents);
+  const captureTargetRegistry = requireScreenCaptureTargetRegistry();
+  const remoteControlReceiver = new RemoteControlReceiver({
+    mouseController: createRemoteMouseController(captureTargetRegistry),
+  });
+  presenceController = new StudentPresenceController(
+    configPath,
+    undefined,
+    undefined,
+    remoteControlReceiver,
+  );
+  sessionIpcRegistration = registerSessionIpc(presenceController, mainWindow.webContents, () =>
+    captureTargetRegistry.clear(),
+  );
+  unsubscribeCaptureSession = presenceController.onSessionStateChanged((snapshot) => {
+    if (snapshot.activeSessionId === undefined) {
+      captureTargetRegistry.clear();
+    }
+  });
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   mainWindow.webContents.on('will-navigate', (event) => event.preventDefault());
   mainWindow.once('ready-to-show', () => mainWindow?.show());
   mainWindow.on('closed', () => {
     ipcRegistration?.dispose();
+    unsubscribeCaptureSession?.();
+    screenCaptureTargetRegistry?.clear();
     presenceController?.dispose();
     sessionIpcRegistration?.dispose();
     workflowController?.dispose();
@@ -54,6 +78,7 @@ async function createMainWindow(): Promise<void> {
     presenceController = undefined;
     sessionIpcRegistration = undefined;
     workflowController = undefined;
+    unsubscribeCaptureSession = undefined;
     mainWindow = undefined;
   });
 
@@ -93,14 +118,19 @@ function registerDisplayMediaRequestHandler(): void {
             return;
           }
 
-          showDisplayMediaSourceMenu(window, sources, callback);
+          showDisplayMediaSourceMenu(
+            window,
+            sources,
+            callback,
+            requireScreenCaptureTargetRegistry(),
+          );
         })
         .catch((error: unknown) => {
           console.error('[screen-share] Não foi possível listar telas e janelas', error);
           callback({});
         });
     },
-    { useSystemPicker: true },
+    { useSystemPicker: false },
   );
 }
 
@@ -108,6 +138,7 @@ function showDisplayMediaSourceMenu(
   window: BrowserWindow,
   sources: DesktopCapturerSource[],
   callback: (streams: Electron.Streams) => void,
+  captureTargetRegistry: ScreenCaptureTargetRegistry,
 ): void {
   let requestCompleted = false;
   const completeRequest = (source?: DesktopCapturerSource): void => {
@@ -115,6 +146,11 @@ function showDisplayMediaSourceMenu(
       return;
     }
     requestCompleted = true;
+    if (source === undefined) {
+      captureTargetRegistry.clear();
+    } else {
+      captureTargetRegistry.select(source);
+    }
     callback(source === undefined ? {} : { video: source });
   };
 
@@ -176,6 +212,7 @@ function createSourceMenuSection(
 }
 
 app.whenReady().then(async () => {
+  screenCaptureTargetRegistry = new ScreenCaptureTargetRegistry(screen);
   session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
     return webContents?.id === mainWindow?.webContents.id && permission === 'media';
   });
@@ -192,6 +229,13 @@ app.whenReady().then(async () => {
     }
   });
 });
+
+function requireScreenCaptureTargetRegistry(): ScreenCaptureTargetRegistry {
+  if (screenCaptureTargetRegistry === undefined) {
+    throw new Error('Registro de tela compartilhada não está inicializado');
+  }
+  return screenCaptureTargetRegistry;
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

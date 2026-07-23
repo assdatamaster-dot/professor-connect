@@ -18,7 +18,7 @@ services:
       HEARTBEAT_TIMEOUT_MS: ${HEARTBEAT_TIMEOUT_MS:-90000}
       RECONNECT_WINDOW_MS: ${RECONNECT_WINDOW_MS:-90000}
     expose:
-  - "3000"
+      - '3000'
     healthcheck:
       test:
         - CMD

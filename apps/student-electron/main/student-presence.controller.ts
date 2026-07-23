@@ -1,6 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
+import {
+  REMOTE_CONTROL_CHANNEL_EVENTS,
+  type RemoteControlApproved,
+  type RemoteControlDenied,
+  type RemoteControlKeyboardPayload,
+  type RemoteControlMousePayload,
+  type RemoteControlRequest,
+  type RemoteControlStopPayload,
+} from '@professor-connect/protocol';
 import { io, type Socket } from 'socket.io-client';
 
 import type {
@@ -15,6 +24,7 @@ import type {
   WebRtcIceCandidatePayload,
   ScreenSharePayload,
 } from '../shared/webrtc-contracts.js';
+import { RemoteControlReceiver } from './remote-control.receiver.js';
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
@@ -34,6 +44,9 @@ interface StudentPresenceClientEvents {
   'webrtc:ice-candidate': (payload: WebRtcIceCandidatePayload) => void;
   'screen-share:start': (payload: ScreenSharePayload) => void;
   'screen-share:stop': (payload: ScreenSharePayload) => void;
+  [REMOTE_CONTROL_CHANNEL_EVENTS.APPROVED]: (payload: RemoteControlApproved) => void;
+  [REMOTE_CONTROL_CHANNEL_EVENTS.DENIED]: (payload: RemoteControlDenied) => void;
+  [REMOTE_CONTROL_CHANNEL_EVENTS.STOP]: (payload: RemoteControlStopPayload) => void;
 }
 
 interface StudentPresenceServerEvents {
@@ -45,6 +58,10 @@ interface StudentPresenceServerEvents {
   'webrtc:offer': (payload: WebRtcDescriptionPayload) => void;
   'webrtc:answer': (payload: WebRtcDescriptionPayload) => void;
   'webrtc:ice-candidate': (payload: WebRtcIceCandidatePayload) => void;
+  [REMOTE_CONTROL_CHANNEL_EVENTS.REQUEST]: (payload: RemoteControlRequest) => void;
+  [REMOTE_CONTROL_CHANNEL_EVENTS.MOUSE]: (payload: RemoteControlMousePayload) => void;
+  [REMOTE_CONTROL_CHANNEL_EVENTS.KEYBOARD]: (payload: RemoteControlKeyboardPayload) => void;
+  [REMOTE_CONTROL_CHANNEL_EVENTS.STOP]: (payload: RemoteControlStopPayload) => void;
 }
 
 interface SessionResponsePayload {
@@ -72,19 +89,28 @@ export class StudentPresenceController {
   private readonly offerListeners = new Set<WebRtcDescriptionListener>();
   private readonly answerListeners = new Set<WebRtcDescriptionListener>();
   private readonly iceCandidateListeners = new Set<WebRtcIceCandidateListener>();
+  private readonly remoteControlReceiver: RemoteControlReceiver;
+  private readonly unsubscribeRemoteControl: () => void;
   private heartbeatTimer: NodeJS.Timeout | undefined;
   private socket: StudentPresenceSocket | undefined;
-  private sessionState: StudentSessionSnapshot = {
+  private sessionState: Omit<StudentSessionSnapshot, 'remoteControl'> = {
     status: 'idle',
     message: 'Pronto para solicitar atendimento.',
     activeSessionId: undefined,
+    activeTeacherName: undefined,
   };
 
   public constructor(
     private readonly configPath: string,
     private readonly identity: StudentIdentity = { id: randomUUID(), name: 'Aluno' },
     private readonly heartbeatIntervalMs = HEARTBEAT_INTERVAL_MS,
-  ) {}
+    remoteControlReceiver = new RemoteControlReceiver(),
+  ) {
+    this.remoteControlReceiver = remoteControlReceiver;
+    this.unsubscribeRemoteControl = this.remoteControlReceiver.onStateChanged(() => {
+      this.notifySessionListeners();
+    });
+  }
 
   public async connect(): Promise<void> {
     this.disconnectSocket();
@@ -97,8 +123,14 @@ export class StudentPresenceController {
       socket.emit('student:register', this.identity);
       this.startHeartbeat(socket);
     });
-    socket.on('disconnect', () => this.stopHeartbeat());
-    socket.on('connect_error', () => this.stopHeartbeat());
+    socket.on('disconnect', () => {
+      this.stopHeartbeat();
+      this.remoteControlReceiver.handleTransportLoss();
+    });
+    socket.on('connect_error', () => {
+      this.stopHeartbeat();
+      this.remoteControlReceiver.handleTransportLoss();
+    });
     socket.on('session:accepted', () => {
       this.updateSessionState('accepted', 'Professor aceitou');
     });
@@ -109,11 +141,18 @@ export class StudentPresenceController {
       this.updateSessionState('timeout', 'Tempo esgotado');
     });
     socket.on('session:started', (session) => {
-      this.updateSessionState('connected', 'Conectado ao professor', session.sessionId);
+      this.remoteControlReceiver.reset();
+      this.updateSessionState(
+        'connected',
+        'Conectado ao professor',
+        session.sessionId,
+        session.teacherName,
+      );
     });
     socket.on('session:ended', (session) => {
       if (this.sessionState.activeSessionId === session.sessionId) {
-        this.updateSessionState('ended', 'Atendimento encerrado', undefined);
+        this.remoteControlReceiver.endSession(session.sessionId);
+        this.updateSessionState('ended', 'Atendimento encerrado', undefined, undefined);
       }
     });
     socket.on('webrtc:offer', (payload) => {
@@ -130,6 +169,27 @@ export class StudentPresenceController {
       for (const listener of this.iceCandidateListeners) {
         listener(payload);
       }
+    });
+    socket.on(REMOTE_CONTROL_CHANNEL_EVENTS.REQUEST, (payload) => {
+      this.handleRemoteControlSafely(() => {
+        this.remoteControlReceiver.receiveRequest(payload, this.sessionState.activeSessionId);
+      });
+    });
+    socket.on(REMOTE_CONTROL_CHANNEL_EVENTS.MOUSE, (payload) => {
+      this.handleRemoteControlSafely(() => {
+        const stopped = this.remoteControlReceiver.receiveMouse(payload);
+        if (stopped !== undefined && socket.connected) {
+          socket.emit(REMOTE_CONTROL_CHANNEL_EVENTS.STOP, stopped);
+        }
+      });
+    });
+    socket.on(REMOTE_CONTROL_CHANNEL_EVENTS.KEYBOARD, (payload) => {
+      this.handleRemoteControlSafely(() => {
+        this.remoteControlReceiver.receiveKeyboard(payload);
+      });
+    });
+    socket.on(REMOTE_CONTROL_CHANNEL_EVENTS.STOP, (payload) => {
+      this.remoteControlReceiver.receiveStop(payload);
     });
     socket.connect();
   }
@@ -169,7 +229,10 @@ export class StudentPresenceController {
   }
 
   public getSessionSnapshot(): StudentSessionSnapshot {
-    return { ...this.sessionState };
+    return {
+      ...this.sessionState,
+      remoteControl: this.remoteControlReceiver.getSnapshot(),
+    };
   }
 
   public endSession(): StudentSessionSnapshot {
@@ -178,6 +241,30 @@ export class StudentPresenceController {
       throw new Error('Não há atendimento ativo.');
     }
     this.socket.emit('session:end', { sessionId });
+    return this.getSessionSnapshot();
+  }
+
+  public approveRemoteControl(): StudentSessionSnapshot {
+    const sessionId = this.requireActiveSessionId();
+    const socket = this.requireActiveSignalingSocket(sessionId);
+    const approved = this.remoteControlReceiver.approve(sessionId);
+    socket.emit(REMOTE_CONTROL_CHANNEL_EVENTS.APPROVED, approved);
+    return this.getSessionSnapshot();
+  }
+
+  public denyRemoteControl(): StudentSessionSnapshot {
+    const sessionId = this.requireActiveSessionId();
+    const socket = this.requireActiveSignalingSocket(sessionId);
+    const denied = this.remoteControlReceiver.deny(sessionId);
+    socket.emit(REMOTE_CONTROL_CHANNEL_EVENTS.DENIED, denied);
+    return this.getSessionSnapshot();
+  }
+
+  public stopRemoteControl(): StudentSessionSnapshot {
+    const sessionId = this.requireActiveSessionId();
+    const socket = this.requireActiveSignalingSocket(sessionId);
+    const stopped = this.remoteControlReceiver.stop(sessionId);
+    socket.emit(REMOTE_CONTROL_CHANNEL_EVENTS.STOP, stopped);
     return this.getSessionSnapshot();
   }
 
@@ -213,7 +300,12 @@ export class StudentPresenceController {
   }
 
   public sendScreenShareStop(payload: ScreenSharePayload): void {
-    this.requireActiveSignalingSocket(payload.sessionId).emit('screen-share:stop', payload);
+    const socket = this.requireActiveSignalingSocket(payload.sessionId);
+    if (this.remoteControlReceiver.getSnapshot().status !== 'inactive') {
+      const stopped = this.remoteControlReceiver.stop(payload.sessionId);
+      socket.emit(REMOTE_CONTROL_CHANNEL_EVENTS.STOP, stopped);
+    }
+    socket.emit('screen-share:stop', payload);
   }
 
   public onWebRtcIceCandidate(listener: WebRtcIceCandidateListener): () => void {
@@ -227,14 +319,21 @@ export class StudentPresenceController {
     this.offerListeners.clear();
     this.answerListeners.clear();
     this.iceCandidateListeners.clear();
+    this.unsubscribeRemoteControl();
+    this.remoteControlReceiver.dispose();
   }
 
   private updateSessionState(
     status: StudentSessionSnapshot['status'],
     message: string,
     activeSessionId = this.sessionState.activeSessionId,
+    activeTeacherName = this.sessionState.activeTeacherName,
   ): void {
-    this.sessionState = { status, message, activeSessionId };
+    this.sessionState = { status, message, activeSessionId, activeTeacherName };
+    this.notifySessionListeners();
+  }
+
+  private notifySessionListeners(): void {
     const snapshot = this.getSessionSnapshot();
     for (const listener of this.sessionListeners) {
       listener(snapshot);
@@ -246,6 +345,21 @@ export class StudentPresenceController {
       throw new Error('Sessão WebRTC não está ativa.');
     }
     return this.socket;
+  }
+
+  private requireActiveSessionId(): string {
+    if (this.sessionState.activeSessionId === undefined) {
+      throw new Error('Não há atendimento ativo.');
+    }
+    return this.sessionState.activeSessionId;
+  }
+
+  private handleRemoteControlSafely(action: () => void): void {
+    try {
+      action();
+    } catch (error) {
+      console.error('[remote-control] Evento descartado', error);
+    }
   }
 
   private async loadConfig(): Promise<StudentConnectConfig> {
@@ -290,6 +404,7 @@ export class StudentPresenceController {
     const socket = this.socket;
 
     this.socket = undefined;
+    this.remoteControlReceiver.reset();
     if (socket?.connected !== true) {
       socket?.disconnect();
       socket?.removeAllListeners();

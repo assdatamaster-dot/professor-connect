@@ -134,6 +134,36 @@
                 <figcaption>Vídeo do Professor</figcaption>
               </figure>
             </div>
+            <section class="remote-control-panel" aria-labelledby="remote-control-title">
+              <div>
+                <p class="eyebrow">Mouse remoto autorizado</p>
+                <h2 id="remote-control-title">Controle remoto</h2>
+                <p class="remote-control-state">
+                  <span
+                    id="remote-control-indicator"
+                    class="device-indicator"
+                    data-indicator="inactive"
+                  ></span>
+                  <strong id="remote-control-status">Controle Remoto Inativo</strong>
+                </p>
+                <small
+                  >Beta-5B: somente o mouse é executado; teclado e arquivos ficam bloqueados.</small
+                >
+              </div>
+              <div class="remote-control-actions">
+                <button id="request-remote-control" type="button">Solicitar Controle</button>
+                <button id="stop-remote-control" class="reject-button" type="button" hidden>
+                  Encerrar Controle
+                </button>
+              </div>
+              <ul
+                id="remote-control-log"
+                class="remote-control-log"
+                aria-label="Logs do controle remoto"
+              >
+                <li>Nenhuma atividade de controle remoto.</li>
+              </ul>
+            </section>
             <button id="end-session" class="end-session-button" type="button">
               Encerrar Atendimento
             </button>

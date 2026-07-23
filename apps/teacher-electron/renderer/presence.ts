@@ -8,6 +8,8 @@ import {
   ProfessorPresenceStatus,
   type ProfessorPresenceSnapshot,
 } from '../shared/presence-contracts.js';
+import type { TeacherRemoteControlSnapshot } from '../shared/remote-control-contracts.js';
+import { RemoteControlClient } from './remote-control.client.js';
 
 const loginView = requireElement<HTMLElement>('login-view');
 const onlineView = requireElement<HTMLElement>('online-view');
@@ -45,6 +47,11 @@ const sessionDialog = requireElement<HTMLDialogElement>('session-request-dialog'
 const requestStudentName = requireElement<HTMLElement>('request-student-name');
 const acceptSessionButton = requireElement<HTMLButtonElement>('accept-session');
 const rejectSessionButton = requireElement<HTMLButtonElement>('reject-session');
+const requestRemoteControlButton = requireElement<HTMLButtonElement>('request-remote-control');
+const stopRemoteControlButton = requireElement<HTMLButtonElement>('stop-remote-control');
+const remoteControlStatus = requireElement<HTMLElement>('remote-control-status');
+const remoteControlIndicator = requireElement<HTMLElement>('remote-control-indicator');
+const remoteControlLog = requireElement<HTMLUListElement>('remote-control-log');
 let activeRequestId: string | undefined;
 const mediaDeviceManager = new MediaDeviceManager();
 let peerConnection: RTCPeerConnection | undefined;
@@ -58,6 +65,18 @@ let remoteMediaStream = new MediaStream();
 let announcedScreenStreamId: string | undefined;
 let announcedScreenTrackId: string | undefined;
 let renegotiationQueue = Promise.resolve();
+const remoteControlClient = new RemoteControlClient(
+  screenVideo,
+  {
+    sendMouse: (event) => window.professorConnectPresence.sendRemoteControlMouse(event),
+  },
+  () => {
+    attendanceState.textContent = 'Não foi possível transmitir o evento de controle remoto.';
+  },
+  async () => {
+    await window.professorConnectPresence.stopRemoteControl();
+  },
+);
 
 function render(snapshot: ProfessorPresenceSnapshot): void {
   const isActive = snapshot.professorName !== undefined;
@@ -67,6 +86,7 @@ function render(snapshot: ProfessorPresenceSnapshot): void {
   loginButton.disabled = snapshot.status === ProfessorPresenceStatus.CONNECTING;
 
   if (!isActive) {
+    remoteControlClient.stop();
     nameInput.focus();
     return;
   }
@@ -81,7 +101,58 @@ function render(snapshot: ProfessorPresenceSnapshot): void {
   } else if (activeWebRtcSessionId !== snapshot.activeSession.sessionId) {
     void startTeacherWebRtc(snapshot.activeSession.sessionId);
   }
+  renderRemoteControl(snapshot.remoteControl, snapshot.activeSession !== undefined);
   renderSessionRequest(snapshot);
+}
+
+function renderRemoteControl(
+  snapshot: TeacherRemoteControlSnapshot,
+  hasActiveSession: boolean,
+): void {
+  requestRemoteControlButton.disabled = !hasActiveSession || snapshot.status !== 'inactive';
+  requestRemoteControlButton.textContent =
+    snapshot.status === 'pending' ? 'Aguardando autorização...' : 'Solicitar Controle';
+  stopRemoteControlButton.hidden = snapshot.status === 'inactive';
+  stopRemoteControlButton.disabled = !hasActiveSession;
+  remoteControlStatus.textContent =
+    snapshot.status === 'active'
+      ? 'Controle Remoto Ativo'
+      : snapshot.status === 'pending'
+        ? 'Aguardando autorização do aluno'
+        : 'Controle Remoto Inativo';
+  remoteControlIndicator.dataset.indicator =
+    snapshot.status === 'active'
+      ? 'active'
+      : snapshot.status === 'pending'
+        ? 'pending'
+        : 'inactive';
+
+  if (snapshot.status === 'active') {
+    remoteControlClient.start();
+  } else {
+    remoteControlClient.stop();
+  }
+
+  const entries = snapshot.logs.map((entry) => {
+    const item = document.createElement('li');
+    item.textContent = `${formatRemoteControlTime(entry.timestamp)} · ${entry.message}`;
+    return item;
+  });
+  if (entries.length === 0) {
+    const empty = document.createElement('li');
+    empty.textContent = 'Nenhuma atividade de controle remoto.';
+    remoteControlLog.replaceChildren(empty);
+  } else {
+    remoteControlLog.replaceChildren(...entries.reverse());
+  }
+}
+
+function formatRemoteControlTime(timestamp: string): string {
+  return new Intl.DateTimeFormat('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(new Date(timestamp));
 }
 
 function renderSessionRequest(snapshot: ProfessorPresenceSnapshot): void {
@@ -171,6 +242,22 @@ endSessionButton.addEventListener('click', () => {
   endSessionButton.disabled = true;
   void window.professorConnectPresence.endSession().finally(() => {
     endSessionButton.disabled = false;
+  });
+});
+requestRemoteControlButton.addEventListener('click', () => {
+  requestRemoteControlButton.disabled = true;
+  void window.professorConnectPresence.requestRemoteControl().catch((error: unknown) => {
+    attendanceState.textContent =
+      error instanceof Error ? error.message : 'Não foi possível solicitar o controle remoto.';
+    requestRemoteControlButton.disabled = false;
+  });
+});
+stopRemoteControlButton.addEventListener('click', () => {
+  stopRemoteControlButton.disabled = true;
+  void window.professorConnectPresence.stopRemoteControl().catch((error: unknown) => {
+    attendanceState.textContent =
+      error instanceof Error ? error.message : 'Não foi possível encerrar o controle remoto.';
+    stopRemoteControlButton.disabled = false;
   });
 });
 cameraButton.addEventListener('click', () => {
@@ -263,6 +350,7 @@ window.addEventListener(
     unsubscribeScreenShareStarted();
     unsubscribeScreenShareStopped();
     unsubscribeMediaDevices();
+    remoteControlClient.stop();
     closeWebRtcSession();
     mediaDeviceManager.dispose();
   },

@@ -6,6 +6,14 @@ import path from 'node:path';
 import { test } from 'node:test';
 
 import { Server as SocketServer } from 'socket.io';
+import type {
+  RemoteControlApproved,
+  RemoteControlDenied,
+  RemoteControlKeyboardPayload,
+  RemoteControlMousePayload,
+  RemoteControlRequest,
+  RemoteControlStopPayload,
+} from '@professor-connect/protocol';
 
 import { ProfessorPresenceController } from '../main/professor-presence.controller.js';
 import { ProfessorPresenceStatus } from '../shared/presence-contracts.js';
@@ -24,6 +32,10 @@ interface PresenceEvents {
   'webrtc:offer': (payload: WebRtcDescriptionPayload) => void;
   'webrtc:answer': (payload: WebRtcDescriptionPayload) => void;
   'webrtc:ice-candidate': (payload: WebRtcIceCandidatePayload) => void;
+  'remote-control:request': (payload: RemoteControlRequest) => void;
+  'remote-control:mouse': (payload: RemoteControlMousePayload) => void;
+  'remote-control:keyboard': (payload: RemoteControlKeyboardPayload) => void;
+  'remote-control:stop': (payload: RemoteControlStopPayload) => void;
 }
 
 interface SessionEvents {
@@ -39,6 +51,9 @@ interface SessionEvents {
   'webrtc:ice-candidate': (payload: WebRtcIceCandidatePayload) => void;
   'screen-share:start': (payload: ScreenSharePayload) => void;
   'screen-share:stop': (payload: ScreenSharePayload) => void;
+  'remote-control:approved': (payload: RemoteControlApproved) => void;
+  'remote-control:denied': (payload: RemoteControlDenied) => void;
+  'remote-control:stop': (payload: RemoteControlStopPayload) => void;
 }
 
 interface SessionLifecyclePayload {
@@ -67,6 +82,10 @@ test('lê config.json, registra o professor e desconecta pelo Socket.IO', async 
   const remoteCandidates: WebRtcIceCandidatePayload[] = [];
   const screenShareStarts: ScreenSharePayload[] = [];
   const screenShareStops: ScreenSharePayload[] = [];
+  const remoteControlRequests: RemoteControlRequest[] = [];
+  const remoteControlMouseEvents: RemoteControlMousePayload[] = [];
+  const remoteControlKeyboardEvents: RemoteControlKeyboardPayload[] = [];
+  const remoteControlStops: RemoteControlStopPayload[] = [];
 
   socketServer.on('connection', (socket) => {
     socket.on('professor:online', ({ name }) => {
@@ -101,6 +120,10 @@ test('lê config.json, registra o professor e desconecta pelo Socket.IO', async 
     socket.on('webrtc:offer', (payload) => offers.push(payload));
     socket.on('webrtc:answer', (payload) => sentAnswers.push(payload));
     socket.on('webrtc:ice-candidate', (payload) => localCandidates.push(payload));
+    socket.on('remote-control:request', (payload) => remoteControlRequests.push(payload));
+    socket.on('remote-control:mouse', (payload) => remoteControlMouseEvents.push(payload));
+    socket.on('remote-control:keyboard', (payload) => remoteControlKeyboardEvents.push(payload));
+    socket.on('remote-control:stop', (payload) => remoteControlStops.push(payload));
     socket.on('disconnect', () => {
       disconnectCount += 1;
     });
@@ -192,6 +215,49 @@ test('lê config.json, registra o professor e desconecta pelo Socket.IO', async 
         screenShareStops.length === 1,
     );
     assert.equal(screenShareStarts[0]?.streamId, 'screen-stream');
+    const requestedControl = controller.requestRemoteControl().remoteControl;
+    assert.equal(requestedControl.status, 'pending');
+    await waitUntil(() => remoteControlRequests.length === 1);
+    const remoteReference = remoteControlRequests[0];
+    assert(remoteReference !== undefined);
+    socketServer.emit('remote-control:approved', remoteReference);
+    await waitUntil(() => controller.getSnapshot().remoteControl.status === 'active');
+    controller.sendRemoteControlMouse({
+      type: 'mousemove',
+      x: 0.5,
+      y: 0.5,
+      button: 0,
+      buttons: 0,
+    });
+    controller.sendRemoteControlKeyboard({
+      type: 'keydown',
+      key: 'a',
+      code: 'KeyA',
+      repeat: false,
+      altKey: false,
+      ctrlKey: false,
+      shiftKey: false,
+      metaKey: false,
+    });
+    await waitUntil(
+      () => remoteControlMouseEvents.length === 1 && remoteControlKeyboardEvents.length === 1,
+    );
+    assert.equal(remoteControlMouseEvents[0]?.requestId, remoteReference.requestId);
+    assert.equal(remoteControlKeyboardEvents[0]?.event.type, 'keydown');
+    controller.stopRemoteControl();
+    await waitUntil(() => remoteControlStops.length === 1);
+    assert.equal(controller.getSnapshot().remoteControl.status, 'inactive');
+
+    controller.requestRemoteControl();
+    await waitUntil(() => remoteControlRequests.length === 2);
+    const deniedReference = remoteControlRequests[1];
+    assert(deniedReference !== undefined);
+    socketServer.emit('remote-control:denied', deniedReference);
+    await waitUntil(() =>
+      controller
+        .getSnapshot()
+        .remoteControl.logs.some(({ message }) => message === 'Solicitação negada'),
+    );
     controller.endSession();
     await waitUntil(() => controller.getSnapshot().activeSession === undefined);
     assert.deepEqual(endedSessionIds, ['session-id']);

@@ -47,6 +47,9 @@ const sessionChannels = {
   getState: 'student:session:get-state',
   end: 'student:session:end',
   stateChanged: 'student:session:state-changed',
+  remoteControlApprove: 'student:remote-control:approve',
+  remoteControlDeny: 'student:remote-control:deny',
+  remoteControlStop: 'student:remote-control:stop',
 } as const;
 
 const sessionApi: StudentSessionApi = {
@@ -55,6 +58,12 @@ const sessionApi: StudentSessionApi = {
     ipcRenderer.invoke(sessionChannels.request, teacherId) as Promise<StudentSessionSnapshot>,
   getState: () => ipcRenderer.invoke(sessionChannels.getState) as Promise<StudentSessionSnapshot>,
   endSession: () => ipcRenderer.invoke(sessionChannels.end) as Promise<StudentSessionSnapshot>,
+  approveRemoteControl: () =>
+    ipcRenderer.invoke(sessionChannels.remoteControlApprove) as Promise<StudentSessionSnapshot>,
+  denyRemoteControl: () =>
+    ipcRenderer.invoke(sessionChannels.remoteControlDeny) as Promise<StudentSessionSnapshot>,
+  stopRemoteControl: () =>
+    ipcRenderer.invoke(sessionChannels.remoteControlStop) as Promise<StudentSessionSnapshot>,
   onStateChanged(listener: StudentSessionListener): () => void {
     const handler = (_event: IpcRendererEvent, snapshot: StudentSessionSnapshot): void => {
       listener(snapshot);

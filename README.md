@@ -731,6 +731,34 @@ npm run test --workspace=@professor-connect/teacher-electron
 O diagrama completo, o roteiro de validação, a configuração para dois computadores e a matriz de
 recursos liberados estão em [`docs/mvp/MVP-3.md`](docs/mvp/MVP-3.md).
 
+## Canal de controle remoto — Beta-5A
+
+O canal de controle remoto usa eventos Socket.IO dedicados e a sessão ativa para validar professor,
+aluno e autorização. O professor captura eventos de mouse e teclado somente após o aceite explícito
+do aluno. Nesta etapa o aluno apenas recebe e registra os eventos; nenhum comando é executado no
+sistema operacional.
+
+```text
+Solicitar Controle → Permitir/Negar → eventos Socket.IO → logs do aluno
+                                      (sem execução)
+```
+
+O fluxo, os contratos, as garantias de segurança e as evidências estão em
+[`docs/sprints/SPR-BETA-5A.md`](docs/sprints/SPR-BETA-5A.md).
+
+## Controle remoto seguro do mouse — Beta-5B
+
+A Beta-5B mantém a autorização e o isolamento de sessão da Beta-5A e habilita somente o mouse no
+computador do aluno. O processo principal converte as coordenadas normalizadas da tela
+compartilhada para pixels físicos e usa `SetCursorPos`/`SendInput` no Windows por meio do Koffi.
+Teclado, atalhos, arquivos, área de transferência e automações não são executados.
+
+O controle é revogado nos dois lados ao parar, encerrar o compartilhamento/sessão, perder a conexão
+ou ocorrer erro nativo. O aluno mantém uma barra verde fixa enquanto a autorização estiver ativa.
+
+Arquitetura, fluxo, mapeamento de escala, segurança e evidências estão em
+[`docs/sprints/SPR-BETA-5B.md`](docs/sprints/SPR-BETA-5B.md).
+
 ## Build e execução
 
 Para compilar e executar o backend compilado:

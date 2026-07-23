@@ -143,7 +143,8 @@
             <div class="session-controls">
               <div class="remote-status">
                 <span>Controle remoto</span>
-                <strong id="remote-control-text">Não autorizado</strong>
+                <strong id="remote-control-text">Controle Remoto Inativo</strong>
+                <small>Somente o mouse pode ser controlado após sua autorização.</small>
               </div>
               <div class="button-group">
                 <button id="end-attendance" class="button button--danger" type="button">
@@ -168,6 +169,35 @@
         </aside>
       </main>
     </div>
+
+    <section id="remote-control-bar" class="remote-control-bar" aria-live="assertive" hidden>
+      <span class="remote-control-bar__indicator" aria-hidden="true"></span>
+      <div class="remote-control-bar__content">
+        <strong>Controle Remoto Ativo</strong>
+        <span>Professor: <b id="remote-control-teacher">Professor</b></span>
+      </div>
+      <button id="stop-remote-control" class="button remote-control-bar__stop" type="button">
+        Parar controle
+      </button>
+    </section>
+
+    <dialog id="remote-control-dialog" class="confirmation-dialog">
+      <p class="eyebrow">Autorização necessária</p>
+      <h2>Controle remoto</h2>
+      <p>O professor deseja controlar seu computador.</p>
+      <p class="confirmation-dialog__notice">
+        Ao permitir, o professor poderá mover, clicar e rolar o mouse na tela inteira que você está
+        compartilhando. Teclado, arquivos e área de transferência permanecem bloqueados.
+      </p>
+      <div class="confirmation-dialog__actions">
+        <button id="approve-remote-control" class="button button--primary" type="button">
+          Permitir
+        </button>
+        <button id="deny-remote-control" class="button button--secondary" type="button">
+          Negar
+        </button>
+      </div>
+    </dialog>
 
     <script type="module" src="./index.js"></script>
   </body>
