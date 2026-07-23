@@ -3,7 +3,7 @@ import {
   MediaDeviceManager,
   MicrophoneState,
   type MediaDeviceSnapshot,
-} from '@professor-connect/engine';
+} from './media-devices/index.js';
 import {
   ProfessorPresenceStatus,
   type ProfessorPresenceSnapshot,

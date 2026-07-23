@@ -4,7 +4,7 @@ import {
   MicrophoneState,
   ScreenShareState,
   type MediaDeviceSnapshot,
-} from '@professor-connect/engine';
+} from './media-devices/index.js';
 import {
   DesktopConnectionStatus,
   DesktopLogLevel,
