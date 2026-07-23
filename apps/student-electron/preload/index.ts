@@ -79,12 +79,14 @@ const webRtcChannels = {
   sendIceCandidate: 'student:webrtc:send-ice-candidate',
   sendScreenShareStart: 'student:screen-share:start',
   sendScreenShareStop: 'student:screen-share:stop',
+  prepareAllScreensCapture: 'student:screen-capture:prepare-all',
   offer: 'student:webrtc:offer',
   answer: 'student:webrtc:answer',
   iceCandidate: 'student:webrtc:ice-candidate',
 } as const;
 
 const webRtcApi: StudentWebRtcApi = {
+  prepareAllScreensCapture: () => ipcRenderer.invoke(webRtcChannels.prepareAllScreensCapture),
   sendOffer: (payload) => ipcRenderer.invoke(webRtcChannels.sendOffer, payload) as Promise<void>,
   sendAnswer: (payload) => ipcRenderer.invoke(webRtcChannels.sendAnswer, payload) as Promise<void>,
   sendIceCandidate: (payload) =>

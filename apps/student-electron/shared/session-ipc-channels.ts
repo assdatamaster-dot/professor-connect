@@ -9,6 +9,7 @@ export const SESSION_IPC_CHANNELS = {
   WEBRTC_SEND_ICE: 'student:webrtc:send-ice-candidate',
   SCREEN_SHARE_START: 'student:screen-share:start',
   SCREEN_SHARE_STOP: 'student:screen-share:stop',
+  SCREEN_CAPTURE_PREPARE_ALL: 'student:screen-capture:prepare-all',
   WEBRTC_OFFER: 'student:webrtc:offer',
   WEBRTC_ANSWER: 'student:webrtc:answer',
   WEBRTC_ICE: 'student:webrtc:ice-candidate',

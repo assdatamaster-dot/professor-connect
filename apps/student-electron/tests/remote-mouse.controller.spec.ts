@@ -23,6 +23,23 @@ test('converte coordenadas normalizadas para monitor 4K com escala e offset', ()
   );
 });
 
+test('evita posicionar o mouse em lacunas entre monitores', () => {
+  assert.deepEqual(
+    mapNormalizedPoint(0.5, 0.25, {
+      left: 0,
+      top: 0,
+      width: 2000,
+      height: 1000,
+      sourceName: '2 monitores',
+      regions: [
+        { left: 0, top: 0, width: 1000, height: 500 },
+        { left: 1000, top: 500, width: 1000, height: 500 },
+      ],
+    }),
+    { x: 999, y: 250 },
+  );
+});
+
 test('move, clica, rola e libera botão pressionado ao encerrar', () => {
   const adapter = new RecordingMouseAdapter();
   const controller = new RemoteMouseController(adapter, {

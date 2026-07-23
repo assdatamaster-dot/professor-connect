@@ -1,6 +1,7 @@
 import { ipcMain, type IpcMainInvokeEvent, type WebContents } from 'electron';
 
 import type { StudentSessionSnapshot } from '../shared/session-contracts.js';
+import type { AllScreensCaptureLayout } from '../shared/screen-capture-contracts.js';
 import { SESSION_IPC_CHANNELS } from '../shared/session-ipc-channels.js';
 import type { StudentPresenceController } from './student-presence.controller.js';
 import type {
@@ -13,10 +14,15 @@ export interface SessionIpcRegistration {
   dispose(): void;
 }
 
+export interface SessionIpcOptions {
+  readonly onScreenShareStopped?: () => void;
+  readonly prepareAllScreensCapture?: () => Promise<AllScreensCaptureLayout>;
+}
+
 export function registerSessionIpc(
   controller: StudentPresenceController,
   renderer: WebContents,
-  onScreenShareStopped: () => void = () => undefined,
+  options: SessionIpcOptions = {},
 ): SessionIpcRegistration {
   const assertSender = (event: IpcMainInvokeEvent): void => {
     if (event.sender.id !== renderer.id) {
@@ -62,7 +68,17 @@ export function registerSessionIpc(
   ipcMain.handle(SESSION_IPC_CHANNELS.SCREEN_SHARE_STOP, (event, payload: unknown) => {
     assertSender(event);
     controller.sendScreenShareStop(requireScreenSharePayload(payload));
-    onScreenShareStopped();
+    options.onScreenShareStopped?.();
+  });
+  ipcMain.handle(SESSION_IPC_CHANNELS.SCREEN_CAPTURE_PREPARE_ALL, (event) => {
+    assertSender(event);
+    if (controller.getSessionSnapshot().activeSessionId === undefined) {
+      throw new Error('É necessário estar em uma sessão ativa para compartilhar os monitores');
+    }
+    if (options.prepareAllScreensCapture === undefined) {
+      throw new Error('Captura de todos os monitores não está disponível');
+    }
+    return options.prepareAllScreensCapture();
   });
   ipcMain.handle(SESSION_IPC_CHANNELS.REMOTE_CONTROL_APPROVE, (event) => {
     assertSender(event);
@@ -113,6 +129,7 @@ export function registerSessionIpc(
       ipcMain.removeHandler(SESSION_IPC_CHANNELS.WEBRTC_SEND_ICE);
       ipcMain.removeHandler(SESSION_IPC_CHANNELS.SCREEN_SHARE_START);
       ipcMain.removeHandler(SESSION_IPC_CHANNELS.SCREEN_SHARE_STOP);
+      ipcMain.removeHandler(SESSION_IPC_CHANNELS.SCREEN_CAPTURE_PREPARE_ALL);
       ipcMain.removeHandler(SESSION_IPC_CHANNELS.REMOTE_CONTROL_APPROVE);
       ipcMain.removeHandler(SESSION_IPC_CHANNELS.REMOTE_CONTROL_DENY);
       ipcMain.removeHandler(SESSION_IPC_CHANNELS.REMOTE_CONTROL_STOP);

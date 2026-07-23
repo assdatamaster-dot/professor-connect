@@ -46,20 +46,34 @@ Aluno main
   └─ valida sessionId/requestId ativos
        ▼
   RemoteMouseController
-  ├─ consulta monitor selecionado
+  ├─ consulta o desktop virtual com todos os monitores
   ├─ converte 0..1 → pixels físicos
-  ├─ limita ao monitor compartilhado
+  ├─ evita lacunas entre monitores
   └─ WindowsMouseAdapter → SetCursorPos/SendInput
+
+Aluno renderer
+  capturas individuais dos monitores
+  └─ canvas do desktop virtual → uma faixa WebRTC para o professor
 ```
 
 O executor fica no processo principal do Electron. O renderer do aluno não recebe acesso ao Koffi,
 às DLLs do sistema nem a uma API genérica de automação.
 
-## Coordenadas, resolução e escala
+## Captura automática, coordenadas, resolução e escala
 
-O seletor de compartilhamento registra o `display_id` da fonte escolhida. O
-`ScreenCaptureTargetRegistry` localiza o `Display` correspondente, usa origem em pixels físicos e
-multiplica as dimensões DIP pelo `scaleFactor`.
+O aluno não precisa selecionar uma tela. Depois de uma ação explícita de **Compartilhar Todas as
+Telas** ou **Permitir**, o processo principal enumera somente fontes do tipo `screen`, relaciona cada
+`display_id` ao `Display` correspondente e autoriza uma chamada de captura por monitor. Janelas de
+aplicativos nunca entram nessa lista.
+
+No renderer, `AllScreensCompositeCapture` posiciona as capturas individuais em um canvas que
+representa o desktop virtual. O canvas preserva a proporção do conjunto e limita a faixa WebRTC a
+3840 × 2160, reduzindo apenas quando necessário. Para o professor, continua existindo uma única
+faixa de compartilhamento.
+
+O `ScreenCaptureTargetRegistry` conserva a origem e as dimensões físicas de todos os monitores.
+Coordenadas negativas, escalas do Windows e disposições horizontais ou verticais fazem parte do
+desktop virtual.
 
 No professor, a normalização usa somente a imagem realmente renderizada no vídeo. Barras geradas por
 `object-fit: contain` são descartadas. A conversão no aluno usa:
@@ -69,18 +83,19 @@ x = origemX + round(normalizedX × (larguraFísica - 1))
 y = origemY + round(normalizedY × (alturaFísica - 1))
 ```
 
-Isso cobre Full HD, QHD, 4K, monitores com origem negativa e escala do Windows. Compartilhar apenas
-uma janela continua disponível para visualização, mas a autorização do mouse é recusada: a Beta-5B
-exige uma tela inteira para não inferir limites inseguros.
+Isso cobre Full HD, QHD, 4K, monitores com origem negativa e escala do Windows. Caso a disposição
+física deixe uma lacuna no retângulo do desktop virtual, o ponto é ajustado para o pixel válido mais
+próximo de um monitor. A captura de uma janela isolada não é oferecida.
 
 ## Fluxo de autorização
 
 1. O professor solicita o controle na sessão ativa.
 2. O backend confirma professor, aluno e sessão e registra uma autorização pendente.
 3. O aluno recebe “O professor deseja controlar seu computador.”.
-4. Ao clicar **Permitir**, se ainda não houver uma tela compartilhada, o aplicativo abre primeiro o
-   seletor de tela. Cancelar essa seleção mantém a solicitação pendente e não autoriza o controle.
-5. Com a tela inteira selecionada, o aluno valida o monitor e inicializa o executor.
+4. Ao clicar **Permitir**, se ainda não houver compartilhamento, o aplicativo prepara e captura
+   automaticamente todos os monitores conectados, sem exibir um seletor.
+5. Somente após todas as capturas estarem prontas, o aluno valida o desktop virtual e inicializa o
+   executor.
 6. Só depois dessa validação o aluno emite `remote-control:approved`.
 7. O professor começa a capturar mouse somente depois de receber o aceite.
 8. **Negar** remove a autorização sem inicializar o executor.
@@ -129,6 +144,9 @@ Os testes automatizados cobrem:
 
 - bloqueio antes da autorização;
 - conversão normalizada para monitor QHD/4K, inclusive offset negativo;
+- composição proporcional de vários monitores em uma única faixa;
+- correspondência e ordem das fontes pelo `display_id`;
+- mapeamento no desktop virtual e proteção contra lacunas entre monitores;
 - movimento, botões esquerdo/direito, rolagem e liberação de botão ao parar;
 - erro nativo com parada e `execution-error`;
 - ausência de captura de teclado no professor;

@@ -1,3 +1,5 @@
+import type { AllScreensCaptureLayout } from './screen-capture-contracts.js';
+
 export interface WebRtcSessionDescription {
   readonly type: 'offer' | 'answer';
   readonly sdp: string;
@@ -30,6 +32,7 @@ export type WebRtcDescriptionListener = (payload: WebRtcDescriptionPayload) => v
 export type WebRtcIceCandidateListener = (payload: WebRtcIceCandidatePayload) => void;
 
 export interface StudentWebRtcApi {
+  prepareAllScreensCapture(): Promise<AllScreensCaptureLayout>;
   sendOffer(payload: WebRtcDescriptionPayload): Promise<void>;
   sendAnswer(payload: WebRtcDescriptionPayload): Promise<void>;
   sendIceCandidate(payload: WebRtcIceCandidatePayload): Promise<void>;

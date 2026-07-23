@@ -164,10 +164,44 @@ export function mapNormalizedPoint(
     throw new Error('Coordenadas normalizadas do mouse são inválidas');
   }
 
-  return {
+  const point = {
     x: bounds.left + Math.round(normalizedX * Math.max(bounds.width - 1, 0)),
     y: bounds.top + Math.round(normalizedY * Math.max(bounds.height - 1, 0)),
   };
+  return clampPointToRegions(point, bounds.regions);
+}
+
+function clampPointToRegions(
+  point: { readonly x: number; readonly y: number },
+  regions: RemoteMouseBounds['regions'],
+): { readonly x: number; readonly y: number } {
+  if (regions === undefined || regions.length === 0) {
+    return point;
+  }
+  if (
+    regions.some(
+      (region) =>
+        point.x >= region.left &&
+        point.x < region.left + region.width &&
+        point.y >= region.top &&
+        point.y < region.top + region.height,
+    )
+  ) {
+    return point;
+  }
+
+  const closest = regions
+    .map((region) => {
+      const x = clampInteger(point.x, region.left, region.left + region.width - 1);
+      const y = clampInteger(point.y, region.top, region.top + region.height - 1);
+      return { x, y, distance: Math.hypot(point.x - x, point.y - y) };
+    })
+    .sort((left, right) => left.distance - right.distance)[0]!;
+  return { x: closest.x, y: closest.y };
+}
+
+function clampInteger(value: number, minimum: number, maximum: number): number {
+  return Math.min(Math.max(value, minimum), maximum);
 }
 
 function requireSupportedButton(button: number): RemoteMouseButton {

@@ -3,7 +3,7 @@ import { test } from 'node:test';
 
 import { approveRemoteControlWithScreen } from '../renderer/remote-control-permission-flow.js';
 
-test('seleciona e compartilha a tela antes de aprovar o controle remoto', async () => {
+test('compartilha todos os monitores antes de aprovar o controle remoto', async () => {
   let sharing = false;
   const actions: string[] = [];
 
@@ -23,7 +23,7 @@ test('seleciona e compartilha a tela antes de aprovar o controle remoto', async 
   assert.deepEqual(snapshot, { status: 'active' });
 });
 
-test('não aprova se o aluno cancelar a seleção da tela', async () => {
+test('não aprova se o compartilhamento de todos os monitores falhar', async () => {
   let approvalCalled = false;
 
   await assert.rejects(
@@ -34,7 +34,7 @@ test('não aprova se o aluno cancelar a seleção da tela', async () => {
         approvalCalled = true;
       },
     }),
-    /Selecione uma tela inteira/,
+    /Não foi possível compartilhar todos os monitores/,
   );
   assert.equal(approvalCalled, false);
 });

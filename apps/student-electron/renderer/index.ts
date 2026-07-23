@@ -11,6 +11,7 @@ import {
   type DesktopWorkflowSnapshot,
 } from '../shared/contracts.js';
 import type { StudentRemoteControlSnapshot } from '../shared/remote-control-contracts.js';
+import { AllScreensCompositeCapture } from './all-screens-composer.js';
 import { getTranslations } from './i18n.js';
 import { approveRemoteControlWithScreen } from './remote-control-permission-flow.js';
 import { createDesktopViewModel } from './view-model.js';
@@ -53,6 +54,7 @@ let peerConnection: RTCPeerConnection | undefined;
 let cameraSender: RTCRtpSender | undefined;
 let microphoneSender: RTCRtpSender | undefined;
 let screenSender: RTCRtpSender | undefined;
+let allScreensCapture: AllScreensCompositeCapture | undefined;
 let isStoppingScreenShare = false;
 let isPreparingInitialMedia = false;
 let lastMediaSnapshot: MediaDeviceSnapshot | undefined;
@@ -207,7 +209,7 @@ shareButton.addEventListener('click', () => {
   }
   shareButton.disabled = true;
   if (mediaDeviceManager.screenShare.getStatus().state !== ScreenShareState.SHARING) {
-    screenStatus.textContent = 'Aguardando seleção da tela...';
+    screenStatus.textContent = 'Preparando todos os monitores...';
     screenIndicator.dataset.indicator = 'pending';
   }
   const action =
@@ -268,7 +270,7 @@ approveRemoteControlButton.addEventListener('click', () => {
   statusMessage.textContent =
     mediaDeviceManager.screenShare.getStatus().state === ScreenShareState.SHARING
       ? 'Autorizando controle remoto...'
-      : 'Selecione a tela inteira que o professor poderá controlar.';
+      : 'Preparando o compartilhamento de todos os monitores...';
   void approveRemoteControlWithScreen({
     isScreenSharing: () =>
       mediaDeviceManager.screenShare.getStatus().state === ScreenShareState.SHARING,
@@ -523,22 +525,38 @@ async function startScreenShare(): Promise<void> {
 
   let professorWasNotified = false;
   try {
-    const stream = await mediaDeviceManager.screenShare.start();
-    if (stream === undefined) {
+    const layout = await window.professorConnectWebRtc.prepareAllScreensCapture();
+    const firstSourceStream = await mediaDeviceManager.screenShare.start();
+    if (firstSourceStream === undefined) {
       return;
     }
+    const compositeCapture = await AllScreensCompositeCapture.start(
+      layout,
+      firstSourceStream,
+      () => navigator.mediaDevices.getDisplayMedia({ video: true, audio: false }),
+      () => {
+        void stopScreenShare(true);
+      },
+    );
+    const stream = compositeCapture.stream;
     const track = stream.getVideoTracks()[0];
     if (track === undefined) {
+      compositeCapture.dispose();
       mediaDeviceManager.screenShare.stop();
-      return;
+      throw new Error('A composição dos monitores não possui faixa de vídeo');
     }
     if (activeWebRtcSessionId !== sessionId || peerConnection !== connection) {
+      compositeCapture.dispose();
       mediaDeviceManager.screenShare.stop();
       return;
     }
 
+    allScreensCapture = compositeCapture;
     screenSender = connection.addTrack(track, stream);
-    statusMessage.textContent = 'Compartilhando tela com o professor.';
+    statusMessage.textContent =
+      layout.displays.length === 1
+        ? 'Compartilhando o monitor com o professor.'
+        : `Compartilhando ${layout.displays.length} monitores com o professor.`;
     await window.professorConnectWebRtc.sendScreenShareStart({
       sessionId,
       streamId: stream.id,
@@ -563,7 +581,11 @@ async function stopScreenShare(notifyProfessor: boolean): Promise<void> {
   }
   const sessionId = activeWebRtcSessionId;
   const connection = peerConnection;
-  if (mediaDeviceManager.screenShare.getStream() === undefined && screenSender === undefined) {
+  if (
+    mediaDeviceManager.screenShare.getStream() === undefined &&
+    screenSender === undefined &&
+    allScreensCapture === undefined
+  ) {
     return;
   }
 
@@ -591,6 +613,8 @@ function cleanupScreenShare(connection = peerConnection, stopCapture = false): v
     connection?.removeTrack(screenSender);
   }
   screenSender = undefined;
+  allScreensCapture?.dispose();
+  allScreensCapture = undefined;
   if (stopCapture) {
     mediaDeviceManager.screenShare.stop();
   }
@@ -692,7 +716,7 @@ function renderMediaDevices(snapshot: MediaDeviceSnapshot): void {
   shareButton.textContent =
     snapshot.screenShare.state === ScreenShareState.SHARING
       ? 'Parar Compartilhamento'
-      : 'Compartilhar Tela';
+      : 'Compartilhar Todas as Telas';
   deviceScanMessage.textContent = snapshot.scanError ?? '';
   deviceScanMessage.hidden = snapshot.scanError === undefined;
 

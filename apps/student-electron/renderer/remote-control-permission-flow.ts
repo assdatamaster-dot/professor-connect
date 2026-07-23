@@ -12,7 +12,7 @@ export async function approveRemoteControlWithScreen<TSnapshot>(
   }
   if (!flow.isScreenSharing()) {
     throw new Error(
-      'Selecione uma tela inteira para compartilhar antes de permitir o controle remoto.',
+      'Não foi possível compartilhar todos os monitores antes de permitir o controle remoto.',
     );
   }
   return flow.approveRemoteControl();

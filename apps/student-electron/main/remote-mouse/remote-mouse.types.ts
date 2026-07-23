@@ -4,6 +4,14 @@ export interface RemoteMouseBounds {
   readonly width: number;
   readonly height: number;
   readonly sourceName: string;
+  readonly regions?: readonly RemoteMouseRegion[];
+}
+
+export interface RemoteMouseRegion {
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+  readonly height: number;
 }
 
 export interface RemoteMouseBoundsProvider {
