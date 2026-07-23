@@ -12,6 +12,7 @@ import {
 } from '../shared/contracts.js';
 import type { StudentRemoteControlSnapshot } from '../shared/remote-control-contracts.js';
 import { getTranslations } from './i18n.js';
+import { approveRemoteControlWithScreen } from './remote-control-permission-flow.js';
 import { createDesktopViewModel } from './view-model.js';
 
 const translations = getTranslations();
@@ -264,8 +265,16 @@ endButton.addEventListener('click', () => {
 approveRemoteControlButton.addEventListener('click', () => {
   approveRemoteControlButton.disabled = true;
   denyRemoteControlButton.disabled = true;
-  void window.professorConnectSession
-    .approveRemoteControl()
+  statusMessage.textContent =
+    mediaDeviceManager.screenShare.getStatus().state === ScreenShareState.SHARING
+      ? 'Autorizando controle remoto...'
+      : 'Selecione a tela inteira que o professor poderá controlar.';
+  void approveRemoteControlWithScreen({
+    isScreenSharing: () =>
+      mediaDeviceManager.screenShare.getStatus().state === ScreenShareState.SHARING,
+    startScreenShare,
+    approveRemoteControl: () => window.professorConnectSession.approveRemoteControl(),
+  })
     .then((snapshot) => {
       renderRemoteControl(snapshot.remoteControl);
     })
@@ -544,6 +553,7 @@ async function startScreenShare(): Promise<void> {
     }
     statusMessage.textContent =
       error instanceof Error ? error.message : 'Não foi possível compartilhar a tela.';
+    throw error;
   }
 }
 

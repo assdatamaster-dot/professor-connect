@@ -78,11 +78,12 @@ exige uma tela inteira para não inferir limites inseguros.
 1. O professor solicita o controle na sessão ativa.
 2. O backend confirma professor, aluno e sessão e registra uma autorização pendente.
 3. O aluno recebe “O professor deseja controlar seu computador.”.
-4. Ao clicar **Permitir**, o aluno valida se há uma tela inteira compartilhada e inicializa o
-   executor.
-5. Só depois dessa validação o aluno emite `remote-control:approved`.
-6. O professor começa a capturar mouse somente depois de receber o aceite.
-7. **Negar** remove a autorização sem inicializar o executor.
+4. Ao clicar **Permitir**, se ainda não houver uma tela compartilhada, o aplicativo abre primeiro o
+   seletor de tela. Cancelar essa seleção mantém a solicitação pendente e não autoriza o controle.
+5. Com a tela inteira selecionada, o aluno valida o monitor e inicializa o executor.
+6. Só depois dessa validação o aluno emite `remote-control:approved`.
+7. O professor começa a capturar mouse somente depois de receber o aceite.
+8. **Negar** remove a autorização sem inicializar o executor.
 
 ## Encerramento seguro
 
