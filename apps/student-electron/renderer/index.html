@@ -48,14 +48,95 @@
             <p>O professor selecionado receberá sua solicitação.</p>
           </div>
 
+          <section class="media-panel" aria-labelledby="media-panel-title">
+            <div class="media-panel__heading">
+              <div>
+                <span class="eyebrow">DISPOSITIVOS</span>
+                <h3 id="media-panel-title">Áudio e vídeo</h3>
+              </div>
+              <span
+                id="device-scan-message"
+                class="media-panel__notice"
+                role="status"
+                hidden
+              ></span>
+            </div>
+            <div class="media-device-grid">
+              <article class="media-device-card">
+                <div class="media-device-card__icon" aria-hidden="true">📷</div>
+                <div class="media-device-card__content">
+                  <h4>Câmera</h4>
+                  <p class="device-status">
+                    <span
+                      id="camera-indicator"
+                      class="device-indicator"
+                      data-indicator="unavailable"
+                    ></span>
+                    <span id="camera-status">Verificando câmera...</span>
+                  </p>
+                </div>
+                <button id="toggle-camera" class="button button--device" type="button" disabled>
+                  Ligar
+                </button>
+              </article>
+              <article class="media-device-card">
+                <div class="media-device-card__icon" aria-hidden="true">🎤</div>
+                <div class="media-device-card__content">
+                  <h4>Microfone</h4>
+                  <p class="device-status">
+                    <span
+                      id="microphone-indicator"
+                      class="device-indicator"
+                      data-indicator="unavailable"
+                    ></span>
+                    <span id="microphone-status">Verificando microfone...</span>
+                  </p>
+                </div>
+                <button id="toggle-microphone" class="button button--device" type="button" disabled>
+                  Ativar
+                </button>
+              </article>
+              <article class="media-device-card">
+                <div class="media-device-card__icon" aria-hidden="true">🖥️</div>
+                <div class="media-device-card__content">
+                  <h4>Compartilhamento de tela</h4>
+                  <p class="device-status">
+                    <span
+                      id="screen-indicator"
+                      class="device-indicator"
+                      data-indicator="inactive"
+                    ></span>
+                    <span id="screen-status">Não compartilhando.</span>
+                  </p>
+                </div>
+                <button id="share-screen" class="button button--device" type="button" disabled>
+                  Compartilhar Tela
+                </button>
+              </article>
+            </div>
+          </section>
+
           <div id="media-section" class="media-area" hidden>
             <div class="video-grid">
               <figure class="video-card video-card--remote">
                 <video id="remote-video" autoplay playsinline></video>
+                <div id="remote-video-placeholder" class="video-placeholder">
+                  <span aria-hidden="true">👤</span>
+                  <strong>Vídeo do professor indisponível</strong>
+                  <small>A sessão continua ativa normalmente.</small>
+                </div>
                 <figcaption>Professor</figcaption>
               </figure>
               <figure class="video-card video-card--local">
-                <video id="local-video" autoplay muted playsinline></video>
+                <video id="local-video" autoplay muted playsinline hidden></video>
+                <div
+                  id="local-video-placeholder"
+                  class="video-placeholder video-placeholder--local"
+                >
+                  <span aria-hidden="true">📷</span>
+                  <strong id="local-video-placeholder-title">Câmera desligada</strong>
+                  <small>Você ainda pode participar normalmente.</small>
+                </div>
                 <figcaption>Você</figcaption>
               </figure>
             </div>
@@ -65,9 +146,6 @@
                 <strong id="remote-control-text">Não autorizado</strong>
               </div>
               <div class="button-group">
-                <button id="share-screen" class="button button--secondary" type="button">
-                  Compartilhar Tela
-                </button>
                 <button id="end-attendance" class="button button--danger" type="button">
                   Encerrar Atendimento
                 </button>

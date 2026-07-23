@@ -4,6 +4,31 @@ export {
   MediaService,
 } from './modules/webrtc/media.service.js';
 export {
+  CAMERA_STATUS,
+  CameraState,
+  MICROPHONE_STATUS,
+  MicrophoneState,
+  SCREEN_SHARE_STATUS,
+  ScreenShareState,
+  type DeviceIndicator,
+  type DeviceStatus,
+} from './client/core/media-devices/device-status.js';
+export { CameraController } from './client/core/media-devices/camera.controller.js';
+export { MicrophoneController } from './client/core/media-devices/microphone.controller.js';
+export { ScreenShareController } from './client/core/media-devices/screen-share.controller.js';
+export {
+  BrowserMediaDevicesAdapter,
+  MediaDeviceManager,
+} from './client/core/media-devices/media-device.manager.js';
+export type {
+  MediaDeviceListener,
+  MediaDeviceLogger,
+  MediaDeviceManagerOptions,
+  MediaDeviceSnapshot,
+  MediaDevicesAdapter,
+  MediaInputDevice,
+} from './client/core/media-devices/media-device.types.js';
+export {
   BrowserRtcMediaDevices,
   BrowserVideoRenderer,
   DEFAULT_RTC_MEDIA_SETTINGS,

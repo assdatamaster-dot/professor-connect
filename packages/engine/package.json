@@ -16,7 +16,7 @@
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "lint": "eslint src tests --max-warnings=0",
     "pretest": "npm run build --workspace=@professor-connect/protocol --workspace=@professor-connect/services",
-    "test": "tsx --test --test-force-exit tests/webrtc.spec.ts tests/data-channel.spec.ts tests/rtc-engine.spec.ts tests/screen-sharing.spec.ts tests/remote-control.spec.ts tests/workflow.spec.ts tests/end-to-end.spec.ts",
+    "test": "tsx --test --test-force-exit tests/webrtc.spec.ts tests/data-channel.spec.ts tests/rtc-engine.spec.ts tests/screen-sharing.spec.ts tests/media-device-manager.spec.ts tests/remote-control.spec.ts tests/workflow.spec.ts tests/end-to-end.spec.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tests/tsconfig.json --noEmit"
   },
   "dependencies": {

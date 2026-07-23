@@ -38,20 +38,99 @@
               <dd id="server-status">Conectado</dd>
             </div>
           </dl>
+          <section class="media-panel" aria-labelledby="media-panel-title">
+            <div class="media-panel__heading">
+              <div>
+                <p class="eyebrow">Dispositivos</p>
+                <h2 id="media-panel-title">Áudio e vídeo</h2>
+              </div>
+              <span
+                id="device-scan-message"
+                class="device-scan-message"
+                role="status"
+                hidden
+              ></span>
+            </div>
+            <div class="media-device-grid">
+              <article class="media-device-card">
+                <span class="media-device-icon" aria-hidden="true">📷</span>
+                <div>
+                  <h3>Câmera</h3>
+                  <p class="device-status">
+                    <span
+                      id="camera-indicator"
+                      class="device-indicator"
+                      data-indicator="unavailable"
+                    ></span>
+                    <span id="camera-status">Verificando câmera...</span>
+                  </p>
+                </div>
+                <button id="toggle-camera" class="device-button" type="button" disabled>
+                  Ligar
+                </button>
+              </article>
+              <article class="media-device-card">
+                <span class="media-device-icon" aria-hidden="true">🎤</span>
+                <div>
+                  <h3>Microfone</h3>
+                  <p class="device-status">
+                    <span
+                      id="microphone-indicator"
+                      class="device-indicator"
+                      data-indicator="unavailable"
+                    ></span>
+                    <span id="microphone-status">Verificando microfone...</span>
+                  </p>
+                </div>
+                <button id="toggle-microphone" class="device-button" type="button" disabled>
+                  Ativar
+                </button>
+              </article>
+              <article class="media-device-card">
+                <span class="media-device-icon" aria-hidden="true">🖥️</span>
+                <div>
+                  <h3>Tela do aluno</h3>
+                  <p class="device-status">
+                    <span
+                      id="screen-indicator"
+                      class="device-indicator"
+                      data-indicator="inactive"
+                    ></span>
+                    <span id="screen-status">Não compartilhando.</span>
+                  </p>
+                </div>
+                <span class="device-availability">Independente da câmera</span>
+              </article>
+            </div>
+          </section>
           <section id="active-attendance" class="active-attendance" hidden>
             <p id="attendance-state">Aluno conectado</p>
             <strong id="active-student-name"></strong>
             <div id="webrtc-media" class="webrtc-media" hidden>
               <figure id="screen-share-view" class="screen-share-view" hidden>
                 <video id="teacher-screen-video" autoplay playsinline></video>
+                <div id="screen-video-placeholder" class="video-placeholder">
+                  <span aria-hidden="true">🖥️</span>
+                  <strong>Preparando tela compartilhada...</strong>
+                </div>
                 <figcaption>Tela Compartilhada</figcaption>
               </figure>
               <figure>
                 <video id="teacher-remote-video" autoplay playsinline></video>
+                <div id="remote-video-placeholder" class="video-placeholder">
+                  <span aria-hidden="true">👤</span>
+                  <strong>Vídeo do aluno indisponível</strong>
+                  <small>O atendimento continua ativo normalmente.</small>
+                </div>
                 <figcaption>Vídeo do Aluno</figcaption>
               </figure>
               <figure>
-                <video id="teacher-local-video" autoplay muted playsinline></video>
+                <video id="teacher-local-video" autoplay muted playsinline hidden></video>
+                <div id="local-video-placeholder" class="video-placeholder">
+                  <span aria-hidden="true">📷</span>
+                  <strong id="local-video-placeholder-title">Câmera desligada</strong>
+                  <small>O compartilhamento de tela continua disponível.</small>
+                </div>
                 <figcaption>Vídeo do Professor</figcaption>
               </figure>
             </div>

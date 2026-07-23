@@ -1,4 +1,10 @@
 import {
+  CameraState,
+  MediaDeviceManager,
+  MicrophoneState,
+  type MediaDeviceSnapshot,
+} from '@professor-connect/engine';
+import {
   ProfessorPresenceStatus,
   type ProfessorPresenceSnapshot,
 } from '../shared/presence-contracts.js';
@@ -22,18 +28,36 @@ const localVideo = requireElement<HTMLVideoElement>('teacher-local-video');
 const remoteVideo = requireElement<HTMLVideoElement>('teacher-remote-video');
 const screenShareView = requireElement<HTMLElement>('screen-share-view');
 const screenVideo = requireElement<HTMLVideoElement>('teacher-screen-video');
+const localVideoPlaceholder = requireElement<HTMLElement>('local-video-placeholder');
+const localVideoPlaceholderTitle = requireElement<HTMLElement>('local-video-placeholder-title');
+const remoteVideoPlaceholder = requireElement<HTMLElement>('remote-video-placeholder');
+const screenVideoPlaceholder = requireElement<HTMLElement>('screen-video-placeholder');
+const cameraStatus = requireElement<HTMLElement>('camera-status');
+const cameraIndicator = requireElement<HTMLElement>('camera-indicator');
+const cameraButton = requireElement<HTMLButtonElement>('toggle-camera');
+const microphoneStatus = requireElement<HTMLElement>('microphone-status');
+const microphoneIndicator = requireElement<HTMLElement>('microphone-indicator');
+const microphoneButton = requireElement<HTMLButtonElement>('toggle-microphone');
+const screenStatus = requireElement<HTMLElement>('screen-status');
+const screenIndicator = requireElement<HTMLElement>('screen-indicator');
+const deviceScanMessage = requireElement<HTMLElement>('device-scan-message');
 const sessionDialog = requireElement<HTMLDialogElement>('session-request-dialog');
 const requestStudentName = requireElement<HTMLElement>('request-student-name');
 const acceptSessionButton = requireElement<HTMLButtonElement>('accept-session');
 const rejectSessionButton = requireElement<HTMLButtonElement>('reject-session');
 let activeRequestId: string | undefined;
+const mediaDeviceManager = new MediaDeviceManager();
 let peerConnection: RTCPeerConnection | undefined;
-let localStream: MediaStream | undefined;
+let cameraSender: RTCRtpSender | undefined;
+let microphoneSender: RTCRtpSender | undefined;
+let isPreparingInitialMedia = false;
 let activeWebRtcSessionId: string | undefined;
 const pendingIceCandidates = new Map<string, RTCIceCandidateInit[]>();
 const remoteStreams = new Map<string, MediaStream>();
+let remoteMediaStream = new MediaStream();
 let announcedScreenStreamId: string | undefined;
 let announcedScreenTrackId: string | undefined;
+let renegotiationQueue = Promise.resolve();
 
 function render(snapshot: ProfessorPresenceSnapshot): void {
   const isActive = snapshot.professorName !== undefined;
@@ -149,6 +173,35 @@ endSessionButton.addEventListener('click', () => {
     endSessionButton.disabled = false;
   });
 });
+cameraButton.addEventListener('click', () => {
+  cameraButton.disabled = true;
+  if (mediaDeviceManager.camera.getStatus().state !== CameraState.ACTIVE) {
+    cameraStatus.textContent = 'Solicitando permissão para câmera...';
+    cameraIndicator.dataset.indicator = 'pending';
+  }
+  const action =
+    mediaDeviceManager.camera.getStatus().state === CameraState.ACTIVE
+      ? Promise.resolve(mediaDeviceManager.camera.stop())
+      : mediaDeviceManager.camera.start();
+  void action.finally(() => {
+    cameraButton.disabled = mediaDeviceManager.camera.getStatus().state === CameraState.NOT_FOUND;
+  });
+});
+microphoneButton.addEventListener('click', () => {
+  microphoneButton.disabled = true;
+  if (mediaDeviceManager.microphone.getStatus().state !== MicrophoneState.ACTIVE) {
+    microphoneStatus.textContent = 'Solicitando permissão para microfone...';
+    microphoneIndicator.dataset.indicator = 'pending';
+  }
+  const action =
+    mediaDeviceManager.microphone.getStatus().state === MicrophoneState.ACTIVE
+      ? Promise.resolve(mediaDeviceManager.microphone.mute())
+      : mediaDeviceManager.microphone.start();
+  void action.finally(() => {
+    microphoneButton.disabled =
+      mediaDeviceManager.microphone.getStatus().state === MicrophoneState.NOT_FOUND;
+  });
+});
 
 const unsubscribe = window.professorConnectPresence.onStateChanged(render);
 const unsubscribeAnswer = window.professorConnectWebRtc.onAnswer((payload) => {
@@ -179,6 +232,8 @@ const unsubscribeScreenShareStarted = window.professorConnectWebRtc.onScreenShar
       screenVideo.srcObject = announcedStream;
     }
     screenShareView.hidden = false;
+    screenStatus.textContent = 'Compartilhando tela.';
+    screenIndicator.dataset.indicator = 'active';
     attendanceState.textContent = 'Tela compartilhada';
   },
 );
@@ -186,10 +241,18 @@ const unsubscribeScreenShareStopped = window.professorConnectWebRtc.onScreenShar
   (payload) => {
     if (payload.sessionId === activeWebRtcSessionId) {
       hideScreenShare();
+      screenStatus.textContent = 'Compartilhamento encerrado.';
+      screenIndicator.dataset.indicator = 'inactive';
       attendanceState.textContent = 'Aluno conectado';
     }
   },
 );
+const unsubscribeMediaDevices = mediaDeviceManager.subscribe((snapshot) => {
+  renderMediaDevices(snapshot);
+  void synchronizeLocalTracks(snapshot).catch(() => {
+    attendanceState.textContent = 'Não foi possível atualizar os dispositivos da sessão.';
+  });
+});
 window.addEventListener(
   'beforeunload',
   () => {
@@ -199,11 +262,14 @@ window.addEventListener(
     unsubscribeIce();
     unsubscribeScreenShareStarted();
     unsubscribeScreenShareStopped();
+    unsubscribeMediaDevices();
     closeWebRtcSession();
+    mediaDeviceManager.dispose();
   },
   { once: true },
 );
 void window.professorConnectPresence.getState().then(render);
+void mediaDeviceManager.initialize();
 
 async function startTeacherWebRtc(sessionId: string): Promise<void> {
   closeWebRtcSession();
@@ -214,6 +280,8 @@ async function startTeacherWebRtc(sessionId: string): Promise<void> {
   });
 
   peerConnection = connection;
+  connection.addTransceiver('audio', { direction: 'sendrecv' });
+  connection.addTransceiver('video', { direction: 'sendrecv' });
   connection.onicecandidate = (event) => {
     if (event.candidate !== null && activeWebRtcSessionId === sessionId) {
       void window.professorConnectWebRtc
@@ -231,16 +299,16 @@ async function startTeacherWebRtc(sessionId: string): Promise<void> {
   };
 
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    isPreparingInitialMedia = true;
+    await Promise.allSettled([
+      mediaDeviceManager.camera.start(),
+      mediaDeviceManager.microphone.start(),
+    ]);
+    isPreparingInitialMedia = false;
     if (activeWebRtcSessionId !== sessionId || peerConnection !== connection) {
-      stopMediaStream(stream);
       return;
     }
-    localStream = stream;
-    localVideo.srcObject = stream;
-    for (const track of stream.getTracks()) {
-      connection.addTrack(track, stream);
-    }
+    await synchronizeLocalTracks(mediaDeviceManager.getSnapshot());
     webRtcMedia.hidden = false;
     attendanceState.textContent = 'Aluno conectado';
 
@@ -298,25 +366,29 @@ function assignRemoteTrack(event: RTCTrackEvent): void {
   remoteStreams.set(stream.id, stream);
   const isAnnouncedScreen =
     stream.id === announcedScreenStreamId || event.track.id === announcedScreenTrackId;
-  const cameraStream = remoteVideo.srcObject;
+  const cameraStream = remoteMediaStream;
   const isAdditionalVideo =
-    event.track.kind === 'video' &&
-    cameraStream instanceof MediaStream &&
-    cameraStream.id !== stream.id;
+    event.track.kind === 'video' && cameraStream.getVideoTracks().length > 0;
 
   if (isAnnouncedScreen || isAdditionalVideo) {
     screenVideo.srcObject = stream;
     screenShareView.hidden = false;
     return;
   }
-  remoteVideo.srcObject = stream;
+  if (!cameraStream.getTracks().some((track) => track.id === event.track.id)) {
+    cameraStream.addTrack(event.track);
+  }
+  remoteVideo.srcObject = cameraStream;
 }
 
 function hideScreenShare(): void {
   screenVideo.srcObject = null;
+  screenVideoPlaceholder.hidden = false;
   screenShareView.hidden = true;
   announcedScreenStreamId = undefined;
   announcedScreenTrackId = undefined;
+  screenStatus.textContent = 'Não compartilhando.';
+  screenIndicator.dataset.indicator = 'inactive';
 }
 
 async function handleRemoteIceCandidate(
@@ -370,12 +442,14 @@ function closeWebRtcSession(resetStatus = true): void {
     peerConnection.close();
     peerConnection = undefined;
   }
-  if (localStream !== undefined) {
-    stopMediaStream(localStream);
-    localStream = undefined;
-  }
+  cameraSender = undefined;
+  microphoneSender = undefined;
+  mediaDeviceManager.camera.stop();
+  mediaDeviceManager.microphone.mute();
   localVideo.srcObject = null;
   remoteVideo.srcObject = null;
+  remoteMediaStream = new MediaStream();
+  remoteVideoPlaceholder.hidden = false;
   hideScreenShare();
   remoteStreams.clear();
   webRtcMedia.hidden = true;
@@ -384,8 +458,118 @@ function closeWebRtcSession(resetStatus = true): void {
   }
 }
 
-function stopMediaStream(stream: MediaStream): void {
-  for (const track of stream.getTracks()) {
-    track.stop();
+function renderMediaDevices(snapshot: MediaDeviceSnapshot): void {
+  cameraStatus.textContent = snapshot.camera.message;
+  cameraIndicator.dataset.indicator = snapshot.camera.indicator;
+  cameraButton.textContent = snapshot.camera.state === CameraState.ACTIVE ? 'Desligar' : 'Ligar';
+  cameraButton.disabled = snapshot.camera.state === CameraState.NOT_FOUND;
+  microphoneStatus.textContent = snapshot.microphone.message;
+  microphoneIndicator.dataset.indicator = snapshot.microphone.indicator;
+  microphoneButton.textContent =
+    snapshot.microphone.state === MicrophoneState.ACTIVE ? 'Mutar' : 'Ativar';
+  microphoneButton.disabled = snapshot.microphone.state === MicrophoneState.NOT_FOUND;
+  deviceScanMessage.textContent = snapshot.scanError ?? '';
+  deviceScanMessage.hidden = snapshot.scanError === undefined;
+
+  const cameraActive = snapshot.camera.state === CameraState.ACTIVE;
+  localVideo.hidden = !cameraActive;
+  localVideoPlaceholder.hidden =
+    cameraActive && localVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
+  localVideoPlaceholderTitle.textContent =
+    snapshot.camera.state === CameraState.NOT_FOUND
+      ? 'Nenhuma câmera detectada'
+      : snapshot.camera.message;
+}
+
+async function synchronizeLocalTracks(snapshot: MediaDeviceSnapshot): Promise<void> {
+  const connection = peerConnection;
+  if (connection === undefined || connection.signalingState === 'closed') {
+    return;
+  }
+
+  let changed = false;
+  const cameraStream = mediaDeviceManager.camera.getStream();
+  if (snapshot.camera.state === CameraState.ACTIVE && cameraStream !== undefined) {
+    const track = cameraStream.getVideoTracks()[0];
+    if (track !== undefined && cameraSender?.track !== track) {
+      cameraSender = connection.addTrack(track, cameraStream);
+      localVideo.srcObject = cameraStream;
+      changed = true;
+    }
+  } else if (cameraSender !== undefined) {
+    connection.removeTrack(cameraSender);
+    cameraSender = undefined;
+    localVideo.srcObject = null;
+    changed = true;
+  }
+
+  const microphoneStream = mediaDeviceManager.microphone.getStream();
+  if (snapshot.microphone.state === MicrophoneState.ACTIVE && microphoneStream !== undefined) {
+    const track = microphoneStream.getAudioTracks()[0];
+    if (track !== undefined && microphoneSender?.track !== track) {
+      microphoneSender = connection.addTrack(track, microphoneStream);
+      changed = true;
+    }
+  } else if (microphoneSender !== undefined) {
+    connection.removeTrack(microphoneSender);
+    microphoneSender = undefined;
+    changed = true;
+  }
+
+  if (
+    changed &&
+    !isPreparingInitialMedia &&
+    activeWebRtcSessionId !== undefined &&
+    connection.signalingState === 'stable'
+  ) {
+    await queueRenegotiation(activeWebRtcSessionId, connection);
   }
 }
+
+function queueRenegotiation(sessionId: string, connection: RTCPeerConnection): Promise<void> {
+  const next = renegotiationQueue
+    .catch(() => undefined)
+    .then(async () => {
+      if (
+        activeWebRtcSessionId !== sessionId ||
+        peerConnection !== connection ||
+        connection.signalingState !== 'stable'
+      ) {
+        return;
+      }
+      await renegotiateAsOfferer(sessionId, connection);
+    });
+  renegotiationQueue = next;
+  return next;
+}
+
+async function renegotiateAsOfferer(
+  sessionId: string,
+  connection: RTCPeerConnection,
+): Promise<void> {
+  const offer = await connection.createOffer();
+  await connection.setLocalDescription(offer);
+  if (offer.sdp === undefined) {
+    throw new Error('Offer de mídia sem SDP');
+  }
+  await window.professorConnectWebRtc.sendOffer({
+    sessionId,
+    description: { type: 'offer', sdp: offer.sdp },
+  });
+}
+
+remoteVideo.addEventListener('loadeddata', () => {
+  remoteVideoPlaceholder.hidden = remoteVideo.videoWidth > 0;
+});
+remoteVideo.addEventListener('emptied', () => {
+  remoteVideoPlaceholder.hidden = false;
+});
+localVideo.addEventListener('loadeddata', () => {
+  localVideoPlaceholder.hidden = localVideo.videoWidth > 0;
+});
+localVideo.addEventListener('emptied', () => {
+  localVideoPlaceholder.hidden = false;
+});
+screenVideo.addEventListener('loadeddata', () => {
+  screenVideoPlaceholder.hidden = screenVideo.videoWidth > 0;
+});

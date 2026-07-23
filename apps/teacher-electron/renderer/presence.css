@@ -48,6 +48,10 @@ input {
   width: min(980px, 100%);
 }
 
+.presence-card:has(#online-view:not([hidden])) {
+  width: min(980px, 100%);
+}
+
 .presence-card > img {
   display: block;
   margin: 0 auto 24px;
@@ -151,6 +155,33 @@ button:disabled {
   background: #17213a;
 }
 
+.video-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 5px;
+  padding: 18px;
+  background: linear-gradient(145deg, #27344f, #172138);
+  color: #fff;
+  text-align: center;
+}
+
+.video-placeholder > span {
+  font-size: 1.6rem;
+}
+
+.video-placeholder strong {
+  font-size: 0.78rem;
+}
+
+.video-placeholder small {
+  color: #c4ccdb;
+  font-size: 0.64rem;
+}
+
 .webrtc-media video {
   display: block;
   width: 100%;
@@ -184,6 +215,127 @@ button:disabled {
   padding: 18px;
   border-radius: 14px;
   background: #f7f9fd;
+}
+
+.media-panel {
+  margin-top: 16px;
+  padding: 18px;
+  border: 1px solid #e1e7f0;
+  border-radius: 14px;
+  background: #f7f9fd;
+}
+
+.media-panel__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.media-panel__heading .eyebrow,
+.media-panel__heading h2,
+.media-device-card h3,
+.device-status {
+  margin: 0;
+  text-align: left;
+}
+
+.media-panel__heading h2 {
+  margin-top: 3px;
+  font-size: 1.05rem;
+}
+
+.device-scan-message {
+  max-width: 300px;
+  color: #c43e4d;
+  font-size: 0.74rem;
+  text-align: right;
+}
+
+.media-device-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.media-device-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 9px;
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid #e0e6f0;
+  border-radius: 12px;
+  background: #fff;
+  text-align: left;
+}
+
+.media-device-icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 9px;
+  background: #edf1ff;
+}
+
+.media-device-card h3 {
+  overflow: hidden;
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-height: 32px;
+  margin-top: 4px;
+  color: #69748b;
+  font-size: 0.68rem;
+  line-height: 1.3;
+}
+
+.device-indicator {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  margin-top: 2px;
+  border-radius: 50%;
+  background: #9ba5b7;
+}
+
+.device-indicator[data-indicator='active'] {
+  background: #24a36a;
+  box-shadow: 0 0 0 3px rgb(36 163 106 / 13%);
+}
+
+.device-indicator[data-indicator='inactive'],
+.device-indicator[data-indicator='error'] {
+  background: #d84b5b;
+}
+
+.device-indicator[data-indicator='pending'] {
+  background: #eaa630;
+}
+
+.device-button {
+  grid-column: 1 / -1;
+  min-height: 34px;
+  padding: 7px 10px;
+  background: #edf1ff;
+  color: #344fb0;
+  font-size: 0.72rem;
+}
+
+.device-availability {
+  grid-column: 1 / -1;
+  align-self: center;
+  color: #69748b;
+  font-size: 0.68rem;
+  text-align: center;
 }
 
 .status-list div {
@@ -237,4 +389,24 @@ button:disabled {
 
 [hidden] {
   display: none !important;
+}
+
+@media (max-width: 760px) {
+  .presence-card {
+    padding: 26px;
+  }
+
+  .media-device-grid,
+  .webrtc-media {
+    grid-template-columns: 1fr;
+  }
+
+  .media-panel__heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .device-scan-message {
+    text-align: left;
+  }
 }

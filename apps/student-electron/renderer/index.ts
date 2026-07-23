@@ -1,4 +1,11 @@
 import {
+  CameraState,
+  MediaDeviceManager,
+  MicrophoneState,
+  ScreenShareState,
+  type MediaDeviceSnapshot,
+} from '@professor-connect/engine';
+import {
   DesktopConnectionStatus,
   DesktopLogLevel,
   type DesktopWorkflowSnapshot,
@@ -21,12 +28,29 @@ const callSection = requireElement<HTMLElement>('call-section');
 const logList = requireElement<HTMLUListElement>('log-list');
 const localVideo = requireElement<HTMLVideoElement>('local-video');
 const remoteVideo = requireElement<HTMLVideoElement>('remote-video');
+const localVideoPlaceholder = requireElement<HTMLElement>('local-video-placeholder');
+const localVideoPlaceholderTitle = requireElement<HTMLElement>('local-video-placeholder-title');
+const remoteVideoPlaceholder = requireElement<HTMLElement>('remote-video-placeholder');
+const cameraStatus = requireElement<HTMLElement>('camera-status');
+const cameraIndicator = requireElement<HTMLElement>('camera-indicator');
+const cameraButton = requireElement<HTMLButtonElement>('toggle-camera');
+const microphoneStatus = requireElement<HTMLElement>('microphone-status');
+const microphoneIndicator = requireElement<HTMLElement>('microphone-indicator');
+const microphoneButton = requireElement<HTMLButtonElement>('toggle-microphone');
+const screenStatus = requireElement<HTMLElement>('screen-status');
+const screenIndicator = requireElement<HTMLElement>('screen-indicator');
+const deviceScanMessage = requireElement<HTMLElement>('device-scan-message');
+const mediaDeviceManager = new MediaDeviceManager();
 let peerConnection: RTCPeerConnection | undefined;
-let localStream: MediaStream | undefined;
-let screenStream: MediaStream | undefined;
+let cameraSender: RTCRtpSender | undefined;
+let microphoneSender: RTCRtpSender | undefined;
 let screenSender: RTCRtpSender | undefined;
 let isStoppingScreenShare = false;
+let isPreparingInitialMedia = false;
+let lastMediaSnapshot: MediaDeviceSnapshot | undefined;
 let activeWebRtcSessionId: string | undefined;
+let remoteMediaStream = new MediaStream();
+let renegotiationQueue = Promise.resolve();
 const pendingIceCandidates = new Map<string, RTCIceCandidateInit[]>();
 
 function render(snapshot: DesktopWorkflowSnapshot): void {
@@ -36,9 +60,8 @@ function render(snapshot: DesktopWorkflowSnapshot): void {
   attendanceText.textContent = view.attendanceLabel;
   statusMessage.textContent = view.statusMessage;
   remoteControlText.textContent = view.remoteControlLabel;
-  shareButton.textContent = view.screenShareLabel;
   callButton.disabled = !view.isCallButtonEnabled || teacherSelect.value.length === 0;
-  shareButton.disabled = !view.isShareButtonEnabled;
+  shareButton.disabled = activeWebRtcSessionId === undefined && !view.isShareButtonEnabled;
   endButton.disabled = !view.isEndButtonEnabled;
   const hasActiveWebRtcSession = activeWebRtcSessionId !== undefined;
   mediaSection.hidden = !hasActiveWebRtcSession && !view.isMediaVisible;
@@ -127,7 +150,14 @@ shareButton.addEventListener('click', () => {
     return;
   }
   shareButton.disabled = true;
-  const action = screenStream === undefined ? startScreenShare() : stopScreenShare(true);
+  if (mediaDeviceManager.screenShare.getStatus().state !== ScreenShareState.SHARING) {
+    screenStatus.textContent = 'Aguardando seleção da tela...';
+    screenIndicator.dataset.indicator = 'pending';
+  }
+  const action =
+    mediaDeviceManager.screenShare.getStatus().state === ScreenShareState.SHARING
+      ? stopScreenShare(true)
+      : startScreenShare();
   void action
     .catch((error: unknown) => {
       statusMessage.textContent =
@@ -136,6 +166,35 @@ shareButton.addEventListener('click', () => {
     .finally(() => {
       shareButton.disabled = activeWebRtcSessionId === undefined;
     });
+});
+cameraButton.addEventListener('click', () => {
+  cameraButton.disabled = true;
+  if (mediaDeviceManager.camera.getStatus().state !== CameraState.ACTIVE) {
+    cameraStatus.textContent = 'Solicitando permissão para câmera...';
+    cameraIndicator.dataset.indicator = 'pending';
+  }
+  const action =
+    mediaDeviceManager.camera.getStatus().state === CameraState.ACTIVE
+      ? Promise.resolve(mediaDeviceManager.camera.stop())
+      : mediaDeviceManager.camera.start();
+  void action.finally(() => {
+    cameraButton.disabled = mediaDeviceManager.camera.getStatus().state === CameraState.NOT_FOUND;
+  });
+});
+microphoneButton.addEventListener('click', () => {
+  microphoneButton.disabled = true;
+  if (mediaDeviceManager.microphone.getStatus().state !== MicrophoneState.ACTIVE) {
+    microphoneStatus.textContent = 'Solicitando permissão para microfone...';
+    microphoneIndicator.dataset.indicator = 'pending';
+  }
+  const action =
+    mediaDeviceManager.microphone.getStatus().state === MicrophoneState.ACTIVE
+      ? Promise.resolve(mediaDeviceManager.microphone.mute())
+      : mediaDeviceManager.microphone.start();
+  void action.finally(() => {
+    microphoneButton.disabled =
+      mediaDeviceManager.microphone.getStatus().state === MicrophoneState.NOT_FOUND;
+  });
 });
 endButton.addEventListener('click', () => {
   if (activeWebRtcSessionId !== undefined) {
@@ -179,6 +238,12 @@ const unsubscribeIce = window.professorConnectWebRtc.onIceCandidate((payload) =>
     statusMessage.textContent = 'Não foi possível aplicar o ICE Candidate.';
   });
 });
+const unsubscribeMediaDevices = mediaDeviceManager.subscribe((snapshot) => {
+  renderMediaDevices(snapshot);
+  void synchronizeLocalTracks(snapshot).catch(() => {
+    statusMessage.textContent = 'Não foi possível atualizar os dispositivos da sessão.';
+  });
+});
 
 window.addEventListener(
   'beforeunload',
@@ -188,7 +253,9 @@ window.addEventListener(
     unsubscribeOffer();
     unsubscribeAnswer();
     unsubscribeIce();
+    unsubscribeMediaDevices();
     closeWebRtcSession();
+    mediaDeviceManager.dispose();
   },
   { once: true },
 );
@@ -229,6 +296,7 @@ void window.professorConnect
     connectionText.textContent = translations.connection[DesktopConnectionStatus.ERROR];
     statusMessage.textContent = 'Não foi possível inicializar o aplicativo.';
   });
+void mediaDeviceManager.initialize();
 
 async function handleWebRtcOffer(
   sessionId: string,
@@ -283,22 +351,22 @@ async function createStudentPeerConnection(sessionId: string): Promise<void> {
     }
   };
   connection.ontrack = (event) => {
-    const [stream] = event.streams;
-    if (stream !== undefined) {
-      remoteVideo.srcObject = stream;
+    if (!remoteMediaStream.getTracks().some((track) => track.id === event.track.id)) {
+      remoteMediaStream.addTrack(event.track);
     }
+    remoteVideo.srcObject = remoteMediaStream;
   };
 
-  const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+  isPreparingInitialMedia = true;
+  await Promise.allSettled([
+    mediaDeviceManager.camera.start(),
+    mediaDeviceManager.microphone.start(),
+  ]);
+  isPreparingInitialMedia = false;
   if (activeWebRtcSessionId !== sessionId || peerConnection !== connection) {
-    stopMediaStream(stream);
     return;
   }
-  localStream = stream;
-  localVideo.srcObject = stream;
-  for (const track of stream.getTracks()) {
-    connection.addTrack(track, stream);
-  }
+  await synchronizeLocalTracks(mediaDeviceManager.getSnapshot());
   mediaSection.hidden = false;
   callSection.hidden = true;
   endButton.disabled = false;
@@ -319,7 +387,11 @@ async function handleWebRtcAnswer(
 async function startScreenShare(): Promise<void> {
   const sessionId = activeWebRtcSessionId;
   const connection = peerConnection;
-  if (sessionId === undefined || connection === undefined || screenStream !== undefined) {
+  if (
+    sessionId === undefined ||
+    connection === undefined ||
+    mediaDeviceManager.screenShare.getStatus().state === ScreenShareState.SHARING
+  ) {
     return;
   }
   if (connection.signalingState !== 'stable') {
@@ -328,25 +400,21 @@ async function startScreenShare(): Promise<void> {
 
   let professorWasNotified = false;
   try {
-    const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+    const stream = await mediaDeviceManager.screenShare.start();
+    if (stream === undefined) {
+      return;
+    }
     const track = stream.getVideoTracks()[0];
     if (track === undefined) {
-      stopMediaStream(stream);
-      throw new Error('Nenhuma tela foi selecionada.');
+      mediaDeviceManager.screenShare.stop();
+      return;
     }
     if (activeWebRtcSessionId !== sessionId || peerConnection !== connection) {
-      stopMediaStream(stream);
+      mediaDeviceManager.screenShare.stop();
       return;
     }
 
-    screenStream = stream;
     screenSender = connection.addTrack(track, stream);
-    track.onended = () => {
-      void stopScreenShare(true).catch(() => {
-        statusMessage.textContent = 'Não foi possível finalizar o compartilhamento.';
-      });
-    };
-    shareButton.textContent = 'Parar Compartilhamento';
     statusMessage.textContent = 'Compartilhando tela com o professor.';
     await window.professorConnectWebRtc.sendScreenShareStart({
       sessionId,
@@ -354,9 +422,9 @@ async function startScreenShare(): Promise<void> {
       trackId: track.id,
     });
     professorWasNotified = true;
-    await renegotiateAsOfferer(sessionId, connection);
+    await queueRenegotiation(sessionId, connection);
   } catch (error) {
-    cleanupScreenShare(connection);
+    cleanupScreenShare(connection, true);
     if (professorWasNotified && activeWebRtcSessionId === sessionId) {
       await window.professorConnectWebRtc.sendScreenShareStop({ sessionId }).catch(() => undefined);
     }
@@ -371,13 +439,13 @@ async function stopScreenShare(notifyProfessor: boolean): Promise<void> {
   }
   const sessionId = activeWebRtcSessionId;
   const connection = peerConnection;
-  if (screenStream === undefined) {
+  if (mediaDeviceManager.screenShare.getStream() === undefined && screenSender === undefined) {
     return;
   }
 
   isStoppingScreenShare = true;
   try {
-    cleanupScreenShare(connection);
+    cleanupScreenShare(connection, true);
     if (notifyProfessor && sessionId !== undefined) {
       await window.professorConnectWebRtc.sendScreenShareStop({ sessionId });
     }
@@ -386,7 +454,7 @@ async function stopScreenShare(notifyProfessor: boolean): Promise<void> {
       connection !== undefined &&
       connection.signalingState === 'stable'
     ) {
-      await renegotiateAsOfferer(sessionId, connection);
+      await queueRenegotiation(sessionId, connection);
     }
     statusMessage.textContent = 'Compartilhamento de tela encerrado.';
   } finally {
@@ -394,19 +462,14 @@ async function stopScreenShare(notifyProfessor: boolean): Promise<void> {
   }
 }
 
-function cleanupScreenShare(connection = peerConnection): void {
+function cleanupScreenShare(connection = peerConnection, stopCapture = false): void {
   if (screenSender !== undefined && connection?.signalingState !== 'closed') {
     connection?.removeTrack(screenSender);
   }
   screenSender = undefined;
-  if (screenStream !== undefined) {
-    for (const track of screenStream.getTracks()) {
-      track.onended = null;
-      track.stop();
-    }
-    screenStream = undefined;
+  if (stopCapture) {
+    mediaDeviceManager.screenShare.stop();
   }
-  shareButton.textContent = 'Compartilhar Tela';
 }
 
 async function renegotiateAsOfferer(
@@ -470,26 +533,138 @@ function closeWebRtcSession(): void {
     pendingIceCandidates.delete(sessionId);
   }
   if (peerConnection !== undefined) {
-    cleanupScreenShare(peerConnection);
+    cleanupScreenShare(peerConnection, true);
     peerConnection.onicecandidate = null;
     peerConnection.ontrack = null;
     peerConnection.close();
     peerConnection = undefined;
   }
-  if (localStream !== undefined) {
-    stopMediaStream(localStream);
-    localStream = undefined;
-  }
+  cameraSender = undefined;
+  microphoneSender = undefined;
+  mediaDeviceManager.camera.stop();
+  mediaDeviceManager.microphone.mute();
   localVideo.srcObject = null;
   remoteVideo.srcObject = null;
+  remoteMediaStream = new MediaStream();
+  remoteVideoPlaceholder.hidden = false;
   mediaSection.hidden = true;
   callSection.hidden = false;
   endButton.disabled = true;
   shareButton.disabled = true;
 }
 
-function stopMediaStream(stream: MediaStream): void {
-  for (const track of stream.getTracks()) {
-    track.stop();
+function renderMediaDevices(snapshot: MediaDeviceSnapshot): void {
+  cameraStatus.textContent = snapshot.camera.message;
+  cameraIndicator.dataset.indicator = snapshot.camera.indicator;
+  cameraButton.textContent = snapshot.camera.state === CameraState.ACTIVE ? 'Desligar' : 'Ligar';
+  cameraButton.disabled = snapshot.camera.state === CameraState.NOT_FOUND;
+  microphoneStatus.textContent = snapshot.microphone.message;
+  microphoneIndicator.dataset.indicator = snapshot.microphone.indicator;
+  microphoneButton.textContent =
+    snapshot.microphone.state === MicrophoneState.ACTIVE ? 'Mutar' : 'Ativar';
+  microphoneButton.disabled = snapshot.microphone.state === MicrophoneState.NOT_FOUND;
+  screenStatus.textContent = snapshot.screenShare.message;
+  screenIndicator.dataset.indicator = snapshot.screenShare.indicator;
+  shareButton.textContent =
+    snapshot.screenShare.state === ScreenShareState.SHARING
+      ? 'Parar Compartilhamento'
+      : 'Compartilhar Tela';
+  deviceScanMessage.textContent = snapshot.scanError ?? '';
+  deviceScanMessage.hidden = snapshot.scanError === undefined;
+
+  const cameraActive = snapshot.camera.state === CameraState.ACTIVE;
+  localVideo.hidden = !cameraActive;
+  localVideoPlaceholder.hidden =
+    cameraActive && localVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
+  localVideoPlaceholderTitle.textContent =
+    snapshot.camera.state === CameraState.NOT_FOUND
+      ? 'Nenhuma câmera detectada'
+      : snapshot.camera.message;
+}
+
+async function synchronizeLocalTracks(snapshot: MediaDeviceSnapshot): Promise<void> {
+  const previous = lastMediaSnapshot;
+  lastMediaSnapshot = snapshot;
+  const connection = peerConnection;
+  if (connection === undefined || connection.signalingState === 'closed') {
+    return;
+  }
+
+  let changed = false;
+  const cameraStream = mediaDeviceManager.camera.getStream();
+  if (snapshot.camera.state === CameraState.ACTIVE && cameraStream !== undefined) {
+    const track = cameraStream.getVideoTracks()[0];
+    if (track !== undefined && cameraSender?.track !== track) {
+      cameraSender = connection.addTrack(track, cameraStream);
+      localVideo.srcObject = cameraStream;
+      changed = true;
+    }
+  } else if (cameraSender !== undefined) {
+    connection.removeTrack(cameraSender);
+    cameraSender = undefined;
+    localVideo.srcObject = null;
+    changed = true;
+  }
+
+  const microphoneStream = mediaDeviceManager.microphone.getStream();
+  if (snapshot.microphone.state === MicrophoneState.ACTIVE && microphoneStream !== undefined) {
+    const track = microphoneStream.getAudioTracks()[0];
+    if (track !== undefined && microphoneSender?.track !== track) {
+      microphoneSender = connection.addTrack(track, microphoneStream);
+      changed = true;
+    }
+  } else if (microphoneSender !== undefined) {
+    connection.removeTrack(microphoneSender);
+    microphoneSender = undefined;
+    changed = true;
+  }
+
+  if (
+    previous?.screenShare.state === ScreenShareState.SHARING &&
+    snapshot.screenShare.state === ScreenShareState.STOPPED &&
+    screenSender !== undefined &&
+    !isStoppingScreenShare
+  ) {
+    await stopScreenShare(true);
+    return;
+  }
+
+  if (
+    changed &&
+    !isPreparingInitialMedia &&
+    activeWebRtcSessionId !== undefined &&
+    connection.signalingState === 'stable'
+  ) {
+    await queueRenegotiation(activeWebRtcSessionId, connection);
   }
 }
+
+function queueRenegotiation(sessionId: string, connection: RTCPeerConnection): Promise<void> {
+  const next = renegotiationQueue
+    .catch(() => undefined)
+    .then(async () => {
+      if (
+        activeWebRtcSessionId !== sessionId ||
+        peerConnection !== connection ||
+        connection.signalingState !== 'stable'
+      ) {
+        return;
+      }
+      await renegotiateAsOfferer(sessionId, connection);
+    });
+  renegotiationQueue = next;
+  return next;
+}
+
+remoteVideo.addEventListener('loadeddata', () => {
+  remoteVideoPlaceholder.hidden = remoteVideo.videoWidth > 0;
+});
+remoteVideo.addEventListener('emptied', () => {
+  remoteVideoPlaceholder.hidden = false;
+});
+localVideo.addEventListener('loadeddata', () => {
+  localVideoPlaceholder.hidden = localVideo.videoWidth > 0;
+});
+localVideo.addEventListener('emptied', () => {
+  localVideoPlaceholder.hidden = false;
+});
