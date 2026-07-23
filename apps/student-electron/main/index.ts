@@ -1,4 +1,13 @@
-import { app, BrowserWindow, session } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  desktopCapturer,
+  Menu,
+  session,
+  webContents,
+  type DesktopCapturerSource,
+  type MenuItemConstructorOptions,
+} from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -54,6 +63,118 @@ async function createMainWindow(): Promise<void> {
   });
 }
 
+function registerDisplayMediaRequestHandler(): void {
+  session.defaultSession.setDisplayMediaRequestHandler(
+    (request, callback) => {
+      const window = mainWindow;
+      const requestingWebContents =
+        request.frame === null ? undefined : webContents.fromFrame(request.frame);
+
+      if (
+        window === undefined ||
+        window.isDestroyed() ||
+        requestingWebContents?.id !== window.webContents.id ||
+        !request.videoRequested ||
+        !request.userGesture
+      ) {
+        callback({});
+        return;
+      }
+
+      void desktopCapturer
+        .getSources({
+          types: ['screen', 'window'],
+          thumbnailSize: { width: 0, height: 0 },
+          fetchWindowIcons: false,
+        })
+        .then((sources) => {
+          if (window.isDestroyed()) {
+            callback({});
+            return;
+          }
+
+          showDisplayMediaSourceMenu(window, sources, callback);
+        })
+        .catch((error: unknown) => {
+          console.error('[screen-share] Não foi possível listar telas e janelas', error);
+          callback({});
+        });
+    },
+    { useSystemPicker: true },
+  );
+}
+
+function showDisplayMediaSourceMenu(
+  window: BrowserWindow,
+  sources: DesktopCapturerSource[],
+  callback: (streams: Electron.Streams) => void,
+): void {
+  let requestCompleted = false;
+  const completeRequest = (source?: DesktopCapturerSource): void => {
+    if (requestCompleted) {
+      return;
+    }
+    requestCompleted = true;
+    callback(source === undefined ? {} : { video: source });
+  };
+
+  const screens = sources.filter((source) => source.id.startsWith('screen:'));
+  const windows = sources.filter((source) => source.id.startsWith('window:'));
+  const sections = [
+    { title: 'Telas', sources: screens },
+    { title: 'Janelas', sources: windows },
+  ].filter((section) => section.sources.length > 0);
+  const template: MenuItemConstructorOptions[] = sections.flatMap((section, index) => [
+    ...(index === 0 ? [] : [{ type: 'separator' as const }]),
+    ...createSourceMenuSection(section.title, section.sources, completeRequest),
+  ]);
+
+  if (sources.length === 0) {
+    completeRequest();
+    return;
+  }
+
+  template.push(
+    { type: 'separator' },
+    {
+      label: 'Cancelar',
+      click: () => {
+        completeRequest();
+      },
+    },
+  );
+
+  Menu.buildFromTemplate(template).popup({
+    window,
+    callback: () => {
+      completeRequest();
+    },
+  });
+}
+
+function createSourceMenuSection(
+  title: string,
+  sources: DesktopCapturerSource[],
+  onSelect: (source: DesktopCapturerSource) => void,
+): MenuItemConstructorOptions[] {
+  if (sources.length === 0) {
+    return [];
+  }
+
+  return [
+    {
+      label: title,
+      enabled: false,
+    },
+    ...sources.map((source) => ({
+      label: source.name,
+      click: () => {
+        onSelect(source);
+      },
+    })),
+  ];
+}
+
 app.whenReady().then(async () => {
   session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
     return webContents?.id === mainWindow?.webContents.id && permission === 'media';
@@ -63,6 +184,7 @@ app.whenReady().then(async () => {
 
     callback(isMainRenderer && permission === 'media');
   });
+  registerDisplayMediaRequestHandler();
   await createMainWindow();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
