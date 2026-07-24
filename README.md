@@ -774,6 +774,22 @@ registrado como não suportado sem causar erro.
 Arquitetura, fluxo de teclado/atalhos, segurança e matriz de testes estão em
 [`docs/sprints/SPR-BETA-5C.md`](docs/sprints/SPR-BETA-5C.md).
 
+## Estabilização do controle remoto — Beta-5D
+
+A Beta-5D preserva a interface e os recursos existentes, mas reforça o ciclo de vida do núcleo:
+autorizações pendentes expiram, falhas de transporte interrompem a entrada imediatamente, listeners
+e timers são removidos no encerramento e uma falha ao liberar um dispositivo não impede a liberação
+do outro. O WebRTC limita candidatos ICE pendentes, limpa streams e tenta `ICE restart` quando a
+conexão do professor falha.
+
+Movimentos do mouse continuam sendo executados integralmente, enquanto logs e notificações
+redundantes são amostrados. Atualizações simultâneas de dispositivos de mídia são coalescidas e
+resultados concluídos depois de `dispose()` são descartados. Os logs de produção usam o formato JSON
+`timestamp`, `level`, `origin`, `event` e `data`.
+
+Problemas encontrados, correções, arquivos revisados e evidências estão em
+[`docs/sprints/SPR-BETA-5D.md`](docs/sprints/SPR-BETA-5D.md).
+
 ## Build e execução
 
 Para compilar e executar o backend compilado:

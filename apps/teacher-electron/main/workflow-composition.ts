@@ -2,6 +2,7 @@ import {
   HealthCheckService,
   ResourceManager,
   WorkflowManager,
+  createStructuredLogger,
   type RemoteCommand,
   type WorkflowDependencies,
   type WorkflowLogger,
@@ -161,14 +162,7 @@ class TeacherWorkflowRuntime {
   }
 }
 
-const consoleWorkflowLogger: WorkflowLogger = {
-  info(message, context): void {
-    console.info(`[teacher-workflow] ${message}`, context ?? {});
-  },
-  error(message, error): void {
-    console.error(`[teacher-workflow] ${message}`, error);
-  },
-};
+const consoleWorkflowLogger: WorkflowLogger = createStructuredLogger('teacher-workflow');
 
 const DEFAULT_STUDENTS: readonly TeacherStudent[] = [
   {

@@ -1,4 +1,5 @@
 import type { RemoteControlKeyboardEvent, RemoteControlRequest } from '@professor-connect/protocol';
+import { createStructuredLogger } from '@professor-connect/engine';
 
 import { formatKeyboardEventLog, identifyShortcut } from '../remote-input/input-events.js';
 import type {
@@ -154,11 +155,4 @@ export function resolveNativeKey(code: string): NativeKeyboardKey {
   throw new Error(`Tecla não suportada para controle remoto: ${code}`);
 }
 
-const consoleRemoteKeyboardLogger: RemoteKeyboardLogger = {
-  info(message, context): void {
-    console.info(`[remote-keyboard] ${message}`, context ?? {});
-  },
-  error(message, error): void {
-    console.error(`[remote-keyboard] ${message}`, error);
-  },
-};
+const consoleRemoteKeyboardLogger: RemoteKeyboardLogger = createStructuredLogger('remote-keyboard');

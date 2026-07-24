@@ -42,7 +42,6 @@ export class RemoteControlClient {
     window.addEventListener('mouseup', this.handleWindowMouseUp);
     window.addEventListener('keydown', this.handleKeyboardEvent, true);
     window.addEventListener('keyup', this.handleKeyboardEvent, true);
-    window.addEventListener('keypress', this.handleKeyboardEvent, true);
     window.addEventListener('blur', this.handleFocusLost);
     document.addEventListener('visibilitychange', this.handleVisibilityChange);
   }
@@ -61,7 +60,6 @@ export class RemoteControlClient {
     window.removeEventListener('mouseup', this.handleWindowMouseUp);
     window.removeEventListener('keydown', this.handleKeyboardEvent, true);
     window.removeEventListener('keyup', this.handleKeyboardEvent, true);
-    window.removeEventListener('keypress', this.handleKeyboardEvent, true);
     window.removeEventListener('blur', this.handleFocusLost);
     document.removeEventListener('visibilitychange', this.handleVisibilityChange);
     this.pendingMouseMove = undefined;
@@ -160,7 +158,7 @@ export class RemoteControlClient {
     event.preventDefault();
     event.stopPropagation();
     this.sendKeyboard({
-      type: event.type === 'keydown' ? 'keydown' : event.type === 'keyup' ? 'keyup' : 'keypress',
+      type: event.type === 'keydown' ? 'keydown' : 'keyup',
       key: event.key,
       code: event.code,
       repeat: event.repeat,
@@ -210,12 +208,17 @@ export class RemoteControlClient {
   }
 
   private sendMouse(event: RemoteControlMouseEvent): void {
-    void this.transport.sendMouse(event).catch(this.onError);
+    void this.transport.sendMouse(event).catch(this.handleTransportError);
   }
 
   private sendKeyboard(event: RemoteControlKeyboardEvent): void {
-    void this.transport.sendKeyboard(event).catch(this.onError);
+    void this.transport.sendKeyboard(event).catch(this.handleTransportError);
   }
+
+  private readonly handleTransportError = (error: unknown): void => {
+    this.onError(error);
+    this.requestSafetyStop();
+  };
 }
 
 export function getRenderedVideoBounds(video: HTMLVideoElement): RenderedVideoBounds {

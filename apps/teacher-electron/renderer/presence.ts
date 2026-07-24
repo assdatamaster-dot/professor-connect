@@ -11,6 +11,8 @@ import {
 import type { TeacherRemoteControlSnapshot } from '../shared/remote-control-contracts.js';
 import { RemoteControlClient } from './remote-control.client.js';
 
+const MAXIMUM_PENDING_ICE_CANDIDATES = 256;
+const WEBRTC_RECOVERY_DELAY_MS = 3_000;
 const loginView = requireElement<HTMLElement>('login-view');
 const onlineView = requireElement<HTMLElement>('online-view');
 const loginForm = requireElement<HTMLFormElement>('login-form');
@@ -67,6 +69,8 @@ let remoteMediaStream = new MediaStream();
 let announcedScreenStreamId: string | undefined;
 let announcedScreenTrackId: string | undefined;
 let renegotiationQueue = Promise.resolve();
+let webRtcRecoveryTimer: ReturnType<typeof setTimeout> | undefined;
+let webRtcRecoveryInFlight = false;
 const remoteControlClient = new RemoteControlClient(
   screenVideo,
   {
@@ -390,6 +394,9 @@ async function startTeacherWebRtc(sessionId: string): Promise<void> {
   connection.ontrack = (event) => {
     assignRemoteTrack(event);
   };
+  connection.onconnectionstatechange = () => {
+    handleWebRtcConnectionState(sessionId, connection);
+  };
 
   try {
     isPreparingInitialMedia = true;
@@ -457,6 +464,15 @@ async function handleWebRtcOffer(
 function assignRemoteTrack(event: RTCTrackEvent): void {
   const stream = event.streams[0] ?? new MediaStream([event.track]);
   remoteStreams.set(stream.id, stream);
+  event.track.addEventListener(
+    'ended',
+    () => {
+      if (stream.getTracks().every((track) => track.readyState === 'ended')) {
+        remoteStreams.delete(stream.id);
+      }
+    },
+    { once: true },
+  );
   const isAnnouncedScreen =
     stream.id === announcedScreenStreamId || event.track.id === announcedScreenTrackId;
   const cameraStream = remoteMediaStream;
@@ -475,6 +491,9 @@ function assignRemoteTrack(event: RTCTrackEvent): void {
 }
 
 function hideScreenShare(): void {
+  if (announcedScreenStreamId !== undefined) {
+    remoteStreams.delete(announcedScreenStreamId);
+  }
   screenVideo.srcObject = null;
   screenVideoPlaceholder.hidden = false;
   screenShareView.hidden = true;
@@ -488,13 +507,15 @@ async function handleRemoteIceCandidate(
   sessionId: string,
   candidate: RTCIceCandidateInit,
 ): Promise<void> {
+  if (activeWebRtcSessionId !== sessionId) {
+    return;
+  }
   const connection = peerConnection;
-  if (
-    connection === undefined ||
-    activeWebRtcSessionId !== sessionId ||
-    connection.remoteDescription === null
-  ) {
+  if (connection === undefined || connection.remoteDescription === null) {
     const pending = pendingIceCandidates.get(sessionId) ?? [];
+    if (pending.length >= MAXIMUM_PENDING_ICE_CANDIDATES) {
+      pending.shift();
+    }
     pending.push(candidate);
     pendingIceCandidates.set(sessionId, pending);
     return;
@@ -524,14 +545,13 @@ function serializeIceCandidate(candidate: RTCIceCandidate) {
 }
 
 function closeWebRtcSession(resetStatus = true): void {
-  const sessionId = activeWebRtcSessionId;
   activeWebRtcSessionId = undefined;
-  if (sessionId !== undefined) {
-    pendingIceCandidates.delete(sessionId);
-  }
+  pendingIceCandidates.clear();
+  clearWebRtcRecovery();
   if (peerConnection !== undefined) {
     peerConnection.onicecandidate = null;
     peerConnection.ontrack = null;
+    peerConnection.onconnectionstatechange = null;
     peerConnection.close();
     peerConnection = undefined;
   }
@@ -541,10 +561,19 @@ function closeWebRtcSession(resetStatus = true): void {
   mediaDeviceManager.microphone.mute();
   localVideo.srcObject = null;
   remoteVideo.srcObject = null;
+  for (const track of remoteMediaStream.getTracks()) {
+    track.stop();
+  }
+  for (const stream of remoteStreams.values()) {
+    for (const track of stream.getTracks()) {
+      track.stop();
+    }
+  }
   remoteMediaStream = new MediaStream();
   remoteVideoPlaceholder.hidden = false;
   hideScreenShare();
   remoteStreams.clear();
+  renegotiationQueue = Promise.resolve();
   webRtcMedia.hidden = true;
   if (resetStatus) {
     attendanceState.textContent = 'Aluno conectado';
@@ -619,7 +648,11 @@ async function synchronizeLocalTracks(snapshot: MediaDeviceSnapshot): Promise<vo
   }
 }
 
-function queueRenegotiation(sessionId: string, connection: RTCPeerConnection): Promise<void> {
+function queueRenegotiation(
+  sessionId: string,
+  connection: RTCPeerConnection,
+  iceRestart = false,
+): Promise<void> {
   const next = renegotiationQueue
     .catch(() => undefined)
     .then(async () => {
@@ -630,7 +663,7 @@ function queueRenegotiation(sessionId: string, connection: RTCPeerConnection): P
       ) {
         return;
       }
-      await renegotiateAsOfferer(sessionId, connection);
+      await renegotiateAsOfferer(sessionId, connection, iceRestart);
     });
   renegotiationQueue = next;
   return next;
@@ -639,8 +672,9 @@ function queueRenegotiation(sessionId: string, connection: RTCPeerConnection): P
 async function renegotiateAsOfferer(
   sessionId: string,
   connection: RTCPeerConnection,
+  iceRestart = false,
 ): Promise<void> {
-  const offer = await connection.createOffer();
+  const offer = await connection.createOffer(iceRestart ? { iceRestart: true } : undefined);
   await connection.setLocalDescription(offer);
   if (offer.sdp === undefined) {
     throw new Error('Offer de mídia sem SDP');
@@ -649,6 +683,73 @@ async function renegotiateAsOfferer(
     sessionId,
     description: { type: 'offer', sdp: offer.sdp },
   });
+}
+
+function handleWebRtcConnectionState(sessionId: string, connection: RTCPeerConnection): void {
+  if (activeWebRtcSessionId !== sessionId || peerConnection !== connection) {
+    return;
+  }
+  if (connection.connectionState === 'connected') {
+    clearWebRtcRecovery();
+    attendanceState.textContent = 'Aluno conectado';
+    return;
+  }
+  if (connection.connectionState === 'disconnected') {
+    attendanceState.textContent = 'Reconectando mídia...';
+    scheduleWebRtcRecovery(sessionId, connection, WEBRTC_RECOVERY_DELAY_MS);
+    return;
+  }
+  if (connection.connectionState === 'failed') {
+    attendanceState.textContent = 'Recuperando conexão de mídia...';
+    scheduleWebRtcRecovery(sessionId, connection, 0);
+  }
+}
+
+function scheduleWebRtcRecovery(
+  sessionId: string,
+  connection: RTCPeerConnection,
+  delayMs: number,
+): void {
+  if (webRtcRecoveryTimer !== undefined || webRtcRecoveryInFlight) {
+    return;
+  }
+  webRtcRecoveryTimer = setTimeout(() => {
+    webRtcRecoveryTimer = undefined;
+    if (
+      activeWebRtcSessionId !== sessionId ||
+      peerConnection !== connection ||
+      connection.connectionState === 'connected'
+    ) {
+      return;
+    }
+    if (connection.signalingState !== 'stable') {
+      scheduleWebRtcRecovery(sessionId, connection, 1_000);
+      return;
+    }
+    webRtcRecoveryInFlight = true;
+    void queueRenegotiation(sessionId, connection, true)
+      .catch(() => {
+        attendanceState.textContent = 'Não foi possível recuperar a conexão de mídia.';
+      })
+      .finally(() => {
+        webRtcRecoveryInFlight = false;
+        if (
+          activeWebRtcSessionId === sessionId &&
+          peerConnection === connection &&
+          (connection.connectionState === 'failed' || connection.connectionState === 'disconnected')
+        ) {
+          scheduleWebRtcRecovery(sessionId, connection, WEBRTC_RECOVERY_DELAY_MS);
+        }
+      });
+  }, delayMs);
+}
+
+function clearWebRtcRecovery(): void {
+  if (webRtcRecoveryTimer !== undefined) {
+    clearTimeout(webRtcRecoveryTimer);
+    webRtcRecoveryTimer = undefined;
+  }
+  webRtcRecoveryInFlight = false;
 }
 
 remoteVideo.addEventListener('loadeddata', () => {

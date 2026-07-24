@@ -85,7 +85,7 @@ test('normaliza a área visível do vídeo e envia somente eventos de mouse', as
     windowTarget.dispatchEvent(createKeyboardEvent('keydown', 'c', 'KeyC', { ctrlKey: true }));
     assert.deepEqual(
       keyboardEvents.map(({ type, code }) => `${type}:${code}`),
-      ['keydown:KeyA', 'keypress:KeyA', 'keyup:KeyA', 'keydown:KeyC'],
+      ['keydown:KeyA', 'keyup:KeyA', 'keydown:KeyC'],
     );
 
     pointerTarget.dispatchEvent(createPointerEvent('mousemove', { clientX: 110, clientY: 30 }));
@@ -96,6 +96,43 @@ test('normaliza a área visível do vídeo e envia somente eventos de mouse', as
     await Promise.resolve();
     assert.equal(safetyStops, 1);
     assert.equal(client.isActive(), false);
+  } finally {
+    restoreBrowserGlobals(originals);
+  }
+});
+
+test('falha de transporte remove listeners e solicita parada segura uma única vez', async () => {
+  const pointerTarget = new VideoTarget();
+  const windowTarget = new EventTarget();
+  const documentTarget = new VisibilityTarget();
+  let errors = 0;
+  let safetyStops = 0;
+  const originals = installBrowserGlobals(windowTarget, documentTarget, () => 1);
+
+  try {
+    const client = new RemoteControlClient(
+      pointerTarget as unknown as HTMLVideoElement,
+      {
+        sendMouse: () => Promise.reject(new Error('socket perdido')),
+        sendKeyboard: () => Promise.reject(new Error('socket perdido')),
+      },
+      () => {
+        errors += 1;
+      },
+      async () => {
+        safetyStops += 1;
+      },
+    );
+    client.start();
+    windowTarget.dispatchEvent(createKeyboardEvent('keydown', 'a', 'KeyA'));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    assert.equal(errors, 1);
+    assert.equal(safetyStops, 1);
+    assert.equal(client.isActive(), false);
+    windowTarget.dispatchEvent(createKeyboardEvent('keydown', 'b', 'KeyB'));
+    assert.equal(errors, 1, 'listener de teclado foi removido');
   } finally {
     restoreBrowserGlobals(originals);
   }

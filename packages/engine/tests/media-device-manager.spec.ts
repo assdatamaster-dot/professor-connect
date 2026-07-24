@@ -64,6 +64,8 @@ class FakeStream {
 
 class FakeMediaDevices implements MediaDevicesAdapter {
   public devices: readonly MediaInputDevice[] = [];
+  public enumerateCalls = 0;
+  public enumerateGate: Promise<void> | undefined;
   public cameraError: unknown;
   public microphoneError: unknown;
   public displayError: unknown;
@@ -74,6 +76,8 @@ class FakeMediaDevices implements MediaDevicesAdapter {
   private deviceChangeListener: (() => void) | undefined;
 
   public async enumerateDevices(): Promise<readonly MediaInputDevice[]> {
+    this.enumerateCalls += 1;
+    await this.enumerateGate;
     if (this.enumerateError !== undefined) {
       throw this.enumerateError;
     }
@@ -203,8 +207,49 @@ test('converte falha de enumeração em estado e mensagem amigáveis', async () 
   manager.dispose();
 });
 
+test('coalesce atualizações concorrentes de dispositivos', async () => {
+  const mediaDevices = new FakeMediaDevices();
+  mediaDevices.devices = [camera, microphone];
+  const manager = new MediaDeviceManager({ mediaDevices, logger: silentLogger });
+  await manager.initialize();
+
+  await Promise.all([manager.refreshDevices(), manager.refreshDevices(), manager.refreshDevices()]);
+
+  assert.equal(mediaDevices.enumerateCalls, 2);
+  manager.dispose();
+});
+
+test('descarta atualização assíncrona concluída depois do encerramento', async () => {
+  const mediaDevices = new FakeMediaDevices();
+  const gate = createDeferred();
+  mediaDevices.enumerateGate = gate.promise;
+  const manager = new MediaDeviceManager({ mediaDevices, logger: silentLogger });
+
+  const refresh = manager.refreshDevices();
+  manager.dispose();
+  mediaDevices.devices = [camera, microphone];
+  gate.resolve();
+  await refresh;
+
+  assert.equal(manager.getSnapshot().cameras.length, 0);
+  assert.equal(manager.getSnapshot().microphones.length, 0);
+});
+
 async function waitForMicrotask(): Promise<void> {
   await new Promise<void>((resolve) => {
     setImmediate(resolve);
   });
+}
+
+function createDeferred(): { readonly promise: Promise<void>; readonly resolve: () => void } {
+  let resolvePromise: (() => void) | undefined;
+  const promise = new Promise<void>((resolve) => {
+    resolvePromise = resolve;
+  });
+  return {
+    promise,
+    resolve(): void {
+      resolvePromise?.();
+    },
+  };
 }

@@ -3,6 +3,7 @@ import type {
   RemoteControlMouseEvent,
   RemoteControlRequest,
 } from '@professor-connect/protocol';
+import { createStructuredLogger, type StructuredLogger } from '@professor-connect/engine';
 
 import type {
   RemoteKeyboardControllerPort,
@@ -33,6 +34,7 @@ export class RemoteInputController implements RemoteInputControllerPort {
     private readonly mouseController: RemoteMouseControllerPort,
     private readonly keyboardController: RemoteKeyboardControllerPort,
     private readonly permissions = new InputPermissions(),
+    private readonly logger: StructuredLogger = createStructuredLogger('remote-input'),
   ) {}
 
   public start(reference: RemoteControlRequest): void {
@@ -41,9 +43,12 @@ export class RemoteInputController implements RemoteInputControllerPort {
       this.mouseController.start(reference);
       this.keyboardController.start(reference);
     } catch (error) {
-      this.mouseController.stop();
-      this.keyboardController.stop();
       this.permissions.revoke();
+      this.stopController('keyboard-stop-after-start-failure', () =>
+        this.keyboardController.stop(),
+      );
+      this.stopController('mouse-stop-after-start-failure', () => this.mouseController.stop());
+      this.logger.error('input-start-failed', error);
       throw error;
     }
   }
@@ -67,8 +72,8 @@ export class RemoteInputController implements RemoteInputControllerPort {
   public stop(): void {
     // Revoga primeiro para impedir novos eventos enquanto as teclas/botões são liberados.
     this.permissions.revoke();
-    this.keyboardController.stop();
-    this.mouseController.stop();
+    this.stopController('keyboard-stop-failed', () => this.keyboardController.stop());
+    this.stopController('mouse-stop-failed', () => this.mouseController.stop());
   }
 
   public isActive(): boolean {
@@ -77,5 +82,13 @@ export class RemoteInputController implements RemoteInputControllerPort {
       this.mouseController.isActive() &&
       this.keyboardController.isActive()
     );
+  }
+
+  private stopController(event: string, stop: () => void): void {
+    try {
+      stop();
+    } catch (error) {
+      this.logger.error(event, error);
+    }
   }
 }

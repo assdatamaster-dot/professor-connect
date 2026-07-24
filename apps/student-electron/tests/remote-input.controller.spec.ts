@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import type { RemoteKeyboardControllerPort } from '../main/remote-keyboard/remote-keyboard.controller.js';
+import { InputPermissions } from '../main/remote-input/input-permissions.js';
 import { RemoteInputController } from '../main/remote-input/remote-input.controller.js';
 import type { RemoteMouseControllerPort } from '../main/remote-mouse/remote-mouse.controller.js';
 
@@ -64,9 +65,27 @@ test('a autorização central protege mouse e teclado e encerra ambos imediatame
   );
 });
 
+test('continua encerrando os dois controladores mesmo quando um deles falha', () => {
+  const mouse = new FakeMouseController();
+  const keyboard = new FakeKeyboardController();
+  mouse.throwOnStop = true;
+  keyboard.throwOnStop = true;
+  const controller = new RemoteInputController(mouse, keyboard, new InputPermissions(), {
+    info(): void {},
+    error(): void {},
+  });
+  controller.start(REFERENCE);
+
+  assert.doesNotThrow(() => controller.stop());
+  assert.equal(mouse.stops, 1);
+  assert.equal(keyboard.stops, 1);
+  assert.equal(controller.isActive(), false);
+});
+
 class FakeMouseController implements RemoteMouseControllerPort {
   public active = false;
   public stops = 0;
+  public throwOnStop = false;
 
   public start(): void {
     this.active = true;
@@ -79,6 +98,9 @@ class FakeMouseController implements RemoteMouseControllerPort {
   public stop(): void {
     this.active = false;
     this.stops += 1;
+    if (this.throwOnStop) {
+      throw new Error('mouse stop failure');
+    }
   }
 
   public isActive(): boolean {
@@ -89,6 +111,7 @@ class FakeMouseController implements RemoteMouseControllerPort {
 class FakeKeyboardController implements RemoteKeyboardControllerPort {
   public active = false;
   public stops = 0;
+  public throwOnStop = false;
 
   public start(): void {
     this.active = true;
@@ -101,6 +124,9 @@ class FakeKeyboardController implements RemoteKeyboardControllerPort {
   public stop(): void {
     this.active = false;
     this.stops += 1;
+    if (this.throwOnStop) {
+      throw new Error('keyboard stop failure');
+    }
   }
 
   public isActive(): boolean {

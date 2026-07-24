@@ -16,6 +16,7 @@ import { getTranslations } from './i18n.js';
 import { approveRemoteControlWithScreen } from './remote-control-permission-flow.js';
 import { createDesktopViewModel } from './view-model.js';
 
+const MAXIMUM_PENDING_ICE_CANDIDATES = 256;
 const translations = getTranslations();
 const connectionBadge = requireElement<HTMLElement>('connection-badge');
 const connectionText = requireElement<HTMLElement>('connection-text');
@@ -481,6 +482,19 @@ async function createStudentPeerConnection(sessionId: string): Promise<void> {
     }
     remoteVideo.srcObject = remoteMediaStream;
   };
+  connection.onconnectionstatechange = () => {
+    if (activeWebRtcSessionId !== sessionId || peerConnection !== connection) {
+      return;
+    }
+    if (connection.connectionState === 'connected') {
+      statusMessage.textContent = 'Conectado ao professor';
+    } else if (
+      connection.connectionState === 'disconnected' ||
+      connection.connectionState === 'failed'
+    ) {
+      statusMessage.textContent = 'Reconectando mídia com o professor...';
+    }
+  };
 
   isPreparingInitialMedia = true;
   await Promise.allSettled([
@@ -639,13 +653,15 @@ async function handleRemoteIceCandidate(
   sessionId: string,
   candidate: RTCIceCandidateInit,
 ): Promise<void> {
+  if (activeWebRtcSessionId !== sessionId) {
+    return;
+  }
   const connection = peerConnection;
-  if (
-    connection === undefined ||
-    activeWebRtcSessionId !== sessionId ||
-    connection.remoteDescription === null
-  ) {
+  if (connection === undefined || connection.remoteDescription === null) {
     const pending = pendingIceCandidates.get(sessionId) ?? [];
+    if (pending.length >= MAXIMUM_PENDING_ICE_CANDIDATES) {
+      pending.shift();
+    }
     pending.push(candidate);
     pendingIceCandidates.set(sessionId, pending);
     return;
@@ -675,15 +691,13 @@ function serializeIceCandidate(candidate: RTCIceCandidate) {
 }
 
 function closeWebRtcSession(): void {
-  const sessionId = activeWebRtcSessionId;
   activeWebRtcSessionId = undefined;
-  if (sessionId !== undefined) {
-    pendingIceCandidates.delete(sessionId);
-  }
+  pendingIceCandidates.clear();
   if (peerConnection !== undefined) {
     cleanupScreenShare(peerConnection, true);
     peerConnection.onicecandidate = null;
     peerConnection.ontrack = null;
+    peerConnection.onconnectionstatechange = null;
     peerConnection.close();
     peerConnection = undefined;
   }
@@ -693,7 +707,12 @@ function closeWebRtcSession(): void {
   mediaDeviceManager.microphone.mute();
   localVideo.srcObject = null;
   remoteVideo.srcObject = null;
+  for (const track of remoteMediaStream.getTracks()) {
+    track.stop();
+  }
   remoteMediaStream = new MediaStream();
+  renegotiationQueue = Promise.resolve();
+  lastMediaSnapshot = undefined;
   remoteVideoPlaceholder.hidden = false;
   mediaSection.hidden = true;
   callSection.hidden = false;

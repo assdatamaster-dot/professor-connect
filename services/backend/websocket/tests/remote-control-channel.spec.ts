@@ -58,7 +58,7 @@ test('autoriza, isola e transporta eventos sem executá-los', async () => {
         errors.push(message);
       },
     },
-    60_000,
+    500,
     { intervalMs: 30_000, timeoutMs: 90_000, reconnectWindowMs: 90_000 },
     professors,
     students,
@@ -189,13 +189,20 @@ test('autoriza, isola e transporta eventos sem executá-los', async () => {
     await waitUntil(() => denials.length === 1);
     assert.deepEqual(denials[0], deniedRequest);
 
+    const timeoutRequest = { sessionId: 'session-id', requestId: 'remote-request-timeout' };
+    teacher.emit(REMOTE_CONTROL_CHANNEL_EVENTS.REQUEST, timeoutRequest);
+    await waitUntil(() => requests.length === 3);
+    await waitUntil(() => teacherStops.length === 2 && studentStops.length === 1);
+    assert.equal(teacherStops.at(-1)?.reason, 'timeout');
+    assert.equal(studentStops.at(-1)?.reason, 'timeout');
+
     const sessionEndRequest = { sessionId: 'session-id', requestId: 'remote-request-3' };
     teacher.emit(REMOTE_CONTROL_CHANNEL_EVENTS.REQUEST, sessionEndRequest);
-    await waitUntil(() => requests.length === 3);
+    await waitUntil(() => requests.length === 4);
     student.emit(REMOTE_CONTROL_CHANNEL_EVENTS.APPROVED, sessionEndRequest);
     await waitUntil(() => approvals.length === 2);
     teacher.emit('session:end', { sessionId: 'session-id' });
-    await waitUntil(() => teacherStops.length === 2 && studentStops.length === 1);
+    await waitUntil(() => teacherStops.length === 3 && studentStops.length === 2);
     assert.equal(teacherStops.at(-1)?.reason, 'session-ended');
     assert.equal(studentStops.at(-1)?.reason, 'session-ended');
 
@@ -213,11 +220,11 @@ test('autoriza, isola e transporta eventos sem executá-los', async () => {
       requestId: 'remote-request-disconnect',
     };
     teacher.emit(REMOTE_CONTROL_CHANNEL_EVENTS.REQUEST, disconnectRequest);
-    await waitUntil(() => requests.length === 4);
+    await waitUntil(() => requests.length === 5);
     student.emit(REMOTE_CONTROL_CHANNEL_EVENTS.APPROVED, disconnectRequest);
     await waitUntil(() => approvals.length === 3);
     student.disconnect();
-    await waitUntil(() => teacherStops.length === 3);
+    await waitUntil(() => teacherStops.length === 4);
     assert.equal(teacherStops.at(-1)?.reason, 'disconnect');
 
     assert(logs.includes('Solicitação enviada'));

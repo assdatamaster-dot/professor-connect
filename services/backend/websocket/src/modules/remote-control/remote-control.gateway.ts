@@ -36,28 +36,70 @@ interface RemoteControlAuthorization {
   readonly studentSocketId: string;
 }
 
+export interface RemoteControlGatewayOptions {
+  readonly requestTimeoutMs?: number;
+  readonly movementLogIntervalMs?: number;
+  readonly clock?: () => number;
+  readonly scheduler?: typeof setTimeout;
+  readonly cancelScheduler?: typeof clearTimeout;
+}
+
+const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
+const DEFAULT_MOVEMENT_LOG_INTERVAL_MS = 250;
+
 export class RemoteControlGateway {
   private readonly authorizations = new Map<string, RemoteControlAuthorization>();
+  private readonly authorizationTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly lastMovementLogAt = new Map<string, number>();
   private readonly unsubscribeSessionEnded: () => void;
+  private readonly requestTimeoutMs: number;
+  private readonly movementLogIntervalMs: number;
+  private readonly clock: () => number;
+  private readonly scheduler: typeof setTimeout;
+  private readonly cancelScheduler: typeof clearTimeout;
+  private registered = false;
 
   public constructor(
     private readonly socketServer: RemoteControlServer,
     private readonly sessionManager: SessionManager,
     private readonly logger: CommunicationLogger,
+    options: RemoteControlGatewayOptions = {},
   ) {
+    this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    this.movementLogIntervalMs = options.movementLogIntervalMs ?? DEFAULT_MOVEMENT_LOG_INTERVAL_MS;
+    this.clock = options.clock ?? Date.now;
+    this.scheduler = options.scheduler ?? setTimeout;
+    this.cancelScheduler = options.cancelScheduler ?? clearTimeout;
     this.unsubscribeSessionEnded = this.sessionManager.onSessionEnded((delivery) => {
       this.handleSessionEnded(delivery);
     });
   }
 
   public registerEvents(): void {
-    this.socketServer.on('connection', (socket) => this.registerSocketEvents(socket));
+    if (this.registered) {
+      return;
+    }
+    this.registered = true;
+    this.socketServer.on('connection', this.handleConnection);
   }
 
   public dispose(): void {
     this.unsubscribeSessionEnded();
+    if (this.registered) {
+      this.socketServer.off('connection', this.handleConnection);
+      this.registered = false;
+    }
+    for (const timer of this.authorizationTimers.values()) {
+      this.cancelScheduler(timer);
+    }
+    this.authorizationTimers.clear();
+    this.lastMovementLogAt.clear();
     this.authorizations.clear();
   }
+
+  private readonly handleConnection = (socket: RemoteControlSocket): void => {
+    this.registerSocketEvents(socket);
+  };
 
   private registerSocketEvents(socket: RemoteControlSocket): void {
     socket.on(REMOTE_CONTROL_CHANNEL_EVENTS.REQUEST, (payload) => {
@@ -74,6 +116,7 @@ export class RemoteControlGateway {
           teacherSocketId: socket.id,
           studentSocketId: route.recipientSocketId,
         });
+        this.scheduleAuthorizationTimeout(request.sessionId, request.requestId);
         this.socketServer
           .to(route.recipientSocketId)
           .emit(REMOTE_CONTROL_CHANNEL_EVENTS.REQUEST, request);
@@ -96,6 +139,7 @@ export class RemoteControlGateway {
           studentSocketId: socket.id,
           teacherSocketId: route.recipientSocketId,
         });
+        this.clearAuthorizationTimer(approved.sessionId);
         this.socketServer
           .to(route.recipientSocketId)
           .emit(REMOTE_CONTROL_CHANNEL_EVENTS.APPROVED, approved);
@@ -111,7 +155,7 @@ export class RemoteControlGateway {
         const denied = requireReference(payload);
         const route = this.requireRoute(denied.sessionId, socket.id, 'student');
         this.requireAuthorization(denied, 'pending');
-        this.authorizations.delete(denied.sessionId);
+        this.deleteAuthorization(denied.sessionId);
         this.socketServer
           .to(route.recipientSocketId)
           .emit(REMOTE_CONTROL_CHANNEL_EVENTS.DENIED, denied);
@@ -152,7 +196,7 @@ export class RemoteControlGateway {
         const reference = requireReference(stopped);
         const route = this.sessionManager.resolveSignalingRoute(reference.sessionId, socket.id);
         this.requireAuthorization(reference);
-        this.authorizations.delete(reference.sessionId);
+        this.deleteAuthorization(reference.sessionId);
         this.socketServer
           .to(route.recipientSocketId)
           .emit(REMOTE_CONTROL_CHANNEL_EVENTS.STOP, stopped);
@@ -206,7 +250,7 @@ export class RemoteControlGateway {
       return;
     }
 
-    this.authorizations.delete(authorization.sessionId);
+    this.deleteAuthorization(authorization.sessionId);
     const payload: RemoteControlStopPayload = {
       sessionId: authorization.sessionId,
       requestId: authorization.requestId,
@@ -236,7 +280,7 @@ export class RemoteControlGateway {
         continue;
       }
 
-      this.authorizations.delete(authorization.sessionId);
+      this.deleteAuthorization(authorization.sessionId);
       const recipientSocketId =
         authorization.teacherSocketId === socketId
           ? authorization.studentSocketId
@@ -256,7 +300,61 @@ export class RemoteControlGateway {
   }
 
   private logReceivedEvent(sessionId: string, requestId: string, eventType: string): void {
+    if (eventType === 'mousemove') {
+      const now = this.clock();
+      const lastLogAt = this.lastMovementLogAt.get(sessionId) ?? Number.NEGATIVE_INFINITY;
+      if (now - lastLogAt < this.movementLogIntervalMs) {
+        return;
+      }
+      this.lastMovementLogAt.set(sessionId, now);
+    }
     this.logger.info('Evento recebido', { sessionId, requestId, eventType });
+  }
+
+  private scheduleAuthorizationTimeout(sessionId: string, requestId: string): void {
+    this.clearAuthorizationTimer(sessionId);
+    const timer = this.scheduler(() => {
+      const authorization = this.authorizations.get(sessionId);
+      if (
+        authorization === undefined ||
+        authorization.requestId !== requestId ||
+        authorization.status !== 'pending'
+      ) {
+        return;
+      }
+      this.deleteAuthorization(sessionId);
+      const payload: RemoteControlStopPayload = {
+        sessionId,
+        requestId,
+        reason: 'timeout',
+      };
+      for (const socketId of new Set([
+        authorization.teacherSocketId,
+        authorization.studentSocketId,
+      ])) {
+        this.socketServer.to(socketId).emit(REMOTE_CONTROL_CHANNEL_EVENTS.STOP, payload);
+      }
+      this.logger.info('Controle encerrado', {
+        sessionId,
+        requestId,
+        reason: payload.reason,
+      });
+    }, this.requestTimeoutMs);
+    this.authorizationTimers.set(sessionId, timer);
+  }
+
+  private clearAuthorizationTimer(sessionId: string): void {
+    const timer = this.authorizationTimers.get(sessionId);
+    if (timer !== undefined) {
+      this.cancelScheduler(timer);
+      this.authorizationTimers.delete(sessionId);
+    }
+  }
+
+  private deleteAuthorization(sessionId: string): void {
+    this.authorizations.delete(sessionId);
+    this.clearAuthorizationTimer(sessionId);
+    this.lastMovementLogAt.delete(sessionId);
   }
 
   private handleSafely(message: string, action: () => void): void {
@@ -317,7 +415,8 @@ function requireStopPayload(payload: unknown): RemoteControlStopPayload {
     reason !== 'session-ended' &&
     reason !== 'disconnect' &&
     reason !== 'focus-lost' &&
-    reason !== 'execution-error'
+    reason !== 'execution-error' &&
+    reason !== 'timeout'
   ) {
     throw new Error('Motivo de encerramento de controle remoto inválido');
   }

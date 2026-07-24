@@ -2,6 +2,7 @@ import {
   HealthCheckService,
   ResourceManager,
   WorkflowManager,
+  createStructuredLogger,
   type RemoteCommand,
   type WorkflowDependencies,
   type WorkflowLogger,
@@ -156,14 +157,7 @@ class DesktopWorkflowRuntime {
   }
 }
 
-const consoleWorkflowLogger: WorkflowLogger = {
-  info(message, context): void {
-    console.info(`[workflow] ${message}`, context ?? {});
-  },
-  error(message, error): void {
-    console.error(`[workflow] ${message}`, error);
-  },
-};
+const consoleWorkflowLogger: WorkflowLogger = createStructuredLogger('student-workflow');
 
 export function createDesktopWorkflowManager(): WorkflowManagerPort {
   const runtime = new DesktopWorkflowRuntime();

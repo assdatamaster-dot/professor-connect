@@ -1,3 +1,4 @@
+import { createStructuredLogger } from '../../../common/structured-logger.js';
 import { CameraController } from './camera.controller.js';
 import { MicrophoneController } from './microphone.controller.js';
 import { ScreenShareController } from './screen-share.controller.js';
@@ -9,14 +10,7 @@ import type {
   MediaInputDevice,
 } from './media-device.types.js';
 
-const browserLogger = {
-  info(message: string): void {
-    console.info(`[MediaDeviceManager] ${message}`);
-  },
-  error(message: string): void {
-    console.error(`[MediaDeviceManager] ${message}`);
-  },
-};
+const browserLogger = createStructuredLogger('media-device-manager');
 
 export class BrowserMediaDevicesAdapter implements MediaDevicesAdapter {
   public enumerateDevices(): Promise<MediaDeviceInfo[]> {
@@ -56,6 +50,7 @@ export class MediaDeviceManager {
   private scanError: string | undefined;
   private initialized = false;
   private disposed = false;
+  private refreshPromise: Promise<MediaDeviceSnapshot> | undefined;
 
   public constructor(options: MediaDeviceManagerOptions = {}) {
     this.mediaDevices = options.mediaDevices ?? new BrowserMediaDevicesAdapter();
@@ -67,6 +62,9 @@ export class MediaDeviceManager {
   }
 
   public async initialize(): Promise<MediaDeviceSnapshot> {
+    if (this.disposed) {
+      throw new Error('MediaDeviceManager já foi encerrado');
+    }
     if (!this.initialized) {
       this.mediaDevices.addEventListener?.('devicechange', this.handleDeviceChange);
       this.initialized = true;
@@ -75,15 +73,37 @@ export class MediaDeviceManager {
     return this.getSnapshot();
   }
 
-  public async refreshDevices(): Promise<MediaDeviceSnapshot> {
+  public refreshDevices(): Promise<MediaDeviceSnapshot> {
+    if (this.disposed) {
+      return Promise.resolve(this.getSnapshot());
+    }
+    if (this.refreshPromise !== undefined) {
+      return this.refreshPromise;
+    }
+    const refresh = this.performRefresh().finally(() => {
+      if (this.refreshPromise === refresh) {
+        this.refreshPromise = undefined;
+      }
+    });
+    this.refreshPromise = refresh;
+    return refresh;
+  }
+
+  private async performRefresh(): Promise<MediaDeviceSnapshot> {
     try {
       const devices = await this.mediaDevices.enumerateDevices();
+      if (this.disposed) {
+        return this.getSnapshot();
+      }
       this.cameras = devices.filter((device) => device.kind === 'videoinput');
       this.microphones = devices.filter((device) => device.kind === 'audioinput');
       this.scanError = undefined;
       this.camera.updateAvailability(this.cameras.length > 0);
       this.microphone.updateAvailability(this.microphones.length > 0);
     } catch {
+      if (this.disposed) {
+        return this.getSnapshot();
+      }
       this.cameras = [];
       this.microphones = [];
       this.scanError = 'Não foi possível verificar os dispositivos de mídia.';
@@ -121,6 +141,7 @@ export class MediaDeviceManager {
     this.microphone.dispose();
     this.screenShare.dispose();
     this.listeners.clear();
+    this.initialized = false;
   }
 
   private readonly handleDeviceChange = (): void => {
@@ -128,6 +149,9 @@ export class MediaDeviceManager {
   };
 
   private emit(): void {
+    if (this.disposed) {
+      return;
+    }
     const snapshot = this.getSnapshot();
     for (const listener of this.listeners) {
       listener(snapshot);

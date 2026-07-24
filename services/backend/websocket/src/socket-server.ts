@@ -134,7 +134,12 @@ export function initializeWebSocket(
   const activeSessionGateway = new SessionGateway(socketServer, activeSessionManager, logger);
   activeSessionGateway.registerEvents();
   new WebRtcSignalingGateway(socketServer, activeSessionManager, logger).registerEvents();
-  const remoteControlGateway = new RemoteControlGateway(socketServer, activeSessionManager, logger);
+  const remoteControlGateway = new RemoteControlGateway(
+    socketServer,
+    activeSessionManager,
+    logger,
+    { requestTimeoutMs: requestTimeoutMilliseconds },
+  );
   remoteControlGateway.registerEvents();
   const sessionRequestGateway = new SessionRequestGateway(
     socketServer,

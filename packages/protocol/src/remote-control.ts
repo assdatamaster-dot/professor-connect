@@ -80,5 +80,5 @@ export interface RemoteControlKeyboardPayload extends RemoteControlChannelRefere
 
 export interface RemoteControlStopPayload extends RemoteControlChannelReference {
   readonly reason:
-    'participant' | 'session-ended' | 'disconnect' | 'focus-lost' | 'execution-error';
+    'participant' | 'session-ended' | 'disconnect' | 'focus-lost' | 'execution-error' | 'timeout';
 }

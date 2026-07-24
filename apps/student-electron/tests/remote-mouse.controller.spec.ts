@@ -82,6 +82,44 @@ test('move, clica, rola e libera botão pressionado ao encerrar', () => {
   assert.equal(controller.isActive(), false);
 });
 
+test('executa todos os movimentos e limita somente logs e renders redundantes', () => {
+  let now = 0;
+  const adapter = new RecordingMouseAdapter();
+  const controller = new RemoteMouseController(
+    adapter,
+    {
+      getBounds: () => ({
+        left: 0,
+        top: 0,
+        width: 1920,
+        height: 1080,
+        sourceName: 'Monitor',
+      }),
+    },
+    { info(): void {}, error(): void {} },
+    () => now,
+    250,
+  );
+  controller.start({ sessionId: 'session', requestId: 'request' });
+
+  assert.equal(
+    controller.receive({ type: 'mousemove', x: 0.1, y: 0.1, button: 0, buttons: 0 }),
+    'MouseMove',
+  );
+  now = 100;
+  assert.equal(
+    controller.receive({ type: 'mousemove', x: 0.2, y: 0.2, button: 0, buttons: 0 }),
+    undefined,
+  );
+  now = 250;
+  assert.equal(
+    controller.receive({ type: 'mousemove', x: 0.3, y: 0.3, button: 0, buttons: 0 }),
+    'MouseMove',
+  );
+
+  assert.equal(adapter.moves.length, 3, 'a execução do mouse não é limitada');
+});
+
 class RecordingMouseAdapter implements RemoteMouseAdapter {
   public readonly moves: Array<{ readonly x: number; readonly y: number }> = [];
   public readonly downs: RemoteMouseButton[] = [];

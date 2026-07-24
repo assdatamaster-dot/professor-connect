@@ -1,12 +1,13 @@
 type LogLevel = 'error' | 'info';
 type LogContext = Readonly<Record<string, unknown>>;
 
-function writeLog(level: LogLevel, message: string, context?: LogContext): void {
+function writeLog(level: LogLevel, event: string, data: LogContext = {}): void {
   const entry = JSON.stringify({
     timestamp: new Date().toISOString(),
     level,
-    message,
-    ...(context === undefined ? {} : { context }),
+    origin: 'backend',
+    event,
+    data,
   });
 
   if (level === 'error') {
@@ -18,15 +19,15 @@ function writeLog(level: LogLevel, message: string, context?: LogContext): void 
 }
 
 export const logger = {
-  info(message: string, context?: LogContext): void {
-    writeLog('info', message, context);
+  info(event: string, data?: LogContext): void {
+    writeLog('info', event, data);
   },
-  error(message: string, error: unknown): void {
+  error(event: string, error: unknown): void {
     const errorContext =
       error instanceof Error
         ? { errorName: error.name, errorMessage: error.message }
         : { errorName: 'UnknownError' };
 
-    writeLog('error', message, errorContext);
+    writeLog('error', event, errorContext);
   },
 };

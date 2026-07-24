@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
+import { createStructuredLogger } from '@professor-connect/engine';
 import {
   REMOTE_CONTROL_CHANNEL_EVENTS,
   type RemoteControlApproved,
@@ -27,6 +28,7 @@ import type {
 import { RemoteControlReceiver } from './remote-control.receiver.js';
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
+const remoteControlLogger = createStructuredLogger('student-presence.remote-control');
 
 export interface StudentIdentity {
   readonly id: string;
@@ -361,7 +363,7 @@ export class StudentPresenceController {
     try {
       action();
     } catch (error) {
-      console.error('[remote-control] Evento descartado', error);
+      remoteControlLogger.error('event-discarded', error);
     }
   }
 

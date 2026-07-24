@@ -1,4 +1,5 @@
 import type { RemoteControlMouseEvent, RemoteControlRequest } from '@professor-connect/protocol';
+import { createStructuredLogger } from '@professor-connect/engine';
 
 import type {
   RemoteMouseAdapter,
@@ -11,6 +12,7 @@ import type {
 const WINDOWS_WHEEL_DELTA = 120;
 const PIXELS_PER_WHEEL_NOTCH = 100;
 const LINES_PER_WHEEL_NOTCH = 3;
+const DEFAULT_MOVEMENT_LOG_INTERVAL_MS = 250;
 
 export type RemoteMouseEventLog =
   'MouseMove' | 'ClickLeft' | 'ClickRight' | 'DoubleClick' | 'Wheel' | undefined;
@@ -24,17 +26,21 @@ export interface RemoteMouseControllerPort {
 
 export class RemoteMouseController implements RemoteMouseControllerPort {
   private activeReference: RemoteControlRequest | undefined;
+  private lastMovementLogAt = Number.NEGATIVE_INFINITY;
   private readonly pressedButtons = new Set<RemoteMouseButton>();
 
   public constructor(
     private readonly adapter: RemoteMouseAdapter,
     private readonly boundsProvider: RemoteMouseBoundsProvider,
     private readonly logger: RemoteMouseLogger = consoleRemoteMouseLogger,
+    private readonly clock: () => number = Date.now,
+    private readonly movementLogIntervalMs = DEFAULT_MOVEMENT_LOG_INTERVAL_MS,
   ) {}
 
   public start(reference: RemoteControlRequest): void {
     const bounds = this.requireValidBounds();
     this.activeReference = { ...reference };
+    this.lastMovementLogAt = Number.NEGATIVE_INFINITY;
     this.logger.info('Controle iniciado', {
       sessionId: reference.sessionId,
       requestId: reference.requestId,
@@ -57,6 +63,9 @@ export class RemoteMouseController implements RemoteMouseControllerPort {
 
       switch (event.type) {
         case 'mousemove':
+          if (!this.shouldLogMovement()) {
+            return undefined;
+          }
           this.logEvent('MouseMove', reference, point);
           return 'MouseMove';
         case 'mousedown': {
@@ -146,6 +155,15 @@ export class RemoteMouseController implements RemoteMouseControllerPort {
       y: point.y,
     });
   }
+
+  private shouldLogMovement(): boolean {
+    const now = this.clock();
+    if (now - this.lastMovementLogAt < this.movementLogIntervalMs) {
+      return false;
+    }
+    this.lastMovementLogAt = now;
+    return true;
+  }
 }
 
 export function mapNormalizedPoint(
@@ -224,11 +242,4 @@ function normalizeWheelDelta(delta: number, deltaMode: number): number {
   return normalized === 0 ? Math.sign(delta) * WINDOWS_WHEEL_DELTA : normalized;
 }
 
-const consoleRemoteMouseLogger: RemoteMouseLogger = {
-  info(message, context): void {
-    console.info(`[remote-mouse] ${message}`, context ?? {});
-  },
-  error(message, error): void {
-    console.error(`[remote-mouse] ${message}`, error);
-  },
-};
+const consoleRemoteMouseLogger: RemoteMouseLogger = createStructuredLogger('remote-mouse');

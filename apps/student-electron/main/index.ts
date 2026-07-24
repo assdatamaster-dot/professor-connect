@@ -2,6 +2,8 @@ import { app, BrowserWindow, desktopCapturer, screen, session, webContents } fro
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { createStructuredLogger } from '@professor-connect/engine';
+
 import { AllScreensCaptureCoordinator } from './all-screens-capture.coordinator.js';
 import { registerDesktopIpc, type DesktopIpcRegistration } from './ipc.js';
 import { RemoteControlReceiver } from './remote-control.receiver.js';
@@ -17,6 +19,7 @@ import {
 } from './workflow-composition.js';
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
+const studentMainLogger = createStructuredLogger('student-main');
 let mainWindow: BrowserWindow | undefined;
 let ipcRegistration: DesktopIpcRegistration | undefined;
 let presenceController: StudentPresenceController | undefined;
@@ -78,7 +81,7 @@ async function createMainWindow(): Promise<void> {
 
   await mainWindow.loadFile(rendererPath);
   void presenceController.connect().catch((error: unknown) => {
-    console.error('[student-presence] Não foi possível conectar ao servidor', error);
+    studentMainLogger.error('presence-connect-failed', error);
   });
 }
 
