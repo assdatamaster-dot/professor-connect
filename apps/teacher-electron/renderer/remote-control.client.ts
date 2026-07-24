@@ -19,7 +19,8 @@ export class RemoteControlClient {
   private active = false;
   private animationFrame: number | undefined;
   private pendingMouseMove: RemoteControlMouseEvent | undefined;
-  private readonly pressedButtons = new Set<number>();
+  private readonly pressedButtons = new Map<number, RemoteControlMouseEvent>();
+  private readonly pressedKeys = new Map<string, RemoteControlKeyboardEvent>();
 
   public constructor(
     private readonly pointerTarget: HTMLVideoElement,
@@ -64,6 +65,7 @@ export class RemoteControlClient {
     document.removeEventListener('visibilitychange', this.handleVisibilityChange);
     this.pendingMouseMove = undefined;
     this.pressedButtons.clear();
+    this.pressedKeys.clear();
     if (this.animationFrame !== undefined) {
       cancelAnimationFrame(this.animationFrame);
       this.animationFrame = undefined;
@@ -104,7 +106,7 @@ export class RemoteControlClient {
     }
     event.preventDefault();
     if (type === 'mousedown') {
-      this.pressedButtons.add(event.button);
+      this.pressedButtons.set(event.button, serialized);
     } else {
       this.pressedButtons.delete(event.button);
     }
@@ -157,7 +159,7 @@ export class RemoteControlClient {
     }
     event.preventDefault();
     event.stopPropagation();
-    this.sendKeyboard({
+    const serialized: RemoteControlKeyboardEvent = {
       type: event.type === 'keydown' ? 'keydown' : 'keyup',
       key: event.key,
       code: event.code,
@@ -166,18 +168,37 @@ export class RemoteControlClient {
       ctrlKey: event.ctrlKey,
       shiftKey: event.shiftKey,
       metaKey: event.metaKey,
-    });
+    };
+    if (serialized.type === 'keydown') {
+      this.pressedKeys.set(serialized.code, serialized);
+    } else {
+      this.pressedKeys.delete(serialized.code);
+    }
+    this.sendKeyboard(serialized);
   };
 
   private readonly handleFocusLost = (): void => {
-    this.requestSafetyStop();
+    this.releasePressedInputs();
   };
 
   private readonly handleVisibilityChange = (): void => {
     if (document.visibilityState === 'hidden') {
-      this.requestSafetyStop();
+      this.releasePressedInputs();
     }
   };
+
+  private releasePressedInputs(): void {
+    const buttons = [...this.pressedButtons.values()];
+    const keys = [...this.pressedKeys.values()].reverse();
+    this.pressedButtons.clear();
+    this.pressedKeys.clear();
+    for (const event of buttons) {
+      this.sendMouse({ ...event, type: 'mouseup', buttons: 0 });
+    }
+    for (const event of keys) {
+      this.sendKeyboard({ ...event, type: 'keyup', repeat: false });
+    }
+  }
 
   private requestSafetyStop(): void {
     if (!this.active) {

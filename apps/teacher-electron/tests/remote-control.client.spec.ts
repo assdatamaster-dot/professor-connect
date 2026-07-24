@@ -7,7 +7,7 @@ import type {
   RemoteControlMouseEvent,
 } from '../shared/remote-control-contracts.js';
 
-test('normaliza a área visível do vídeo e envia somente eventos de mouse', async () => {
+test('normaliza eventos e mantém o controle após blur ou visibilitychange', async () => {
   const pointerTarget = new VideoTarget();
   const mouseEvents: RemoteControlMouseEvent[] = [];
   const keyboardEvents: RemoteControlKeyboardEvent[] = [];
@@ -92,10 +92,65 @@ test('normaliza a área visível do vídeo e envia somente eventos de mouse', as
     animationCallback?.(0);
     assert.equal(mouseEvents.length, 5, 'ignora letterbox fora da imagem compartilhada');
 
+    pointerTarget.dispatchEvent(
+      createPointerEvent('mousedown', {
+        clientX: 110,
+        clientY: 120,
+        button: 0,
+        buttons: 1,
+      }),
+    );
     windowTarget.dispatchEvent(new Event('blur'));
+    documentTarget.visibilityState = 'hidden';
+    documentTarget.dispatchEvent(new Event('visibilitychange'));
     await Promise.resolve();
-    assert.equal(safetyStops, 1);
-    assert.equal(client.isActive(), false);
+    assert.equal(safetyStops, 0);
+    assert.equal(client.isActive(), true);
+    assert.equal(mouseEvents.at(-1)?.type, 'mouseup');
+    assert.equal(keyboardEvents.at(-1)?.type, 'keyup');
+    assert.equal(keyboardEvents.at(-1)?.code, 'KeyC');
+
+    pointerTarget.dispatchEvent(
+      createPointerEvent('mousedown', {
+        clientX: 110,
+        clientY: 120,
+        button: 0,
+        buttons: 1,
+      }),
+    );
+    assert.equal(mouseEvents.at(-1)?.type, 'mousedown');
+
+    // Cinco minutos virtuais a 60 movimentos por segundo, com cliques, teclado e
+    // trocas de foco periódicas. O transporte continua disponível durante todo o teste.
+    for (let frame = 0; frame < 18_000; frame += 1) {
+      pointerTarget.dispatchEvent(createPointerEvent('mousemove', { clientX: 110, clientY: 120 }));
+      animationCallback?.((frame * 1_000) / 60);
+      if (frame % 600 === 0) {
+        pointerTarget.dispatchEvent(
+          createPointerEvent('mousedown', {
+            clientX: 110,
+            clientY: 120,
+            button: 0,
+            buttons: 1,
+          }),
+        );
+        pointerTarget.dispatchEvent(
+          createPointerEvent('mouseup', {
+            clientX: 110,
+            clientY: 120,
+            button: 0,
+            buttons: 0,
+          }),
+        );
+        windowTarget.dispatchEvent(createKeyboardEvent('keydown', 'a', 'KeyA'));
+        windowTarget.dispatchEvent(createKeyboardEvent('keyup', 'a', 'KeyA'));
+        windowTarget.dispatchEvent(new Event('blur'));
+      }
+    }
+
+    assert.equal(safetyStops, 0);
+    assert.equal(client.isActive(), true);
+    assert(mouseEvents.length >= 18_000);
   } finally {
     restoreBrowserGlobals(originals);
   }
