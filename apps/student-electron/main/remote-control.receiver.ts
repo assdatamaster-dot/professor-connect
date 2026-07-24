@@ -130,7 +130,7 @@ export class RemoteControlReceiver {
     ) {
       return;
     }
-    this.stopLocally();
+    this.stopLocally(`Controle encerrado: ${payload.reason}`);
   }
 
   public stop(activeSessionId: string | undefined): RemoteControlStopPayload {
@@ -183,13 +183,13 @@ export class RemoteControlReceiver {
     this.notifyListeners();
   }
 
-  private stopLocally(): void {
+  private stopLocally(message = 'Controle encerrado'): void {
     this.inputController.stop();
     this.snapshot = {
       status: 'inactive',
       sessionId: undefined,
       requestId: undefined,
-      logs: this.appendLog('Controle encerrado'),
+      logs: this.appendLog(message),
     };
     this.notifyListeners();
   }

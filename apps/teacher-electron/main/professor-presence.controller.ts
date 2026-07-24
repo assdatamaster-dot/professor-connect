@@ -213,7 +213,7 @@ export class ProfessorPresenceController {
     });
     socket.on(REMOTE_CONTROL_CHANNEL_EVENTS.STOP, (payload) => {
       if (this.matchesRemoteControl(payload)) {
-        this.finishRemoteControlLocally(payload.sessionId);
+        this.finishRemoteControlLocally(payload.sessionId, payload.reason);
         this.notifyListeners();
       }
     });
@@ -475,7 +475,10 @@ export class ProfessorPresenceController {
     );
   }
 
-  private finishRemoteControlLocally(sessionId: string): void {
+  private finishRemoteControlLocally(
+    sessionId: string,
+    reason?: RemoteControlStopPayload['reason'],
+  ): void {
     if (this.remoteControl.sessionId !== sessionId) {
       return;
     }
@@ -483,7 +486,9 @@ export class ProfessorPresenceController {
       status: 'inactive',
       sessionId: undefined,
       requestId: undefined,
-      logs: this.appendRemoteControlLog('Controle encerrado'),
+      logs: this.appendRemoteControlLog(
+        reason === undefined ? 'Controle encerrado' : `Controle encerrado: ${reason}`,
+      ),
     };
   }
 

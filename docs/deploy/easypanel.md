@@ -41,6 +41,9 @@ HEARTBEAT_TIMEOUT_MS=90000
 RECONNECT_WINDOW_MS=90000
 ```
 
+`REQUEST_TIMEOUT_MS` limita somente solicitações de atendimento ainda não respondidas. Ele não
+define duração para uma sessão nem para o controle remoto já autorizado.
+
 Não copie `BACKEND_BIND_ADDRESS`, `BACKEND_PORT` ou `PROFESSOR_CONNECT_IMAGE`; elas existem apenas
 para o Compose. `DATABASE_URL` e `WEBRTC_*` não são necessárias para executar o backend Beta-1A.
 Não configure mount ou banco para esta versão.

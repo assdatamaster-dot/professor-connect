@@ -139,8 +139,9 @@ dispositivos, compartilhamento, renegociação, reconexão e limpeza de recursos
 Hashes SHA-256 dos instaladores:
 
 ```text
-Aluno:     685855414FC3348570742BEE8F885AC1F06E1AEFADAD2166D68630E3F4520172
-Professor: E2E98A82AE54713621AC6F76774A0092706327ECB2A55F9B749E94AADD61B9B8
+Aluno:          697EE9658BE199C6FD3822B1C0916B68FB0FA08B712440CC789AB27743094184
+Aluno portátil: 4E57AC5E4425044B8004E22977CEFC05D9D38203B00A2565248094C45D85F106
+Professor:      C6E09E5C0E755B09BF5D170C15D69DE0C863F9976409C0219E6AB1780D6705DF
 ```
 
 ## Docker e EasyPanel
@@ -196,3 +197,18 @@ Após o novo empacotamento, um teste CDP no executável do professor confirmou:
 - nenhum `Runtime.exceptionThrown`;
 - clique em **Entrar** ocultando o login;
 - área online exibida com o nome informado.
+
+## Correção pós-entrega da duração do controle
+
+`REQUEST_TIMEOUT_MS`, usado pelas solicitações de atendimento, também estava sendo repassado ao
+gateway de controle remoto. Embora o gateway cancelasse e protegesse o timer após a aprovação, essa
+associação criava uma duração implícita de aproximadamente um minuto no ambiente implantado.
+
+Os timeouts foram desacoplados. Em produção, o controle remoto agora permanece ativo até parada
+explícita, fim da sessão, desconexão ou falha. O timeout de uma autorização ainda pendente somente
+existe quando `remoteControlRequestTimeoutMilliseconds` for informado especificamente na
+inicialização do WebSocket. `REQUEST_TIMEOUT_MS` não define mais a duração do acesso remoto.
+
+Os clientes também passaram a registrar o `reason` recebido no evento de encerramento, permitindo
+distinguir `participant`, `session-ended`, `disconnect`, `focus-lost`, `execution-error` e
+`timeout`.

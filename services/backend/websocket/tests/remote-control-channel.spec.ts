@@ -64,6 +64,7 @@ test('autoriza, isola e transporta eventos sem executá-los', async () => {
     students,
     sessionRequests,
     activeSessions,
+    500,
   );
 
   await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve));
@@ -172,6 +173,12 @@ test('autoriza, isola e transporta eventos sem executá-los', async () => {
     await waitForDelay();
     assert.equal(mouseEvents.length, 2);
 
+    await waitForDelay(600);
+    assert.equal(teacherStops.length, 0);
+    assert.equal(studentStops.length, 0);
+    teacher.emit(REMOTE_CONTROL_CHANNEL_EVENTS.MOUSE, mousePayload);
+    await waitUntil(() => mouseEvents.length === 3);
+
     student.emit(REMOTE_CONTROL_CHANNEL_EVENTS.STOP, {
       ...firstRequest,
       reason: 'participant',
@@ -180,7 +187,7 @@ test('autoriza, isola e transporta eventos sem executá-los', async () => {
     assert.equal(teacherStops[0]?.reason, 'participant');
     teacher.emit(REMOTE_CONTROL_CHANNEL_EVENTS.MOUSE, mousePayload);
     await waitForDelay();
-    assert.equal(mouseEvents.length, 2);
+    assert.equal(mouseEvents.length, 3);
 
     const deniedRequest = { sessionId: 'session-id', requestId: 'remote-request-2' };
     teacher.emit(REMOTE_CONTROL_CHANNEL_EVENTS.REQUEST, deniedRequest);
@@ -259,6 +266,6 @@ async function waitUntil(condition: () => boolean): Promise<void> {
   }
 }
 
-async function waitForDelay(): Promise<void> {
-  await new Promise<void>((resolve) => setTimeout(resolve, 50));
+async function waitForDelay(milliseconds = 50): Promise<void> {
+  await new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 }

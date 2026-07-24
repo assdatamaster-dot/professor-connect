@@ -58,6 +58,7 @@ export function initializeWebSocket(
     studentPresenceManager,
   ),
   activeSessionManager = new SessionManager(professorPresenceManager, studentPresenceManager),
+  remoteControlRequestTimeoutMilliseconds?: number,
 ): CommunicationGateway {
   const socketServer = new SocketServer<ClientToServerEvents, ServerToClientEvents>(httpServer, {
     serveClient: false,
@@ -138,7 +139,9 @@ export function initializeWebSocket(
     socketServer,
     activeSessionManager,
     logger,
-    { requestTimeoutMs: requestTimeoutMilliseconds },
+    remoteControlRequestTimeoutMilliseconds === undefined
+      ? {}
+      : { requestTimeoutMs: remoteControlRequestTimeoutMilliseconds },
   );
   remoteControlGateway.registerEvents();
   const sessionRequestGateway = new SessionRequestGateway(

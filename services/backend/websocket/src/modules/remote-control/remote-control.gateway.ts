@@ -44,7 +44,6 @@ export interface RemoteControlGatewayOptions {
   readonly cancelScheduler?: typeof clearTimeout;
 }
 
-const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 const DEFAULT_MOVEMENT_LOG_INTERVAL_MS = 250;
 
 export class RemoteControlGateway {
@@ -52,7 +51,7 @@ export class RemoteControlGateway {
   private readonly authorizationTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly lastMovementLogAt = new Map<string, number>();
   private readonly unsubscribeSessionEnded: () => void;
-  private readonly requestTimeoutMs: number;
+  private readonly requestTimeoutMs: number | undefined;
   private readonly movementLogIntervalMs: number;
   private readonly clock: () => number;
   private readonly scheduler: typeof setTimeout;
@@ -65,11 +64,17 @@ export class RemoteControlGateway {
     private readonly logger: CommunicationLogger,
     options: RemoteControlGatewayOptions = {},
   ) {
-    this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    this.requestTimeoutMs = options.requestTimeoutMs;
     this.movementLogIntervalMs = options.movementLogIntervalMs ?? DEFAULT_MOVEMENT_LOG_INTERVAL_MS;
     this.clock = options.clock ?? Date.now;
     this.scheduler = options.scheduler ?? setTimeout;
     this.cancelScheduler = options.cancelScheduler ?? clearTimeout;
+    if (
+      this.requestTimeoutMs !== undefined &&
+      (!Number.isInteger(this.requestTimeoutMs) || this.requestTimeoutMs <= 0)
+    ) {
+      throw new Error('Timeout da solicitação de controle remoto deve ser um inteiro positivo');
+    }
     this.unsubscribeSessionEnded = this.sessionManager.onSessionEnded((delivery) => {
       this.handleSessionEnded(delivery);
     });
@@ -312,6 +317,9 @@ export class RemoteControlGateway {
   }
 
   private scheduleAuthorizationTimeout(sessionId: string, requestId: string): void {
+    if (this.requestTimeoutMs === undefined) {
+      return;
+    }
     this.clearAuthorizationTimer(sessionId);
     const timer = this.scheduler(() => {
       const authorization = this.authorizations.get(sessionId);

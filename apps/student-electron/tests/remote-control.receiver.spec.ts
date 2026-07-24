@@ -135,6 +135,23 @@ test('nega solicitação e mantém o canal inativo', () => {
   assert.equal(receiver.getSnapshot().logs.at(-1)?.message, 'Solicitação negada');
 });
 
+test('registra o motivo recebido ao encerrar o controle', () => {
+  const receiver = new RemoteControlReceiver({
+    mouseController: new FakeMouseController(),
+  });
+  receiver.receiveRequest({ sessionId: SESSION_ID, requestId: REQUEST_ID }, SESSION_ID);
+  receiver.approve(SESSION_ID);
+
+  receiver.receiveStop({
+    sessionId: SESSION_ID,
+    requestId: REQUEST_ID,
+    reason: 'timeout',
+  });
+
+  assert.equal(receiver.getSnapshot().status, 'inactive');
+  assert.equal(receiver.getSnapshot().logs.at(-1)?.message, 'Controle encerrado: timeout');
+});
+
 class FakeMouseController implements RemoteMouseControllerPort {
   public started = false;
   public failure: Error | undefined;
