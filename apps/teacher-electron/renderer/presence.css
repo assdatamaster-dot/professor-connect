@@ -171,6 +171,27 @@ button:disabled {
   margin-top: 0;
 }
 
+.remote-control-capabilities {
+  display: flex;
+  gap: 12px;
+  margin: 8px 0 6px;
+  color: #4d5870;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.remote-control-capabilities span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.remote-control-capabilities .device-indicator {
+  display: inline-block;
+  flex: 0 0 auto;
+  margin: 0;
+}
+
 .remote-control-actions {
   display: flex;
   width: 190px;

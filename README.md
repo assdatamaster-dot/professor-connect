@@ -759,6 +759,21 @@ ou ocorrer erro nativo. O aluno mantém uma barra verde fixa enquanto a autoriza
 Arquitetura, fluxo, mapeamento de escala, segurança e evidências estão em
 [`docs/sprints/SPR-BETA-5B.md`](docs/sprints/SPR-BETA-5B.md).
 
+## Controle remoto de teclado — Beta-5C
+
+A Beta-5C centraliza mouse e teclado no `RemoteInputController`. Depois do aceite explícito do aluno,
+o professor pode digitar letras e números, usar teclas de edição/navegação e executar os atalhos
+autorizados. O executor do aluno continua restrito ao processo principal do Electron e usa
+`SendInput` pelo Koffi; o renderer não recebe acesso a uma API genérica do sistema operacional.
+
+Uma única `InputPermissions` protege os dois dispositivos. Ao parar o controle, encerrar a sessão,
+perder o Socket.IO ou fechar uma janela, a permissão é revogada antes da liberação de todas as teclas
+e botões pressionados. `Ctrl+Alt+Delete`, que o Windows não permite simular com `SendInput`, é
+registrado como não suportado sem causar erro.
+
+Arquitetura, fluxo de teclado/atalhos, segurança e matriz de testes estão em
+[`docs/sprints/SPR-BETA-5C.md`](docs/sprints/SPR-BETA-5C.md).
+
 ## Build e execução
 
 Para compilar e executar o backend compilado:

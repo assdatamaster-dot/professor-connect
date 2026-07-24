@@ -144,9 +144,23 @@ test('autoriza, isola e transporta eventos sem executá-los', async () => {
       },
     };
     teacher.emit(REMOTE_CONTROL_CHANNEL_EVENTS.KEYBOARD, keyboardPayload);
-    await waitUntil(() => mouseEvents.length === 1 && keyboardEvents.length === 1);
+    teacher.emit(REMOTE_CONTROL_CHANNEL_EVENTS.KEYBOARD, {
+      ...firstRequest,
+      event: {
+        type: 'keypress',
+        key: ' ',
+        code: 'Space',
+        repeat: false,
+        altKey: false,
+        ctrlKey: false,
+        shiftKey: false,
+        metaKey: false,
+      },
+    });
+    await waitUntil(() => mouseEvents.length === 1 && keyboardEvents.length === 2);
     assert.deepEqual(mouseEvents[0], mousePayload);
     assert.deepEqual(keyboardEvents[0], keyboardPayload);
+    assert.equal(keyboardEvents[1]?.event.key, ' ');
     teacher.emit(REMOTE_CONTROL_CHANNEL_EVENTS.MOUSE, {
       ...firstRequest,
       event: { type: 'dblclick', x: 0.4, y: 0.6, button: 0, buttons: 0 },

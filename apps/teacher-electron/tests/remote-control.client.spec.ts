@@ -2,11 +2,15 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { RemoteControlClient } from '../renderer/remote-control.client.js';
-import type { RemoteControlMouseEvent } from '../shared/remote-control-contracts.js';
+import type {
+  RemoteControlKeyboardEvent,
+  RemoteControlMouseEvent,
+} from '../shared/remote-control-contracts.js';
 
 test('normaliza a área visível do vídeo e envia somente eventos de mouse', async () => {
   const pointerTarget = new VideoTarget();
   const mouseEvents: RemoteControlMouseEvent[] = [];
+  const keyboardEvents: RemoteControlKeyboardEvent[] = [];
   const windowTarget = new EventTarget();
   const documentTarget = new VisibilityTarget();
   let safetyStops = 0;
@@ -22,6 +26,10 @@ test('normaliza a área visível do vídeo e envia somente eventos de mouse', as
       {
         sendMouse(event): Promise<void> {
           mouseEvents.push(event);
+          return Promise.resolve();
+        },
+        sendKeyboard(event): Promise<void> {
+          keyboardEvents.push(event);
           return Promise.resolve();
         },
       },
@@ -71,6 +79,15 @@ test('normaliza a área visível do vídeo e envia somente eventos de mouse', as
     assert.equal(mouseEvents[0]?.y, 0.5);
     assert.equal(mouseEvents[4]?.deltaY, 120);
 
+    windowTarget.dispatchEvent(createKeyboardEvent('keydown', 'a', 'KeyA'));
+    windowTarget.dispatchEvent(createKeyboardEvent('keypress', 'a', 'KeyA'));
+    windowTarget.dispatchEvent(createKeyboardEvent('keyup', 'a', 'KeyA'));
+    windowTarget.dispatchEvent(createKeyboardEvent('keydown', 'c', 'KeyC', { ctrlKey: true }));
+    assert.deepEqual(
+      keyboardEvents.map(({ type, code }) => `${type}:${code}`),
+      ['keydown:KeyA', 'keypress:KeyA', 'keyup:KeyA', 'keydown:KeyC'],
+    );
+
     pointerTarget.dispatchEvent(createPointerEvent('mousemove', { clientX: 110, clientY: 30 }));
     animationCallback?.(0);
     assert.equal(mouseEvents.length, 5, 'ignora letterbox fora da imagem compartilhada');
@@ -116,6 +133,25 @@ function createPointerEvent(type: string, properties: Partial<MouseEvent & Wheel
     deltaX: 0,
     deltaY: 0,
     deltaMode: 0,
+    ...properties,
+  });
+}
+
+function createKeyboardEvent(
+  type: string,
+  key: string,
+  code: string,
+  properties: Partial<KeyboardEvent> = {},
+): Event {
+  return Object.assign(new Event(type, { cancelable: true }), {
+    key,
+    code,
+    repeat: false,
+    altKey: false,
+    ctrlKey: false,
+    shiftKey: false,
+    metaKey: false,
+    isComposing: false,
     ...properties,
   });
 }

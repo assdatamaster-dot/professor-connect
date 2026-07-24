@@ -285,7 +285,7 @@ test('conecta, registra, mantém heartbeat e desconecta o aluno automaticamente'
         .remoteControl.logs.map(({ message }) => message);
       return (
         messages.includes('Evento recebido: MouseMove') &&
-        messages.includes('Evento recebido: KeyUp (somente log, não executado)')
+        messages.includes('Evento recebido: KeyUp: a')
       );
     });
     controller.stopRemoteControl();

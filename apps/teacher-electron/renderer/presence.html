@@ -136,7 +136,7 @@
             </div>
             <section class="remote-control-panel" aria-labelledby="remote-control-title">
               <div>
-                <p class="eyebrow">Mouse remoto autorizado</p>
+                <p class="eyebrow">Entrada remota autorizada</p>
                 <h2 id="remote-control-title">Controle remoto</h2>
                 <p class="remote-control-state">
                   <span
@@ -146,9 +146,25 @@
                   ></span>
                   <strong id="remote-control-status">Controle Remoto Inativo</strong>
                 </p>
-                <small
-                  >Beta-5B: somente o mouse é executado; teclado e arquivos ficam bloqueados.</small
-                >
+                <div class="remote-control-capabilities" aria-label="Dispositivos remotos">
+                  <span>
+                    <i
+                      id="remote-mouse-indicator"
+                      class="device-indicator"
+                      data-indicator="inactive"
+                    ></i>
+                    Mouse
+                  </span>
+                  <span>
+                    <i
+                      id="remote-keyboard-indicator"
+                      class="device-indicator"
+                      data-indicator="inactive"
+                    ></i>
+                    Teclado
+                  </span>
+                </div>
+                <small>Beta-5C: mouse, teclado e atalhos protegidos pela mesma autorização.</small>
               </div>
               <div class="remote-control-actions">
                 <button id="request-remote-control" type="button">Solicitar Controle</button>

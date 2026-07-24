@@ -328,13 +328,13 @@ function requireKeyboardPayload(payload: unknown): RemoteControlKeyboardPayload 
   const reference = requireReference(payload);
   const record = requireRecord(payload, 'Payload de teclado');
   const event = requireRecord(record.event, 'Evento de teclado');
-  if (event.type !== 'keydown' && event.type !== 'keyup') {
+  if (event.type !== 'keydown' && event.type !== 'keyup' && event.type !== 'keypress') {
     throw new Error('Tipo de evento de teclado inválido');
   }
 
   const normalized: RemoteControlKeyboardEvent = {
     type: event.type,
-    key: requireText(event.key, 'event.key', 100),
+    key: requireKeyboardKey(event.key),
     code: requireText(event.code, 'event.code', 100),
     repeat: requireBoolean(event.repeat, 'event.repeat'),
     altKey: requireBoolean(event.altKey, 'event.altKey'),
@@ -343,6 +343,13 @@ function requireKeyboardPayload(payload: unknown): RemoteControlKeyboardPayload 
     metaKey: requireBoolean(event.metaKey, 'event.metaKey'),
   };
   return { ...reference, event: normalized };
+}
+
+function requireKeyboardKey(value: unknown): string {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 100) {
+    throw new Error('event.key deve conter entre 1 e 100 caracteres');
+  }
+  return value;
 }
 
 function requireRecord(value: unknown, name: string): Readonly<Record<string, unknown>> {

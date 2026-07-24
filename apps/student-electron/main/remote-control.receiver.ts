@@ -13,6 +13,11 @@ import type {
   RemoteControlLogEntry,
   StudentRemoteControlSnapshot,
 } from '../shared/remote-control-contracts.js';
+import type { RemoteKeyboardControllerPort } from './remote-keyboard/remote-keyboard.controller.js';
+import {
+  RemoteInputController,
+  type RemoteInputControllerPort,
+} from './remote-input/remote-input.controller.js';
 import type { RemoteMouseControllerPort } from './remote-mouse/remote-mouse.controller.js';
 
 const MAXIMUM_LOG_ENTRIES = 100;
@@ -22,6 +27,8 @@ type RemoteControlListener = (snapshot: StudentRemoteControlSnapshot) => void;
 export interface RemoteControlReceiverOptions {
   readonly clock?: () => Date;
   readonly idFactory?: () => string;
+  readonly inputController?: RemoteInputControllerPort;
+  /** @deprecated Use inputController. Mantido para integrações da Beta-5B. */
   readonly mouseController?: RemoteMouseControllerPort;
 }
 
@@ -29,13 +36,18 @@ export class RemoteControlReceiver {
   private readonly listeners = new Set<RemoteControlListener>();
   private readonly clock: () => Date;
   private readonly idFactory: () => string;
-  private readonly mouseController: RemoteMouseControllerPort;
+  private readonly inputController: RemoteInputControllerPort;
   private snapshot: StudentRemoteControlSnapshot = createInitialSnapshot();
 
   public constructor(options: RemoteControlReceiverOptions = {}) {
     this.clock = options.clock ?? (() => new Date());
     this.idFactory = options.idFactory ?? randomUUID;
-    this.mouseController = options.mouseController ?? unavailableMouseController;
+    this.inputController =
+      options.inputController ??
+      new RemoteInputController(
+        options.mouseController ?? unavailableMouseController,
+        passiveKeyboardController,
+      );
   }
 
   public getSnapshot(): StudentRemoteControlSnapshot {
@@ -59,7 +71,7 @@ export class RemoteControlReceiver {
   public approve(activeSessionId: string | undefined): RemoteControlApproved {
     const reference = this.requirePendingReference(activeSessionId);
     try {
-      this.mouseController.start(reference);
+      this.inputController.start(reference);
     } catch (error) {
       this.snapshot = {
         ...this.snapshot,
@@ -71,7 +83,12 @@ export class RemoteControlReceiver {
     this.snapshot = {
       ...this.snapshot,
       status: 'active',
-      logs: this.appendLog('Solicitação aceita'),
+      logs: appendLogEntry(
+        this.appendLog('Solicitação aceita'),
+        'Controle iniciado',
+        this.clock,
+        this.idFactory,
+      ),
     };
     this.notifyListeners();
     return reference;
@@ -91,33 +108,18 @@ export class RemoteControlReceiver {
 
   public receiveMouse(payload: RemoteControlMousePayload): RemoteControlStopPayload | undefined {
     this.requireActiveReference(payload);
-    try {
-      const message = this.mouseController.receive(payload.event);
-      if (message !== undefined) {
-        this.recordReceivedEvent(message);
-      }
-      return undefined;
-    } catch (error) {
-      const stopped: RemoteControlStopPayload = {
-        sessionId: payload.sessionId,
-        requestId: payload.requestId,
-        reason: 'execution-error',
-      };
-      this.snapshot = {
-        ...this.snapshot,
-        logs: this.appendLog(`Erro de execução: ${getErrorMessage(error)}`),
-      };
-      this.stopLocally();
-      return stopped;
-    }
+    return this.executeInput(payload, () => {
+      const message = this.inputController.receiveMouse(payload, payload.event);
+      return message === undefined ? [] : [message];
+    });
   }
 
-  public receiveKeyboard(payload: RemoteControlKeyboardPayload): void {
+  public receiveKeyboard(
+    payload: RemoteControlKeyboardPayload,
+  ): RemoteControlStopPayload | undefined {
     this.requireActiveReference(payload);
-    this.recordReceivedEvent(
-      payload.event.type === 'keydown'
-        ? 'KeyDown (somente log, não executado)'
-        : 'KeyUp (somente log, não executado)',
+    return this.executeInput(payload, () =>
+      this.inputController.receiveKeyboard(payload, payload.event),
     );
   }
 
@@ -150,7 +152,7 @@ export class RemoteControlReceiver {
   }
 
   public reset(): void {
-    this.mouseController.stop();
+    this.inputController.stop();
     this.snapshot = createInitialSnapshot();
     this.notifyListeners();
   }
@@ -161,21 +163,28 @@ export class RemoteControlReceiver {
   }
 
   public dispose(): void {
-    this.mouseController.stop();
+    this.inputController.stop();
     this.listeners.clear();
     this.snapshot = createInitialSnapshot();
   }
 
-  private recordReceivedEvent(eventName: string): void {
+  private recordReceivedEvents(eventNames: readonly string[]): void {
+    if (eventNames.length === 0) {
+      return;
+    }
     this.snapshot = {
       ...this.snapshot,
-      logs: this.appendLog(`Evento recebido: ${eventName}`),
+      logs: eventNames.reduce(
+        (logs, eventName) =>
+          appendLogEntry(logs, `Evento recebido: ${eventName}`, this.clock, this.idFactory),
+        this.snapshot.logs,
+      ),
     };
     this.notifyListeners();
   }
 
   private stopLocally(): void {
-    this.mouseController.stop();
+    this.inputController.stop();
     this.snapshot = {
       status: 'inactive',
       sessionId: undefined,
@@ -183,6 +192,23 @@ export class RemoteControlReceiver {
       logs: this.appendLog('Controle encerrado'),
     };
     this.notifyListeners();
+  }
+
+  private executeInput(
+    reference: RemoteControlRequest,
+    action: () => readonly string[],
+  ): RemoteControlStopPayload | undefined {
+    try {
+      this.recordReceivedEvents(action());
+      return undefined;
+    } catch (error) {
+      this.snapshot = {
+        ...this.snapshot,
+        logs: this.appendLog(`Erro de execução: ${getErrorMessage(error)}`),
+      };
+      this.stopLocally();
+      return { ...reference, reason: 'execution-error' };
+    }
   }
 
   private requirePendingReference(activeSessionId: string | undefined): RemoteControlRequest {
@@ -248,6 +274,22 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'falha desconhecida';
 }
 
+function appendLogEntry(
+  logs: readonly RemoteControlLogEntry[],
+  message: string,
+  clock: () => Date,
+  idFactory: () => string,
+): readonly RemoteControlLogEntry[] {
+  return [
+    ...logs,
+    {
+      id: idFactory(),
+      timestamp: clock().toISOString(),
+      message,
+    },
+  ].slice(-MAXIMUM_LOG_ENTRIES);
+}
+
 const unavailableMouseController: RemoteMouseControllerPort = {
   start(): void {
     throw new Error('Executor nativo do mouse não está disponível');
@@ -260,5 +302,26 @@ const unavailableMouseController: RemoteMouseControllerPort = {
   },
   isActive(): boolean {
     return false;
+  },
+};
+
+const passiveKeyboardController: RemoteKeyboardControllerPort = {
+  start(): void {
+    return;
+  },
+  receive(event): readonly string[] {
+    return [
+      event.type === 'keydown'
+        ? `KeyDown: ${event.key}`
+        : event.type === 'keyup'
+          ? `KeyUp: ${event.key}`
+          : `KeyPress: ${event.key}`,
+    ];
+  },
+  stop(): void {
+    return;
+  },
+  isActive(): boolean {
+    return true;
   },
 };

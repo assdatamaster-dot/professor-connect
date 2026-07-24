@@ -10,7 +10,7 @@ import type {
 const SESSION_ID = 'session-id';
 const REQUEST_ID = 'request-id';
 
-test('executa somente mouse após autorização e mantém teclado apenas no log', () => {
+test('executa entradas somente após autorização e registra teclado', () => {
   let sequence = 0;
   const mouseController = new FakeMouseController();
   const receiver = new RemoteControlReceiver({
@@ -85,10 +85,11 @@ test('executa somente mouse após autorização e mantém teclado apenas no log'
     [
       'Solicitação recebida',
       'Solicitação aceita',
+      'Controle iniciado',
       'Evento recebido: MouseMove',
       'Evento recebido: ClickLeft',
       'Evento recebido: Wheel',
-      'Evento recebido: KeyDown (somente log, não executado)',
+      'Evento recebido: KeyDown: a',
     ],
   );
   assert.deepEqual(mouseController.receivedTypes, ['mousemove', 'mousedown', 'mouseup', 'wheel']);

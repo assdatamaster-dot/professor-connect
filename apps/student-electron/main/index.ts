@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { AllScreensCaptureCoordinator } from './all-screens-capture.coordinator.js';
 import { registerDesktopIpc, type DesktopIpcRegistration } from './ipc.js';
 import { RemoteControlReceiver } from './remote-control.receiver.js';
-import { createRemoteMouseController } from './remote-mouse/create-remote-mouse-controller.js';
+import { createRemoteInputController } from './remote-input/create-remote-input-controller.js';
 import { ScreenCaptureTargetRegistry } from './screen-capture-target.registry.js';
 import { registerSessionIpc, type SessionIpcRegistration } from './session-ipc.js';
 import { StudentPresenceController } from './student-presence.controller.js';
@@ -40,7 +40,7 @@ async function createMainWindow(): Promise<void> {
   const captureTargetRegistry = requireScreenCaptureTargetRegistry();
   const captureCoordinator = requireAllScreensCaptureCoordinator();
   const remoteControlReceiver = new RemoteControlReceiver({
-    mouseController: createRemoteMouseController(captureTargetRegistry),
+    inputController: createRemoteInputController(captureTargetRegistry),
   });
   presenceController = new StudentPresenceController(
     configPath,

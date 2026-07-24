@@ -185,7 +185,10 @@ export class StudentPresenceController {
     });
     socket.on(REMOTE_CONTROL_CHANNEL_EVENTS.KEYBOARD, (payload) => {
       this.handleRemoteControlSafely(() => {
-        this.remoteControlReceiver.receiveKeyboard(payload);
+        const stopped = this.remoteControlReceiver.receiveKeyboard(payload);
+        if (stopped !== undefined && socket.connected) {
+          socket.emit(REMOTE_CONTROL_CHANNEL_EVENTS.STOP, stopped);
+        }
       });
     });
     socket.on(REMOTE_CONTROL_CHANNEL_EVENTS.STOP, (payload) => {

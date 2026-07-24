@@ -194,6 +194,7 @@ function requireRemoteControlMouseEvent(payload: unknown): RemoteControlMouseEve
     (record.type !== 'mousemove' &&
       record.type !== 'mousedown' &&
       record.type !== 'mouseup' &&
+      record.type !== 'dblclick' &&
       record.type !== 'wheel') ||
     !isFiniteNumber(record.x) ||
     !isFiniteNumber(record.y) ||
@@ -217,7 +218,7 @@ function requireRemoteControlMouseEvent(payload: unknown): RemoteControlMouseEve
 function requireRemoteControlKeyboardEvent(payload: unknown): RemoteControlKeyboardEvent {
   const record = requireRecord(payload);
   if (
-    (record.type !== 'keydown' && record.type !== 'keyup') ||
+    (record.type !== 'keydown' && record.type !== 'keyup' && record.type !== 'keypress') ||
     typeof record.key !== 'string' ||
     typeof record.code !== 'string' ||
     typeof record.repeat !== 'boolean' ||

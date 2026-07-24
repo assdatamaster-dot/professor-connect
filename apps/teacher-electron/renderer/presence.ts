@@ -51,6 +51,8 @@ const requestRemoteControlButton = requireElement<HTMLButtonElement>('request-re
 const stopRemoteControlButton = requireElement<HTMLButtonElement>('stop-remote-control');
 const remoteControlStatus = requireElement<HTMLElement>('remote-control-status');
 const remoteControlIndicator = requireElement<HTMLElement>('remote-control-indicator');
+const remoteMouseIndicator = requireElement<HTMLElement>('remote-mouse-indicator');
+const remoteKeyboardIndicator = requireElement<HTMLElement>('remote-keyboard-indicator');
 const remoteControlLog = requireElement<HTMLUListElement>('remote-control-log');
 let activeRequestId: string | undefined;
 const mediaDeviceManager = new MediaDeviceManager();
@@ -69,6 +71,7 @@ const remoteControlClient = new RemoteControlClient(
   screenVideo,
   {
     sendMouse: (event) => window.professorConnectPresence.sendRemoteControlMouse(event),
+    sendKeyboard: (event) => window.professorConnectPresence.sendRemoteControlKeyboard(event),
   },
   () => {
     attendanceState.textContent = 'Não foi possível transmitir o evento de controle remoto.';
@@ -126,6 +129,8 @@ function renderRemoteControl(
       : snapshot.status === 'pending'
         ? 'pending'
         : 'inactive';
+  remoteMouseIndicator.dataset.indicator = snapshot.status === 'active' ? 'active' : 'inactive';
+  remoteKeyboardIndicator.dataset.indicator = snapshot.status === 'active' ? 'active' : 'inactive';
 
   if (snapshot.status === 'active') {
     remoteControlClient.start();

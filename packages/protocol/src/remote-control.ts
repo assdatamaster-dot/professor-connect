@@ -61,7 +61,7 @@ export interface RemoteControlMousePayload extends RemoteControlChannelReference
   readonly event: RemoteControlMouseEvent;
 }
 
-export type RemoteControlKeyboardEventType = 'keydown' | 'keyup';
+export type RemoteControlKeyboardEventType = 'keydown' | 'keyup' | 'keypress';
 
 export interface RemoteControlKeyboardEvent {
   readonly type: RemoteControlKeyboardEventType;
