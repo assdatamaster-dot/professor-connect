@@ -98,7 +98,6 @@ export class RemoteMouseController implements RemoteMouseControllerPort {
       }
     } catch (error) {
       this.logger.error('Erro de execução', error);
-      this.stop();
       throw error;
     }
   }

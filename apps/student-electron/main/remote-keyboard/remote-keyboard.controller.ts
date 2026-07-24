@@ -107,7 +107,6 @@ export class RemoteKeyboardController implements RemoteKeyboardControllerPort {
       return logs;
     } catch (error) {
       this.logger.error('Erro de execução', error);
-      this.stop();
       throw error;
     }
   }

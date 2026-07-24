@@ -108,7 +108,7 @@ export class RemoteControlReceiver {
 
   public receiveMouse(payload: RemoteControlMousePayload): RemoteControlStopPayload | undefined {
     this.requireActiveReference(payload);
-    return this.executeInput(payload, () => {
+    return this.executeInput(() => {
       const message = this.inputController.receiveMouse(payload, payload.event);
       return message === undefined ? [] : [message];
     });
@@ -118,9 +118,7 @@ export class RemoteControlReceiver {
     payload: RemoteControlKeyboardPayload,
   ): RemoteControlStopPayload | undefined {
     this.requireActiveReference(payload);
-    return this.executeInput(payload, () =>
-      this.inputController.receiveKeyboard(payload, payload.event),
-    );
+    return this.executeInput(() => this.inputController.receiveKeyboard(payload, payload.event));
   }
 
   public receiveStop(payload: RemoteControlStopPayload): void {
@@ -194,20 +192,22 @@ export class RemoteControlReceiver {
     this.notifyListeners();
   }
 
-  private executeInput(
-    reference: RemoteControlRequest,
-    action: () => readonly string[],
-  ): RemoteControlStopPayload | undefined {
+  private executeInput(action: () => readonly string[]): RemoteControlStopPayload | undefined {
     try {
       this.recordReceivedEvents(action());
       return undefined;
     } catch (error) {
       this.snapshot = {
         ...this.snapshot,
-        logs: this.appendLog(`Erro de execução: ${getErrorMessage(error)}`),
+        logs: appendLogEntry(
+          this.appendLog(`Erro de execução: ${getErrorMessage(error)}`),
+          'Evento ignorado; controle mantido',
+          this.clock,
+          this.idFactory,
+        ),
       };
-      this.stopLocally();
-      return { ...reference, reason: 'execution-error' };
+      this.notifyListeners();
+      return undefined;
     }
   }
 

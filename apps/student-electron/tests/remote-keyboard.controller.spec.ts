@@ -131,6 +131,23 @@ test('identifica toda a lista de atalhos autorizados', () => {
   }
 });
 
+test('mantém o controlador ativo depois de uma falha nativa transitória', () => {
+  const adapter = new RecordingKeyboardAdapter();
+  const controller = new RemoteKeyboardController(adapter, {
+    info(): void {},
+    error(): void {},
+  });
+  controller.start(REFERENCE);
+  adapter.failure = new Error('SendInput falhou');
+
+  assert.throws(() => controller.receive(keyEvent('keydown', 'a', 'KeyA')), /SendInput falhou/);
+  assert.equal(controller.isActive(), true);
+
+  adapter.failure = undefined;
+  assert.doesNotThrow(() => controller.receive(keyEvent('keydown', 'a', 'KeyA')));
+  assert.equal(controller.isActive(), true);
+});
+
 function keyEvent(
   type: 'keydown' | 'keyup' | 'keypress',
   key: string,
@@ -157,8 +174,12 @@ function keyEvent(
 class RecordingKeyboardAdapter implements RemoteKeyboardAdapter {
   public readonly downs: NativeKeyboardKey[] = [];
   public readonly ups: NativeKeyboardKey[] = [];
+  public failure: Error | undefined;
 
   public keyDown(key: NativeKeyboardKey): void {
+    if (this.failure !== undefined) {
+      throw this.failure;
+    }
     this.downs.push(key);
   }
 

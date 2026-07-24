@@ -120,13 +120,48 @@ test('executa todos os movimentos e limita somente logs e renders redundantes', 
   assert.equal(adapter.moves.length, 3, 'a execução do mouse não é limitada');
 });
 
+test('mantém o controlador ativo depois de uma falha nativa transitória', () => {
+  const adapter = new RecordingMouseAdapter();
+  const controller = new RemoteMouseController(
+    adapter,
+    {
+      getBounds: () => ({
+        left: 0,
+        top: 0,
+        width: 1920,
+        height: 1080,
+        sourceName: 'Monitor',
+      }),
+    },
+    { info(): void {}, error(): void {} },
+  );
+  controller.start({ sessionId: 'session', requestId: 'request' });
+  adapter.failure = new Error('SetCursorPos falhou');
+
+  assert.throws(
+    () => controller.receive({ type: 'mousemove', x: 0.5, y: 0.5, button: 0, buttons: 0 }),
+    /SetCursorPos falhou/,
+  );
+  assert.equal(controller.isActive(), true);
+
+  adapter.failure = undefined;
+  assert.equal(
+    controller.receive({ type: 'mousemove', x: 0.5, y: 0.5, button: 0, buttons: 0 }),
+    'MouseMove',
+  );
+});
+
 class RecordingMouseAdapter implements RemoteMouseAdapter {
   public readonly moves: Array<{ readonly x: number; readonly y: number }> = [];
   public readonly downs: RemoteMouseButton[] = [];
   public readonly ups: RemoteMouseButton[] = [];
   public readonly scrolls: Array<{ readonly horizontal: number; readonly vertical: number }> = [];
+  public failure: Error | undefined;
 
   public moveTo(x: number, y: number): void {
+    if (this.failure !== undefined) {
+      throw this.failure;
+    }
     this.moves.push({ x, y });
   }
 

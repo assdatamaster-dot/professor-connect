@@ -139,8 +139,8 @@ dispositivos, compartilhamento, renegociação, reconexão e limpeza de recursos
 Hashes SHA-256 dos instaladores:
 
 ```text
-Aluno:          697EE9658BE199C6FD3822B1C0916B68FB0FA08B712440CC789AB27743094184
-Aluno portátil: 4E57AC5E4425044B8004E22977CEFC05D9D38203B00A2565248094C45D85F106
+Aluno:          4DCC2380AB1F2EBC8A534AEE31C170630604D743BD547A49A491BCF71AB46751
+Aluno portátil: 6CE4ED97231A53B8119D6DBEE20A637372784390033E38476D8C05746DC9DC7A
 Professor:      C6E09E5C0E755B09BF5D170C15D69DE0C863F9976409C0219E6AB1780D6705DF
 ```
 
@@ -212,3 +212,13 @@ inicialização do WebSocket. `REQUEST_TIMEOUT_MS` não define mais a duração 
 Os clientes também passaram a registrar o `reason` recebido no evento de encerramento, permitindo
 distinguir `participant`, `session-ended`, `disconnect`, `focus-lost`, `execution-error` e
 `timeout`.
+
+## Correção pós-entrega de falha transitória de entrada
+
+O executor do aluno tratava qualquer falha isolada de `SetCursorPos` ou `SendInput` como fatal.
+Assim, um único clique recusado pelo Windows interrompia mouse, teclado e a autorização completa.
+
+Falhas pontuais de entrada agora são registradas como `Evento ignorado; controle mantido`. O evento
+afetado não é executado, mas a autorização e os controladores permanecem ativos para os próximos
+cliques e teclas. Encerramento pelo aluno ou professor, fim da sessão e perda do Socket continuam
+revogando todas as entradas imediatamente.

@@ -102,7 +102,7 @@ test('executa entradas somente após autorização e registra teclado', () => {
   assert.equal(receiver.getSnapshot().logs.at(-1)?.message, 'Controle encerrado');
 });
 
-test('erro do sistema operacional encerra e gera stop sincronizável', () => {
+test('erro pontual do sistema operacional é registrado sem encerrar o controle', () => {
   const mouseController = new FakeMouseController();
   const receiver = new RemoteControlReceiver({ mouseController });
   receiver.receiveRequest({ sessionId: SESSION_ID, requestId: REQUEST_ID }, SESSION_ID);
@@ -115,13 +115,25 @@ test('erro do sistema operacional encerra e gera stop sincronizável', () => {
     event: { type: 'mousemove', x: 0.5, y: 0.5, button: 0, buttons: 0 },
   });
 
-  assert.equal(stopped?.reason, 'execution-error');
-  assert.equal(receiver.getSnapshot().status, 'inactive');
+  assert.equal(stopped, undefined);
+  assert.equal(receiver.getSnapshot().status, 'active');
+  assert.equal(mouseController.started, true);
   assert(
     receiver
       .getSnapshot()
       .logs.some(({ message }) => message === 'Erro de execução: SendInput falhou'),
   );
+  assert.equal(receiver.getSnapshot().logs.at(-1)?.message, 'Evento ignorado; controle mantido');
+
+  mouseController.failure = undefined;
+  assert.doesNotThrow(() =>
+    receiver.receiveMouse({
+      sessionId: SESSION_ID,
+      requestId: REQUEST_ID,
+      event: { type: 'mousemove', x: 0.5, y: 0.5, button: 0, buttons: 0 },
+    }),
+  );
+  assert.equal(receiver.getSnapshot().status, 'active');
 });
 
 test('nega solicitação e mantém o canal inativo', () => {
