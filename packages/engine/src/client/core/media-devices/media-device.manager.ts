@@ -1,7 +1,7 @@
-import { createStructuredLogger } from '../../../common/structured-logger.js';
 import { CameraController } from './camera.controller.js';
 import { MicrophoneController } from './microphone.controller.js';
 import { ScreenShareController } from './screen-share.controller.js';
+import { createStructuredLogger } from './structured-logger.js';
 import type {
   MediaDeviceListener,
   MediaDeviceManagerOptions,

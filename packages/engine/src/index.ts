@@ -8,7 +8,7 @@ export {
   type StructuredLogData,
   type StructuredLogger,
   type StructuredLogLevel,
-} from './common/structured-logger.js';
+} from './client/core/media-devices/structured-logger.js';
 export {
   CAMERA_STATUS,
   CameraState,

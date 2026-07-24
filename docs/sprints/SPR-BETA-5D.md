@@ -139,8 +139,8 @@ dispositivos, compartilhamento, renegociação, reconexão e limpeza de recursos
 Hashes SHA-256 dos instaladores:
 
 ```text
-Aluno:     C725BCBDCBC858A72EEFC0E30A489B9A99220AC906BD300984AB191A3BB9069D
-Professor: D7B87C413C486AE824262DF34AF550FC68ED7C81DD0359A58657AA412A8E7215
+Aluno:     685855414FC3348570742BEE8F885AC1F06E1AEFADAD2166D68630E3F4520172
+Professor: E2E98A82AE54713621AC6F76774A0092706327ECB2A55F9B749E94AADD61B9B8
 ```
 
 ## Docker e EasyPanel
@@ -165,7 +165,7 @@ um gate de release, e não é correto declará-la concluída apenas com validaç
 
 ## Arquivo criado
 
-- `packages/engine/src/common/structured-logger.ts`;
+- `packages/engine/src/client/core/media-devices/structured-logger.ts`;
 - `docs/sprints/SPR-BETA-5D.md`.
 
 ## Pendências futuras
@@ -177,3 +177,22 @@ um gate de release, e não é correto declará-la concluída apenas com validaç
 - manter uma única réplica enquanto presença e sessões continuarem em memória;
 - tratar clipboard, arquivos, comandos avançados e automações em permissões e canais próprios, sem
   reutilizar implicitamente a autorização de mouse/teclado.
+
+## Correção pós-entrega do login do professor
+
+Foi identificada uma falha de empacotamento na primeira entrega da Beta-5D: o
+`MediaDeviceManager` compilado era copiado para o renderer isolado, mas seu novo import do logger
+apontava para fora da pasta copiada. Como o módulo `presence.js` não terminava de carregar, o
+listener do formulário **Entrar** não era registrado.
+
+O logger foi mantido compartilhado, porém reposicionado dentro da fachada autocontida de mídia. O
+validador de módulos ESM agora também rejeita imports relativos que escapem do diretório `dist`,
+impedindo a repetição desse tipo de falha.
+
+Após o novo empacotamento, um teste CDP no executável do professor confirmou:
+
+- renderer com `document.readyState: complete`;
+- bridge `professorConnectPresence.connect` disponível;
+- nenhum `Runtime.exceptionThrown`;
+- clique em **Entrar** ocultando o login;
+- área online exibida com o nome informado.

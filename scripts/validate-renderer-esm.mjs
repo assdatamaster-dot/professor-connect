@@ -10,6 +10,7 @@ if (entryArgument === undefined) {
 
 const entry = path.resolve(entryArgument);
 const rendererRoot = path.dirname(entry);
+const isolatedRoot = path.dirname(rendererRoot);
 const visited = new Set();
 
 await validateModule(entry);
@@ -29,9 +30,15 @@ async function validateModule(filePath) {
     }
 
     const dependency = path.resolve(path.dirname(filePath), specifier);
-    if (dependency.startsWith(rendererRoot)) {
-      await validateModule(dependency);
+    const relativeDependency = path.relative(isolatedRoot, dependency);
+    if (
+      relativeDependency.startsWith(`..${path.sep}`) ||
+      relativeDependency === '..' ||
+      path.isAbsolute(relativeDependency)
+    ) {
+      throw new Error(`Importação local fora do renderer isolado em ${filePath}: ${specifier}`);
     }
+    await validateModule(dependency);
   }
 }
 
