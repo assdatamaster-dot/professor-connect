@@ -1,0 +1,14 @@
+{
+  "fileSizeBytes": 104857600,
+  "chunkSizeBytes": 65536,
+  "totalChunks": 1600,
+  "sha256": "20492a4d0d84f8beb1767f6616229f85d44c2827b64bdbfb260ee12fa1109e0e",
+  "destinationSha256": "20492a4d0d84f8beb1767f6616229f85d44c2827b64bdbfb260ee12fa1109e0e",
+  "integrityValid": true,
+  "elapsedMilliseconds": 5756,
+  "averageMegabytesPerSecond": 17.373175816539263,
+  "initialRssBytes": 39415808,
+  "peakRssBytes": 51998720,
+  "rssGrowthBytes": 12582912,
+  "completedAt": "2026-07-27T22:38:31.007Z"
+}

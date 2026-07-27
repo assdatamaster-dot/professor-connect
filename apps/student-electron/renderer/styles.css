@@ -648,6 +648,97 @@ select {
   color: #fff;
 }
 
+.file-transfer-panel {
+  margin-top: 16px;
+  padding: 18px;
+  border: 1px solid #dce4f3;
+  border-radius: 14px;
+  background: #f8faff;
+}
+
+.file-transfer-panel__header,
+.file-transfer-heading,
+.file-transfer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.file-transfer-panel h3 {
+  margin: 2px 0 0;
+  font-size: 1rem;
+}
+
+.file-transfer-note {
+  margin: 10px 0;
+  color: #69748b;
+  font-size: 0.72rem;
+}
+
+.file-transfer-list {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.file-transfer-item {
+  display: grid;
+  gap: 6px;
+  padding: 11px;
+  border: 1px solid #e0e6f0;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.file-transfer-heading strong {
+  overflow: hidden;
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-transfer-heading span,
+.file-transfer-item small {
+  color: #69748b;
+  font-size: 0.68rem;
+}
+
+.file-transfer-heading span[data-status='completed'] {
+  color: #168653;
+}
+
+.file-transfer-heading span[data-status='failed'],
+.file-transfer-heading span[data-status='cancelled'],
+.file-transfer-heading span[data-status='rejected'],
+.file-transfer-error {
+  color: #c43e4d !important;
+}
+
+.file-transfer-item progress {
+  width: 100%;
+  height: 8px;
+  accent-color: #4f67d9;
+}
+
+.file-transfer-actions {
+  justify-content: flex-end;
+}
+
+.file-transfer-actions .button,
+.file-transfer-actions button {
+  min-height: 30px;
+  padding: 6px 10px;
+  font-size: 0.68rem;
+}
+
+.file-transfer-empty {
+  color: #79839a;
+  font-size: 0.72rem;
+}
+
 [hidden] {
   display: none !important;
 }
@@ -718,6 +809,11 @@ select {
     grid-column: 1 / -1;
     width: 100%;
     margin: 10px 0 0;
+  }
+
+  .file-transfer-panel__header {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 

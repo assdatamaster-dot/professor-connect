@@ -15,6 +15,14 @@ import type {
   WebRtcDescriptionPayload,
   WebRtcIceCandidatePayload,
 } from '../shared/webrtc-contracts.js' with { 'resolution-mode': 'import' };
+import type {
+  FileTransferApi,
+  FileTransferAuditPayload,
+  FileTransferChunkPayload,
+  FileTransferMetadata,
+  FileTransferVerification,
+  PreparedIncomingFile,
+} from '../shared/file-transfer-contracts.js' with { 'resolution-mode': 'import' };
 
 const channels = {
   initialize: 'desktop:workflow:initialize',
@@ -115,6 +123,52 @@ const webRtcApi: StudentWebRtcApi = {
   },
 };
 
+const fileTransferChannels = {
+  selectFiles: 'student:file-transfer:select-files',
+  readChunk: 'student:file-transfer:read-chunk',
+  verifySource: 'student:file-transfer:verify-source',
+  releaseSource: 'student:file-transfer:release-source',
+  prepareReceive: 'student:file-transfer:prepare-receive',
+  writeChunk: 'student:file-transfer:write-chunk',
+  completeReceive: 'student:file-transfer:complete-receive',
+  cancelReceive: 'student:file-transfer:cancel-receive',
+  appendAudit: 'student:file-transfer:append-audit',
+} as const;
+
+const fileTransferApi: FileTransferApi = {
+  selectFiles: () =>
+    ipcRenderer.invoke(fileTransferChannels.selectFiles) as Promise<
+      readonly FileTransferMetadata[]
+    >,
+  readChunk: (transferId, index) =>
+    ipcRenderer.invoke(
+      fileTransferChannels.readChunk,
+      transferId,
+      index,
+    ) as Promise<FileTransferChunkPayload>,
+  verifySource: (transferId) =>
+    ipcRenderer.invoke(fileTransferChannels.verifySource, transferId) as Promise<boolean>,
+  releaseSource: (transferId) =>
+    ipcRenderer.invoke(fileTransferChannels.releaseSource, transferId) as Promise<void>,
+  prepareReceive: (metadata) =>
+    ipcRenderer.invoke(
+      fileTransferChannels.prepareReceive,
+      metadata,
+    ) as Promise<PreparedIncomingFile>,
+  writeChunk: (payload) =>
+    ipcRenderer.invoke(fileTransferChannels.writeChunk, payload) as Promise<number>,
+  completeReceive: (transferId) =>
+    ipcRenderer.invoke(
+      fileTransferChannels.completeReceive,
+      transferId,
+    ) as Promise<FileTransferVerification>,
+  cancelReceive: (transferId) =>
+    ipcRenderer.invoke(fileTransferChannels.cancelReceive, transferId) as Promise<void>,
+  appendAudit: (payload: FileTransferAuditPayload) =>
+    ipcRenderer.invoke(fileTransferChannels.appendAudit, payload) as Promise<void>,
+};
+
 contextBridge.exposeInMainWorld('professorConnect', workflowApi);
 contextBridge.exposeInMainWorld('professorConnectSession', sessionApi);
 contextBridge.exposeInMainWorld('professorConnectWebRtc', webRtcApi);
+contextBridge.exposeInMainWorld('professorConnectFileTransfer', fileTransferApi);

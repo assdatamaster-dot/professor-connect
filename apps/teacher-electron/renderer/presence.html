@@ -181,6 +181,29 @@
                 <li>Nenhuma atividade de controle remoto.</li>
               </ul>
             </section>
+            <section
+              id="file-transfer-panel"
+              class="file-transfer-panel"
+              aria-labelledby="file-transfer-title"
+              hidden
+            >
+              <div class="file-transfer-panel__header">
+                <div>
+                  <p class="eyebrow">Canal P2P protegido</p>
+                  <h2 id="file-transfer-title">Transferência de arquivos</h2>
+                </div>
+                <button id="file-transfer-button" type="button" disabled>
+                  📁 Transferir Arquivos
+                </button>
+              </div>
+              <p class="file-transfer-note">
+                O destinatário precisa aceitar. Os arquivos são salvos em Documentos/Professor
+                Connect e nunca são abertos automaticamente.
+              </p>
+              <ul id="file-transfer-list" class="file-transfer-list" aria-live="polite">
+                <li class="file-transfer-empty">Nenhuma transferência nesta sessão.</li>
+              </ul>
+            </section>
             <button id="end-session" class="end-session-button" type="button">
               Encerrar Atendimento
             </button>

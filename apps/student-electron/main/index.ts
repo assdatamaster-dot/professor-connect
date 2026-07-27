@@ -1,10 +1,20 @@
-import { app, BrowserWindow, desktopCapturer, screen, session, webContents } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  desktopCapturer,
+  dialog,
+  screen,
+  session,
+  webContents,
+} from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { createStructuredLogger } from '@professor-connect/engine';
+import { FileTransferStorage } from '@professor-connect/engine/file-transfer-node';
 
 import { AllScreensCaptureCoordinator } from './all-screens-capture.coordinator.js';
+import { registerFileTransferIpc, type FileTransferIpcRegistration } from './file-transfer-ipc.js';
 import { registerDesktopIpc, type DesktopIpcRegistration } from './ipc.js';
 import { RemoteControlReceiver } from './remote-control.receiver.js';
 import { createRemoteInputController } from './remote-input/create-remote-input-controller.js';
@@ -21,6 +31,7 @@ import {
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const studentMainLogger = createStructuredLogger('student-main');
 let mainWindow: BrowserWindow | undefined;
+let fileTransferIpcRegistration: FileTransferIpcRegistration | undefined;
 let ipcRegistration: DesktopIpcRegistration | undefined;
 let presenceController: StudentPresenceController | undefined;
 let sessionIpcRegistration: SessionIpcRegistration | undefined;
@@ -39,7 +50,37 @@ async function createMainWindow(): Promise<void> {
     startInput: DEFAULT_STUDENT_WORKFLOW_INPUT,
   });
   mainWindow = new BrowserWindow(createWindowOptions(preloadPath));
+  const window = mainWindow;
   ipcRegistration = registerDesktopIpc(workflowController, mainWindow.webContents);
+  const fileTransferStorage = new FileTransferStorage({
+    documentsPath: app.getPath('documents'),
+    userDataPath: app.getPath('userData'),
+    selectFiles: async () => {
+      const result = await dialog.showOpenDialog(window, {
+        title: 'Transferir arquivos para o professor',
+        buttonLabel: 'Selecionar',
+        properties: ['openFile', 'multiSelections'],
+      });
+      return result.canceled ? [] : result.filePaths;
+    },
+    resolveDuplicate: async ({ fileName }) => {
+      const result = await dialog.showMessageBox(window, {
+        type: 'question',
+        title: 'Arquivo já existente',
+        message: `O arquivo "${fileName}" já existe.`,
+        detail: 'Escolha como deseja salvar o arquivo recebido.',
+        buttons: ['Substituir', 'Renomear automaticamente', 'Cancelar'],
+        defaultId: 1,
+        cancelId: 2,
+        noLink: true,
+      });
+      return result.response === 0 ? 'replace' : result.response === 1 ? 'rename' : 'cancel';
+    },
+  });
+  fileTransferIpcRegistration = registerFileTransferIpc(
+    fileTransferStorage,
+    mainWindow.webContents,
+  );
   const captureTargetRegistry = requireScreenCaptureTargetRegistry();
   const captureCoordinator = requireAllScreensCaptureCoordinator();
   const remoteControlReceiver = new RemoteControlReceiver({
@@ -65,12 +106,14 @@ async function createMainWindow(): Promise<void> {
   mainWindow.webContents.on('will-navigate', (event) => event.preventDefault());
   mainWindow.once('ready-to-show', () => mainWindow?.show());
   mainWindow.on('closed', () => {
+    fileTransferIpcRegistration?.dispose();
     ipcRegistration?.dispose();
     unsubscribeCaptureSession?.();
     allScreensCaptureCoordinator?.clear();
     presenceController?.dispose();
     sessionIpcRegistration?.dispose();
     workflowController?.dispose();
+    fileTransferIpcRegistration = undefined;
     ipcRegistration = undefined;
     presenceController = undefined;
     sessionIpcRegistration = undefined;

@@ -1,7 +1,10 @@
-import { app, BrowserWindow, session } from 'electron';
+import { app, BrowserWindow, dialog, session } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { FileTransferStorage } from '@professor-connect/engine/file-transfer-node';
+
+import { registerFileTransferIpc, type FileTransferIpcRegistration } from './file-transfer-ipc.js';
 import { registerTeacherIpc, type TeacherIpcRegistration } from './ipc.js';
 import { registerPresenceIpc, type PresenceIpcRegistration } from './presence-ipc.js';
 import { ProfessorPresenceController } from './professor-presence.controller.js';
@@ -11,6 +14,7 @@ import { createTeacherWorkflowManager } from './workflow-composition.js';
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 let mainWindow: BrowserWindow | undefined;
+let fileTransferIpcRegistration: FileTransferIpcRegistration | undefined;
 let ipcRegistration: TeacherIpcRegistration | undefined;
 let presenceIpcRegistration: PresenceIpcRegistration | undefined;
 let presenceController: ProfessorPresenceController | undefined;
@@ -24,7 +28,37 @@ async function createMainWindow(): Promise<void> {
 
   workflowController = new TeacherWorkflowController(manager);
   mainWindow = new BrowserWindow(createWindowOptions(preloadPath));
+  const window = mainWindow;
   ipcRegistration = registerTeacherIpc(workflowController, mainWindow.webContents);
+  const fileTransferStorage = new FileTransferStorage({
+    documentsPath: app.getPath('documents'),
+    userDataPath: app.getPath('userData'),
+    selectFiles: async () => {
+      const result = await dialog.showOpenDialog(window, {
+        title: 'Transferir arquivos para o aluno',
+        buttonLabel: 'Selecionar',
+        properties: ['openFile', 'multiSelections'],
+      });
+      return result.canceled ? [] : result.filePaths;
+    },
+    resolveDuplicate: async ({ fileName }) => {
+      const result = await dialog.showMessageBox(window, {
+        type: 'question',
+        title: 'Arquivo já existente',
+        message: `O arquivo "${fileName}" já existe.`,
+        detail: 'Escolha como deseja salvar o arquivo recebido.',
+        buttons: ['Substituir', 'Renomear automaticamente', 'Cancelar'],
+        defaultId: 1,
+        cancelId: 2,
+        noLink: true,
+      });
+      return result.response === 0 ? 'replace' : result.response === 1 ? 'rename' : 'cancel';
+    },
+  });
+  fileTransferIpcRegistration = registerFileTransferIpc(
+    fileTransferStorage,
+    mainWindow.webContents,
+  );
   presenceController = new ProfessorPresenceController(configPath);
   presenceIpcRegistration = registerPresenceIpc(presenceController, mainWindow.webContents);
 
@@ -32,10 +66,12 @@ async function createMainWindow(): Promise<void> {
   mainWindow.webContents.on('will-navigate', (event) => event.preventDefault());
   mainWindow.once('ready-to-show', () => mainWindow?.show());
   mainWindow.on('closed', () => {
+    fileTransferIpcRegistration?.dispose();
     ipcRegistration?.dispose();
     presenceIpcRegistration?.dispose();
     workflowController?.dispose();
     presenceController?.dispose();
+    fileTransferIpcRegistration = undefined;
     ipcRegistration = undefined;
     presenceIpcRegistration = undefined;
     workflowController = undefined;

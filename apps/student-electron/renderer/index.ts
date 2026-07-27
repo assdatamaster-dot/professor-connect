@@ -14,6 +14,7 @@ import type { StudentRemoteControlSnapshot } from '../shared/remote-control-cont
 import { AllScreensCompositeCapture } from './all-screens-composer.js';
 import { getTranslations } from './i18n.js';
 import { approveRemoteControlWithScreen } from './remote-control-permission-flow.js';
+import { FILE_TRANSFER_DATA_CHANNEL_LABEL, FileTransferClient } from './file-transfer.client.js';
 import { createDesktopViewModel } from './view-model.js';
 
 const MAXIMUM_PENDING_ICE_CANDIDATES = 256;
@@ -50,6 +51,9 @@ const denyRemoteControlButton = requireElement<HTMLButtonElement>('deny-remote-c
 const stopRemoteControlButton = requireElement<HTMLButtonElement>('stop-remote-control');
 const remoteControlBar = requireElement<HTMLElement>('remote-control-bar');
 const remoteControlTeacher = requireElement<HTMLElement>('remote-control-teacher');
+const fileTransferButton = requireElement<HTMLButtonElement>('file-transfer-button');
+const fileTransferPanel = requireElement<HTMLElement>('file-transfer-panel');
+const fileTransferList = requireElement<HTMLUListElement>('file-transfer-list');
 const mediaDeviceManager = new MediaDeviceManager();
 let peerConnection: RTCPeerConnection | undefined;
 let cameraSender: RTCRtpSender | undefined;
@@ -71,6 +75,18 @@ let remoteControlSnapshot: StudentRemoteControlSnapshot = {
   logs: [],
 };
 const pendingIceCandidates = new Map<string, RTCIceCandidateInit[]>();
+const fileTransferClient = new FileTransferClient({
+  api: window.professorConnectFileTransfer,
+  elements: {
+    button: fileTransferButton,
+    panel: fileTransferPanel,
+    list: fileTransferList,
+  },
+  getLocalName: () => 'Aluno',
+  notify: (message) => {
+    statusMessage.textContent = message;
+  },
+});
 
 function render(snapshot: DesktopWorkflowSnapshot): void {
   const view = createDesktopViewModel(snapshot, translations);
@@ -335,12 +351,19 @@ const unsubscribeSession = window.professorConnectSession.onStateChanged((snapsh
     snapshot.status === 'connected';
   callButton.disabled = isSessionBusy || teacherSelect.value.length === 0;
   teacherSelect.disabled = isSessionBusy;
+  if (snapshot.activeSessionId !== undefined) {
+    fileTransferClient.beginSession(
+      snapshot.activeSessionId,
+      snapshot.activeTeacherName ?? 'Professor',
+    );
+  }
   if (snapshot.status === 'connected') {
     endButton.disabled = false;
     mediaSection.hidden = false;
     callSection.hidden = true;
   }
   if (snapshot.status === 'ended') {
+    fileTransferClient.endSession();
     closeWebRtcSession();
   }
 });
@@ -376,6 +399,7 @@ window.addEventListener(
     if (remoteControlDialog.open) {
       remoteControlDialog.close();
     }
+    fileTransferClient.dispose();
     closeWebRtcSession();
     mediaDeviceManager.dispose();
   },
@@ -409,6 +433,12 @@ void window.professorConnectSession
   });
 void window.professorConnectSession.getState().then((snapshot) => {
   activeTeacherName = snapshot.activeTeacherName;
+  if (snapshot.activeSessionId !== undefined) {
+    fileTransferClient.beginSession(
+      snapshot.activeSessionId,
+      snapshot.activeTeacherName ?? 'Professor',
+    );
+  }
   renderRemoteControl(snapshot.remoteControl);
 });
 teacherSelect.addEventListener('change', () => {
@@ -464,6 +494,11 @@ async function createStudentPeerConnection(sessionId: string): Promise<void> {
   });
 
   peerConnection = connection;
+  connection.ondatachannel = (event) => {
+    if (event.channel.label === FILE_TRANSFER_DATA_CHANNEL_LABEL) {
+      fileTransferClient.attachChannel(event.channel);
+    }
+  };
   connection.onicecandidate = (event) => {
     if (event.candidate !== null && activeWebRtcSessionId === sessionId) {
       void window.professorConnectWebRtc
@@ -706,6 +741,7 @@ function serializeIceCandidate(candidate: RTCIceCandidate) {
 function closeWebRtcSession(): void {
   activeWebRtcSessionId = undefined;
   pendingIceCandidates.clear();
+  fileTransferClient.detachChannel();
   if (peerConnection !== undefined) {
     cleanupScreenShare(peerConnection, true);
     peerConnection.onicecandidate = null;

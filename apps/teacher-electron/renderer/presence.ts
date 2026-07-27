@@ -9,6 +9,7 @@ import {
   type ProfessorPresenceSnapshot,
 } from '../shared/presence-contracts.js';
 import type { TeacherRemoteControlSnapshot } from '../shared/remote-control-contracts.js';
+import { FILE_TRANSFER_DATA_CHANNEL_LABEL, FileTransferClient } from './file-transfer.client.js';
 import { RemoteControlClient } from './remote-control.client.js';
 
 const MAXIMUM_PENDING_ICE_CANDIDATES = 256;
@@ -57,6 +58,9 @@ const remoteControlIndicator = requireElement<HTMLElement>('remote-control-indic
 const remoteMouseIndicator = requireElement<HTMLElement>('remote-mouse-indicator');
 const remoteKeyboardIndicator = requireElement<HTMLElement>('remote-keyboard-indicator');
 const remoteControlLog = requireElement<HTMLUListElement>('remote-control-log');
+const fileTransferButton = requireElement<HTMLButtonElement>('file-transfer-button');
+const fileTransferPanel = requireElement<HTMLElement>('file-transfer-panel');
+const fileTransferList = requireElement<HTMLUListElement>('file-transfer-list');
 let activeRequestId: string | undefined;
 const mediaDeviceManager = new MediaDeviceManager();
 let peerConnection: RTCPeerConnection | undefined;
@@ -85,6 +89,18 @@ const remoteControlClient = new RemoteControlClient(
     await window.professorConnectPresence.stopRemoteControl();
   },
 );
+const fileTransferClient = new FileTransferClient({
+  api: window.professorConnectFileTransfer,
+  elements: {
+    button: fileTransferButton,
+    panel: fileTransferPanel,
+    list: fileTransferList,
+  },
+  getLocalName: () => professorDisplayName.textContent ?? 'Professor',
+  notify: (message) => {
+    attendanceState.textContent = message;
+  },
+});
 
 function render(snapshot: ProfessorPresenceSnapshot): void {
   const isActive = snapshot.professorName !== undefined;
@@ -95,6 +111,7 @@ function render(snapshot: ProfessorPresenceSnapshot): void {
 
   if (!isActive) {
     remoteControlClient.stop();
+    fileTransferClient.endSession();
     nameInput.focus();
     return;
   }
@@ -107,9 +124,16 @@ function render(snapshot: ProfessorPresenceSnapshot): void {
   activeAttendance.hidden = snapshot.activeSession === undefined;
   activeStudentName.textContent = snapshot.activeSession?.studentName ?? '';
   if (snapshot.activeSession === undefined) {
+    fileTransferClient.endSession();
     closeWebRtcSession();
-  } else if (activeWebRtcSessionId !== snapshot.activeSession.sessionId) {
-    void startTeacherWebRtc(snapshot.activeSession.sessionId);
+  } else {
+    fileTransferClient.beginSession(
+      snapshot.activeSession.sessionId,
+      snapshot.activeSession.studentName,
+    );
+    if (activeWebRtcSessionId !== snapshot.activeSession.sessionId) {
+      void startTeacherWebRtc(snapshot.activeSession.sessionId);
+    }
   }
   renderRemoteControl(snapshot.remoteControl, snapshot.activeSession !== undefined);
   renderSessionRequest(snapshot);
@@ -370,6 +394,7 @@ window.addEventListener(
     unsubscribeScreenShareStopped();
     unsubscribeMediaDevices();
     remoteControlClient.stop();
+    fileTransferClient.dispose();
     closeWebRtcSession();
     mediaDeviceManager.dispose();
   },
@@ -387,6 +412,9 @@ async function startTeacherWebRtc(sessionId: string): Promise<void> {
   });
 
   peerConnection = connection;
+  fileTransferClient.attachChannel(
+    connection.createDataChannel(FILE_TRANSFER_DATA_CHANNEL_LABEL, { ordered: true }),
+  );
   connection.addTransceiver('audio', { direction: 'sendrecv' });
   connection.addTransceiver('video', { direction: 'sendrecv' });
   connection.onicecandidate = (event) => {
@@ -558,6 +586,7 @@ function closeWebRtcSession(resetStatus = true): void {
   activeWebRtcSessionId = undefined;
   pendingIceCandidates.clear();
   clearWebRtcRecovery();
+  fileTransferClient.detachChannel();
   if (peerConnection !== undefined) {
     peerConnection.onicecandidate = null;
     peerConnection.ontrack = null;
