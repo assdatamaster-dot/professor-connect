@@ -176,9 +176,12 @@ export class RemoteControlGateway {
         const normalized = requireMousePayload(payload);
         const route = this.requireRoute(normalized.sessionId, socket.id, 'teacher');
         this.requireAuthorization(normalized, 'active');
-        this.socketServer
-          .to(route.recipientSocketId)
-          .emit(REMOTE_CONTROL_CHANNEL_EVENTS.MOUSE, normalized);
+        const recipient = this.socketServer.to(route.recipientSocketId);
+        if (normalized.event.type === 'mousemove') {
+          recipient.volatile.emit(REMOTE_CONTROL_CHANNEL_EVENTS.MOUSE, normalized);
+        } else {
+          recipient.emit(REMOTE_CONTROL_CHANNEL_EVENTS.MOUSE, normalized);
+        }
         this.logReceivedEvent(normalized.sessionId, normalized.requestId, normalized.event.type);
       });
     });

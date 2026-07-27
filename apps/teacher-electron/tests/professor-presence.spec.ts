@@ -244,6 +244,26 @@ test('lê config.json, registra o professor e desconecta pelo Socket.IO', async 
     );
     assert.equal(remoteControlMouseEvents[0]?.requestId, remoteReference.requestId);
     assert.equal(remoteControlKeyboardEvents[0]?.event.type, 'keydown');
+
+    const engine = requireControllerEngine(controller);
+    const bufferedPacketsBeforeCongestion = engine.writeBuffer.length;
+    engine.transport.writable = false;
+    for (let index = 0; index < 1_000; index += 1) {
+      controller.sendRemoteControlMouse({
+        type: 'mousemove',
+        x: (index % 100) / 99,
+        y: ((index * 7) % 100) / 99,
+        button: 0,
+        buttons: 0,
+      });
+    }
+    assert.equal(
+      engine.writeBuffer.length,
+      bufferedPacketsBeforeCongestion,
+      'mousemove congestionado não deve ocupar a fila confiável do Engine.IO',
+    );
+    engine.transport.writable = true;
+
     controller.stopRemoteControl();
     await waitUntil(() => remoteControlStops.length === 1);
     assert.equal(controller.getSnapshot().remoteControl.status, 'inactive');
@@ -293,4 +313,24 @@ async function waitUntil(condition: () => boolean): Promise<void> {
     }
     await new Promise<void>((resolve) => setTimeout(resolve, 10));
   }
+}
+
+interface InspectableEngine {
+  readonly writeBuffer: unknown[];
+  readonly transport: {
+    writable: boolean;
+  };
+}
+
+function requireControllerEngine(controller: ProfessorPresenceController): InspectableEngine {
+  const inspectable = controller as unknown as {
+    readonly socket?: {
+      readonly io: {
+        readonly engine: InspectableEngine;
+      };
+    };
+  };
+  const engine = inspectable.socket?.io.engine;
+  assert(engine !== undefined);
+  return engine;
 }

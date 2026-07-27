@@ -162,6 +162,30 @@ test('autoriza, isola e transporta eventos sem executá-los', async () => {
     assert.deepEqual(mouseEvents[0], mousePayload);
     assert.deepEqual(keyboardEvents[0], keyboardPayload);
     assert.equal(keyboardEvents[1]?.event.key, ' ');
+
+    const studentConnection = requireServerConnection(gateway, student.id);
+    const bufferedPacketsBeforeCongestion = studentConnection.writeBuffer.length;
+    studentConnection.transport.writable = false;
+    for (let index = 0; index < 1_000; index += 1) {
+      teacher.emit(REMOTE_CONTROL_CHANNEL_EVENTS.MOUSE, {
+        ...firstRequest,
+        event: {
+          type: 'mousemove',
+          x: (index % 100) / 99,
+          y: ((index * 7) % 100) / 99,
+          button: 0,
+          buttons: 0,
+        },
+      });
+    }
+    await waitForDelay(200);
+    assert.equal(
+      studentConnection.writeBuffer.length,
+      bufferedPacketsBeforeCongestion,
+      'o relay não deve enfileirar mousemove quando o aluno não está gravável',
+    );
+    studentConnection.transport.writable = true;
+
     teacher.emit(REMOTE_CONTROL_CHANNEL_EVENTS.MOUSE, {
       ...firstRequest,
       event: { type: 'dblclick', x: 0.4, y: 0.6, button: 0, buttons: 0 },
@@ -268,4 +292,28 @@ async function waitUntil(condition: () => boolean): Promise<void> {
 
 async function waitForDelay(milliseconds = 50): Promise<void> {
   await new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+}
+
+interface InspectableServerConnection {
+  readonly writeBuffer: unknown[];
+  readonly transport: {
+    writable: boolean;
+  };
+}
+
+function requireServerConnection(
+  gateway: unknown,
+  socketId: string | undefined,
+): InspectableServerConnection {
+  assert(socketId !== undefined);
+  const inspectable = gateway as {
+    readonly server: {
+      readonly sockets: {
+        readonly sockets: Map<string, { readonly conn: unknown }>;
+      };
+    };
+  };
+  const socket = inspectable.server.sockets.sockets.get(socketId);
+  assert(socket !== undefined);
+  return socket.conn as unknown as InspectableServerConnection;
 }

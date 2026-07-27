@@ -283,10 +283,13 @@ export class ProfessorPresenceController {
 
   public sendRemoteControlMouse(event: RemoteControlMouseEvent): void {
     const reference = this.requireActiveRemoteControl();
-    this.requireActiveSignalingSocket(reference.sessionId).emit(
-      REMOTE_CONTROL_CHANNEL_EVENTS.MOUSE,
-      { ...reference, event },
-    );
+    const socket = this.requireActiveSignalingSocket(reference.sessionId);
+    const payload = { ...reference, event };
+    if (event.type === 'mousemove') {
+      socket.volatile.emit(REMOTE_CONTROL_CHANNEL_EVENTS.MOUSE, payload);
+      return;
+    }
+    socket.emit(REMOTE_CONTROL_CHANNEL_EVENTS.MOUSE, payload);
   }
 
   public sendRemoteControlKeyboard(event: RemoteControlKeyboardEvent): void {
