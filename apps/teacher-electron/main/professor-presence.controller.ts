@@ -34,6 +34,7 @@ import type {
 } from '../shared/webrtc-contracts.js';
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
+const SESSION_REQUEST_TIMEOUT_MS = 30_000;
 const MAXIMUM_REMOTE_CONTROL_LOG_ENTRIES = 100;
 
 interface ProfessorPresenceClientEvents {
@@ -53,6 +54,7 @@ interface ProfessorPresenceClientEvents {
 
 interface ProfessorPresenceServerEvents {
   'session:requested': (payload: ProfessorSessionRequest) => void;
+  'session:timeout': (payload: SessionRequestTimeoutPayload) => void;
   'session:started': (payload: ProfessorActiveSession) => void;
   'session:ended': (payload: ProfessorActiveSession) => void;
   'webrtc:answer': (payload: WebRtcDescriptionPayload) => void;
@@ -69,6 +71,10 @@ interface ProfessorConnectConfig {
   readonly serverUrl: string;
 }
 
+interface SessionRequestTimeoutPayload {
+  readonly requestId: string;
+}
+
 type PresenceListener = (snapshot: ProfessorPresenceSnapshot) => void;
 type PresenceSocket = Socket<ProfessorPresenceServerEvents, ProfessorPresenceClientEvents>;
 
@@ -80,15 +86,20 @@ export class ProfessorPresenceController {
   private readonly iceCandidateListeners = new Set<WebRtcIceCandidateListener>();
   private readonly screenShareStartedListeners = new Set<ScreenShareListener>();
   private readonly screenShareStoppedListeners = new Set<ScreenShareListener>();
+  private readonly sessionRequestExpirationTimers = new Map<string, NodeJS.Timeout>();
   private heartbeatTimer: NodeJS.Timeout | undefined;
   private professorName: string | undefined;
   private sessionRequests: ProfessorSessionRequest[] = [];
   private activeSession: ProfessorActiveSession | undefined;
+  private sessionNotice: string | undefined;
   private socket: PresenceSocket | undefined;
   private status = ProfessorPresenceStatus.DISCONNECTED;
   private remoteControl = createInitialRemoteControlSnapshot();
 
-  public constructor(private readonly configPath: string) {}
+  public constructor(
+    private readonly configPath: string,
+    private readonly sessionRequestTimeoutMs = SESSION_REQUEST_TIMEOUT_MS,
+  ) {}
 
   public async connect(nameInput: string): Promise<ProfessorPresenceSnapshot> {
     const name = nameInput.trim();
@@ -149,10 +160,18 @@ export class ProfessorPresenceController {
         return;
       }
       this.sessionRequests = [...this.sessionRequests, request];
+      this.sessionNotice = undefined;
+      this.scheduleSessionRequestExpiration(request.requestId);
       this.notifyListeners();
     });
+    socket.on('session:timeout', (payload) => {
+      this.expireSessionRequest(payload.requestId);
+    });
     socket.on('session:started', (session) => {
+      this.clearSessionRequestExpirationTimers();
+      this.sessionRequests = [];
       this.activeSession = session;
+      this.sessionNotice = undefined;
       this.remoteControl = createInitialRemoteControlSnapshot();
       this.notifyListeners();
     });
@@ -238,6 +257,7 @@ export class ProfessorPresenceController {
       serverConnected: this.status === ProfessorPresenceStatus.CONNECTED,
       sessionRequests: [...this.sessionRequests],
       activeSession: this.activeSession,
+      sessionNotice: this.sessionNotice,
       remoteControl: { ...this.remoteControl, logs: [...this.remoteControl.logs] },
     };
   }
@@ -403,11 +423,13 @@ export class ProfessorPresenceController {
 
   private disconnectSocket(): void {
     this.stopHeartbeat();
+    this.clearSessionRequestExpirationTimers();
     this.socket?.disconnect();
     this.socket?.removeAllListeners();
     this.socket = undefined;
     this.sessionRequests = [];
     this.activeSession = undefined;
+    this.sessionNotice = undefined;
     this.remoteControl = createInitialRemoteControlSnapshot();
   }
 
@@ -427,11 +449,51 @@ export class ProfessorPresenceController {
     }
 
     this.socket.emit(event, { requestId });
+    if (event === 'session:reject') {
+      this.clearSessionRequestExpirationTimer(requestId);
+      this.sessionRequests = this.sessionRequests.filter(
+        (request) => request.requestId !== requestId,
+      );
+    }
+    this.notifyListeners();
+    return this.getSnapshot();
+  }
+
+  private scheduleSessionRequestExpiration(requestId: string): void {
+    this.clearSessionRequestExpirationTimer(requestId);
+    const timer = setTimeout(() => {
+      this.expireSessionRequest(requestId);
+    }, this.sessionRequestTimeoutMs);
+    timer.unref?.();
+    this.sessionRequestExpirationTimers.set(requestId, timer);
+  }
+
+  private expireSessionRequest(requestId: string): void {
+    const hasRequest = this.sessionRequests.some((request) => request.requestId === requestId);
+    this.clearSessionRequestExpirationTimer(requestId);
+    if (!hasRequest) {
+      return;
+    }
     this.sessionRequests = this.sessionRequests.filter(
       (request) => request.requestId !== requestId,
     );
+    this.sessionNotice = 'A solicitação expirou. Peça ao aluno para enviar novamente.';
     this.notifyListeners();
-    return this.getSnapshot();
+  }
+
+  private clearSessionRequestExpirationTimer(requestId: string): void {
+    const timer = this.sessionRequestExpirationTimers.get(requestId);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      this.sessionRequestExpirationTimers.delete(requestId);
+    }
+  }
+
+  private clearSessionRequestExpirationTimers(): void {
+    for (const timer of this.sessionRequestExpirationTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.sessionRequestExpirationTimers.clear();
   }
 
   private requireActiveSignalingSocket(sessionId: string): PresenceSocket {

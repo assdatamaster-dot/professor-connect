@@ -63,13 +63,9 @@ export class RemoteControlClient {
     window.removeEventListener('keyup', this.handleKeyboardEvent, true);
     window.removeEventListener('blur', this.handleFocusLost);
     document.removeEventListener('visibilitychange', this.handleVisibilityChange);
-    this.pendingMouseMove = undefined;
     this.pressedButtons.clear();
     this.pressedKeys.clear();
-    if (this.animationFrame !== undefined) {
-      cancelAnimationFrame(this.animationFrame);
-      this.animationFrame = undefined;
-    }
+    this.cancelPendingMouseMove();
   }
 
   public isActive(): boolean {
@@ -178,14 +174,24 @@ export class RemoteControlClient {
   };
 
   private readonly handleFocusLost = (): void => {
+    this.cancelPendingMouseMove();
     this.releasePressedInputs();
   };
 
   private readonly handleVisibilityChange = (): void => {
     if (document.visibilityState === 'hidden') {
+      this.cancelPendingMouseMove();
       this.releasePressedInputs();
     }
   };
+
+  private cancelPendingMouseMove(): void {
+    this.pendingMouseMove = undefined;
+    if (this.animationFrame !== undefined) {
+      cancelAnimationFrame(this.animationFrame);
+      this.animationFrame = undefined;
+    }
+  }
 
   private releasePressedInputs(): void {
     const buttons = [...this.pressedButtons.values()];

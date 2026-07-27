@@ -168,8 +168,12 @@ test('entrega aceite, recusa e timeout em tempo real', async () => {
     const requestedForTimeout = waitForRequested(teacher);
     student.emit('request:session', { teacherId: 'teacher-id' });
     const thirdRequest = await requestedForTimeout;
-    const timedOut = await waitForTimeout(student);
-    assert.equal(timedOut.requestId, thirdRequest.requestId);
+    const [studentTimedOut, teacherTimedOut] = await Promise.all([
+      waitForTimeout(student),
+      waitForTimeout(teacher),
+    ]);
+    assert.equal(studentTimedOut.requestId, thirdRequest.requestId);
+    assert.equal(teacherTimedOut.requestId, thirdRequest.requestId);
 
     assert.deepEqual(
       sessionRequests.listHistory().map((request) => request.status),

@@ -17,6 +17,7 @@ export interface ProfessorPresenceSnapshot {
   readonly serverConnected: boolean;
   readonly sessionRequests: readonly ProfessorSessionRequest[];
   readonly activeSession: ProfessorActiveSession | undefined;
+  readonly sessionNotice: string | undefined;
   readonly remoteControl: TeacherRemoteControlSnapshot;
 }
 

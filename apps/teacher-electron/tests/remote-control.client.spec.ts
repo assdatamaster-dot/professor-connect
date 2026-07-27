@@ -193,6 +193,88 @@ test('falha de transporte remove listeners e solicita parada segura uma única v
   }
 });
 
+test('retoma mouse e teclado após minimizar e restaurar com animation frame suspenso', () => {
+  const pointerTarget = new VideoTarget();
+  const mouseEvents: RemoteControlMouseEvent[] = [];
+  const keyboardEvents: RemoteControlKeyboardEvent[] = [];
+  const windowTarget = new EventTarget();
+  const documentTarget = new VisibilityTarget();
+  const frameCallbacks = new Map<number, FrameRequestCallback>();
+  const canceledFrames: number[] = [];
+  let nextFrameId = 1;
+  const originals = installBrowserGlobals(
+    windowTarget,
+    documentTarget,
+    (callback) => {
+      const frameId = nextFrameId;
+      nextFrameId += 1;
+      frameCallbacks.set(frameId, callback);
+      return frameId;
+    },
+    (frameId) => {
+      canceledFrames.push(frameId);
+      frameCallbacks.delete(frameId);
+    },
+  );
+
+  try {
+    const client = new RemoteControlClient(pointerTarget as unknown as HTMLVideoElement, {
+      sendMouse(event): Promise<void> {
+        mouseEvents.push(event);
+        return Promise.resolve();
+      },
+      sendKeyboard(event): Promise<void> {
+        keyboardEvents.push(event);
+        return Promise.resolve();
+      },
+    });
+
+    client.start();
+
+    for (let cycle = 0; cycle < 20; cycle += 1) {
+      pointerTarget.dispatchEvent(
+        createPointerEvent('mousemove', {
+          clientX: 110,
+          clientY: 120,
+        }),
+      );
+      const suspendedFrameId = nextFrameId - 1;
+
+      windowTarget.dispatchEvent(new Event('blur'));
+      documentTarget.visibilityState = 'hidden';
+      documentTarget.dispatchEvent(new Event('visibilitychange'));
+
+      assert.equal(client.isActive(), true);
+      assert(canceledFrames.includes(suspendedFrameId));
+      assert.equal(frameCallbacks.has(suspendedFrameId), false);
+
+      documentTarget.visibilityState = 'visible';
+      documentTarget.dispatchEvent(new Event('visibilitychange'));
+      pointerTarget.dispatchEvent(
+        createPointerEvent('mousemove', {
+          clientX: 110 + (cycle % 2),
+          clientY: 120,
+        }),
+      );
+      const restoredFrameId = nextFrameId - 1;
+      const restoredFrame = frameCallbacks.get(restoredFrameId);
+      assert.notEqual(restoredFrame, undefined);
+      frameCallbacks.delete(restoredFrameId);
+      restoredFrame?.(cycle);
+
+      windowTarget.dispatchEvent(createKeyboardEvent('keydown', 'a', 'KeyA'));
+      windowTarget.dispatchEvent(createKeyboardEvent('keyup', 'a', 'KeyA'));
+    }
+
+    assert.equal(client.isActive(), true);
+    assert.equal(mouseEvents.filter(({ type }) => type === 'mousemove').length, 20);
+    assert.equal(keyboardEvents.filter(({ type }) => type === 'keydown').length, 20);
+    assert.equal(keyboardEvents.filter(({ type }) => type === 'keyup').length, 20);
+  } finally {
+    restoreBrowserGlobals(originals);
+  }
+});
+
 class VideoTarget extends EventTarget {
   public readonly videoWidth = 1920;
   public readonly videoHeight = 1080;
@@ -260,6 +342,7 @@ function installBrowserGlobals(
   windowTarget: EventTarget,
   documentTarget: VisibilityTarget,
   requestFrame: (callback: FrameRequestCallback) => number,
+  cancelFrame: (frameId: number) => void = () => undefined,
 ): BrowserGlobals {
   const originals: BrowserGlobals = {
     window: Reflect.get(globalThis, 'window'),
@@ -273,7 +356,7 @@ function installBrowserGlobals(
     document: { configurable: true, value: documentTarget },
     getComputedStyle: { configurable: true, value: () => ({ objectFit: 'contain' }) },
     requestAnimationFrame: { configurable: true, value: requestFrame },
-    cancelAnimationFrame: { configurable: true, value: () => undefined },
+    cancelAnimationFrame: { configurable: true, value: cancelFrame },
   });
   return originals;
 }

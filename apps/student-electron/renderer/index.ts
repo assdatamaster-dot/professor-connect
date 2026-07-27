@@ -544,29 +544,33 @@ async function startScreenShare(): Promise<void> {
     if (firstSourceStream === undefined) {
       return;
     }
-    const compositeCapture = await AllScreensCompositeCapture.start(
-      layout,
-      firstSourceStream,
-      () => navigator.mediaDevices.getDisplayMedia({ video: true, audio: false }),
-      () => {
-        void stopScreenShare(true);
-      },
-    );
-    const stream = compositeCapture.stream;
+    const compositeCapture =
+      layout.displays.length > 1
+        ? await AllScreensCompositeCapture.start(
+            layout,
+            firstSourceStream,
+            () => navigator.mediaDevices.getDisplayMedia({ video: true, audio: false }),
+            () => {
+              void stopScreenShare(true);
+            },
+          )
+        : undefined;
+    const stream = compositeCapture?.stream ?? firstSourceStream;
     const track = stream.getVideoTracks()[0];
     if (track === undefined) {
-      compositeCapture.dispose();
+      compositeCapture?.dispose();
       mediaDeviceManager.screenShare.stop();
-      throw new Error('A composição dos monitores não possui faixa de vídeo');
+      throw new Error('O compartilhamento dos monitores não possui faixa de vídeo');
     }
     if (activeWebRtcSessionId !== sessionId || peerConnection !== connection) {
-      compositeCapture.dispose();
+      compositeCapture?.dispose();
       mediaDeviceManager.screenShare.stop();
       return;
     }
 
     allScreensCapture = compositeCapture;
     screenSender = connection.addTrack(track, stream);
+    await prioritizeScreenFrameRate(screenSender);
     statusMessage.textContent =
       layout.displays.length === 1
         ? 'Compartilhando o monitor com o professor.'
@@ -587,6 +591,15 @@ async function startScreenShare(): Promise<void> {
       error instanceof Error ? error.message : 'Não foi possível compartilhar a tela.';
     throw error;
   }
+}
+
+async function prioritizeScreenFrameRate(sender: RTCRtpSender): Promise<void> {
+  const parameters = sender.getParameters();
+  parameters.degradationPreference = 'maintain-framerate';
+  for (const encoding of parameters.encodings) {
+    encoding.maxFramerate = 30;
+  }
+  await sender.setParameters(parameters);
 }
 
 async function stopScreenShare(notifyProfessor: boolean): Promise<void> {

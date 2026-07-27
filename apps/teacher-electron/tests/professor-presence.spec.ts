@@ -44,6 +44,7 @@ interface SessionEvents {
     readonly studentId: string;
     readonly studentName: string;
   }) => void;
+  'session:timeout': (payload: { readonly requestId: string }) => void;
   'session:started': (payload: SessionLifecyclePayload) => void;
   'session:ended': (payload: SessionLifecyclePayload) => void;
   'webrtc:answer': (payload: WebRtcDescriptionPayload) => void;
@@ -98,13 +99,6 @@ test('lê config.json, registra o professor e desconecta pelo Socket.IO', async 
     });
     socket.on('session:accept', ({ requestId }) => {
       acceptedRequestIds.push(requestId);
-      socket.emit('session:started', {
-        sessionId: 'session-id',
-        teacherId: 'teacher-id',
-        teacherName: 'Carlos',
-        studentId: 'student-id',
-        studentName: 'Ana',
-      });
     });
     socket.on('session:reject', ({ requestId }) => rejectedRequestIds.push(requestId));
     socket.on('session:end', ({ sessionId }) => {
@@ -139,7 +133,7 @@ test('lê config.json, registra o professor e desconecta pelo Socket.IO', async 
     JSON.stringify({ serverUrl: `http://127.0.0.1:${address.port}` }),
     'utf8',
   );
-  const controller = new ProfessorPresenceController(configPath);
+  const controller = new ProfessorPresenceController(configPath, 1_000);
   controller.onWebRtcAnswer((payload) => answers.push(payload));
   controller.onWebRtcOffer((payload) => renegotiationOffers.push(payload));
   controller.onWebRtcIceCandidate((payload) => remoteCandidates.push(payload));
@@ -160,8 +154,17 @@ test('lê config.json, registra o professor e desconecta pelo Socket.IO', async 
     assert.equal(controller.getSnapshot().sessionRequests[0]?.studentName, 'Ana');
     controller.acceptSession('request-1');
     await waitUntil(() => acceptedRequestIds.length === 1);
-    assert.deepEqual(controller.getSnapshot().sessionRequests, []);
+    assert.equal(controller.getSnapshot().sessionRequests.length, 1);
+    assert.equal(controller.getSnapshot().activeSession, undefined);
+    socketServer.emit('session:started', {
+      sessionId: 'session-id',
+      teacherId: 'teacher-id',
+      teacherName: 'Carlos',
+      studentId: 'student-id',
+      studentName: 'Ana',
+    });
     await waitUntil(() => controller.getSnapshot().activeSession !== undefined);
+    assert.deepEqual(controller.getSnapshot().sessionRequests, []);
     assert.equal(controller.getSnapshot().activeSession?.studentName, 'Ana');
     controller.sendWebRtcOffer({
       sessionId: 'session-id',
@@ -290,6 +293,31 @@ test('lê config.json, registra o professor e desconecta pelo Socket.IO', async 
     await waitUntil(() => controller.getSnapshot().sessionRequests.length === 1);
     controller.rejectSession('request-2');
     await waitUntil(() => rejectedRequestIds.length === 1);
+
+    socketServer.emit('session:requested', {
+      requestId: 'request-3',
+      studentId: 'student-id',
+      studentName: 'Ana',
+    });
+    await waitUntil(() => controller.getSnapshot().sessionRequests.length === 1);
+    socketServer.emit('session:timeout', { requestId: 'request-3' });
+    await waitUntil(() => controller.getSnapshot().sessionRequests.length === 0);
+    assert.equal(
+      controller.getSnapshot().sessionNotice,
+      'A solicitação expirou. Peça ao aluno para enviar novamente.',
+    );
+
+    socketServer.emit('session:requested', {
+      requestId: 'request-4',
+      studentId: 'student-id',
+      studentName: 'Ana',
+    });
+    await waitUntil(() => controller.getSnapshot().sessionRequests.length === 1);
+    await waitUntil(() => controller.getSnapshot().sessionRequests.length === 0);
+    assert.equal(
+      controller.getSnapshot().sessionNotice,
+      'A solicitação expirou. Peça ao aluno para enviar novamente.',
+    );
 
     const disconnectedSnapshot = controller.disconnect();
     await waitUntil(() => disconnectCount === 1);

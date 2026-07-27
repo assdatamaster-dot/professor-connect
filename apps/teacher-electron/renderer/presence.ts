@@ -22,6 +22,7 @@ const loginError = requireElement<HTMLElement>('login-error');
 const professorDisplayName = requireElement<HTMLElement>('professor-display-name');
 const presenceStatus = requireElement<HTMLElement>('presence-status');
 const serverStatus = requireElement<HTMLElement>('server-status');
+const sessionNotice = requireElement<HTMLElement>('session-notice');
 const logoutButton = requireElement<HTMLButtonElement>('logout-button');
 const activeAttendance = requireElement<HTMLElement>('active-attendance');
 const activeStudentName = requireElement<HTMLElement>('active-student-name');
@@ -101,6 +102,8 @@ function render(snapshot: ProfessorPresenceSnapshot): void {
   professorDisplayName.textContent = snapshot.professorName ?? '';
   presenceStatus.textContent = getPresenceLabel(snapshot.status);
   serverStatus.textContent = snapshot.serverConnected ? 'Conectado' : 'Desconectado';
+  sessionNotice.textContent = snapshot.sessionNotice ?? '';
+  sessionNotice.hidden = snapshot.sessionNotice === undefined;
   activeAttendance.hidden = snapshot.activeSession === undefined;
   activeStudentName.textContent = snapshot.activeSession?.studentName ?? '';
   if (snapshot.activeSession === undefined) {
@@ -229,10 +232,17 @@ acceptSessionButton.addEventListener('click', () => {
   }
   acceptSessionButton.disabled = true;
   rejectSessionButton.disabled = true;
-  void window.professorConnectPresence.acceptSession(activeRequestId).finally(() => {
-    acceptSessionButton.disabled = false;
-    rejectSessionButton.disabled = false;
-  });
+  void window.professorConnectPresence
+    .acceptSession(activeRequestId)
+    .catch((error: unknown) => {
+      sessionNotice.textContent =
+        error instanceof Error ? error.message : 'Não foi possível aceitar a solicitação.';
+      sessionNotice.hidden = false;
+    })
+    .finally(() => {
+      acceptSessionButton.disabled = false;
+      rejectSessionButton.disabled = false;
+    });
 });
 
 rejectSessionButton.addEventListener('click', () => {

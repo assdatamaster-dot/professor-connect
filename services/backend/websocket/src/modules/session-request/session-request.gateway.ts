@@ -60,13 +60,17 @@ export class SessionRequestGateway {
     private readonly sessionGateway: SessionGateway,
   ) {
     this.stopListeningForExpiration = manager.onExpired((delivery) => {
-      const { request, studentSocketId } = delivery;
+      const { request, studentSocketId, teacherSocketId } = delivery;
+      const payload = {
+        requestId: request.requestId,
+        teacherId: request.teacherId,
+        teacherName: request.teacherName,
+      };
       if (studentSocketId !== undefined) {
-        this.socketServer.to(studentSocketId).emit(SESSION_REQUEST_EVENTS.TIMEOUT, {
-          requestId: request.requestId,
-          teacherId: request.teacherId,
-          teacherName: request.teacherName,
-        });
+        this.socketServer.to(studentSocketId).emit(SESSION_REQUEST_EVENTS.TIMEOUT, payload);
+      }
+      if (teacherSocketId !== undefined) {
+        this.socketServer.to(teacherSocketId).emit(SESSION_REQUEST_EVENTS.TIMEOUT, payload);
       }
       this.logger.info('Solicitação expirada', { requestId: request.requestId });
     });
