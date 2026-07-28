@@ -24,10 +24,11 @@ async function createMainWindow(): Promise<void> {
   const preloadPath = path.join(currentDirectory, '..', 'preload', 'index.js');
   const rendererPath = path.join(currentDirectory, '..', 'renderer', 'presence.html');
   const configPath = path.join(currentDirectory, '..', 'config.json');
+  const iconPath = path.join(currentDirectory, '..', 'assets', 'logo.png');
   const manager = createTeacherWorkflowManager();
 
   workflowController = new TeacherWorkflowController(manager);
-  mainWindow = new BrowserWindow(createWindowOptions(preloadPath));
+  mainWindow = new BrowserWindow(createWindowOptions(preloadPath, iconPath));
   const window = mainWindow;
   ipcRegistration = registerTeacherIpc(workflowController, mainWindow.webContents);
   const fileTransferStorage = new FileTransferStorage({

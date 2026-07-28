@@ -166,7 +166,12 @@ button svg,
 }
 
 .brand-mark img {
+  border-radius: 16px;
   filter: drop-shadow(0 8px 20px rgb(5 10 40 / 24%));
+}
+
+.brand-lockup img {
+  border-radius: 10px;
 }
 
 .login-brand__message {

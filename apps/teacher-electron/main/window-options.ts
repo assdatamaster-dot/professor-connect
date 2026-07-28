@@ -1,6 +1,9 @@
 import type { BrowserWindowConstructorOptions } from 'electron';
 
-export function createWindowOptions(preloadPath: string): BrowserWindowConstructorOptions {
+export function createWindowOptions(
+  preloadPath: string,
+  iconPath?: string,
+): BrowserWindowConstructorOptions {
   return {
     width: 1320,
     height: 840,
@@ -8,6 +11,7 @@ export function createWindowOptions(preloadPath: string): BrowserWindowConstruct
     minHeight: 640,
     show: false,
     title: 'Professor Connect',
+    ...(iconPath === undefined ? {} : { icon: iconPath }),
     backgroundColor: '#f4f7fb',
     webPreferences: {
       preload: preloadPath,

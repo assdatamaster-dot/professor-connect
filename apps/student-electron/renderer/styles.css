@@ -100,6 +100,10 @@ button svg,
   gap: 11px;
 }
 
+.brand-lockup img {
+  border-radius: 10px;
+}
+
 .brand-lockup strong,
 .brand-lockup span {
   display: block;

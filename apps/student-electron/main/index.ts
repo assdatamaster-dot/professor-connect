@@ -44,12 +44,13 @@ async function createMainWindow(): Promise<void> {
   const preloadPath = path.join(currentDirectory, '..', 'preload', 'index.js');
   const rendererPath = path.join(currentDirectory, '..', 'renderer', 'index.html');
   const configPath = path.join(currentDirectory, '..', 'config.json');
+  const iconPath = path.join(currentDirectory, '..', 'assets', 'logo.png');
   const manager = createDesktopWorkflowManager();
 
   workflowController = new StudentWorkflowController(manager, {
     startInput: DEFAULT_STUDENT_WORKFLOW_INPUT,
   });
-  mainWindow = new BrowserWindow(createWindowOptions(preloadPath));
+  mainWindow = new BrowserWindow(createWindowOptions(preloadPath, iconPath));
   const window = mainWindow;
   ipcRegistration = registerDesktopIpc(workflowController, mainWindow.webContents);
   const fileTransferStorage = new FileTransferStorage({
