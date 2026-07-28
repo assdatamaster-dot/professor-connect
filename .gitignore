@@ -20,6 +20,7 @@ npm-debug.log*
 
 # Test and coverage outputs
 coverage/
+.artifacts/
 
 # IDE and operating-system files
 .idea/

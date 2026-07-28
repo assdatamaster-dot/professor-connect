@@ -21,6 +21,7 @@ const nameInput = requireElement<HTMLInputElement>('professor-name');
 const loginButton = requireElement<HTMLButtonElement>('login-button');
 const loginError = requireElement<HTMLElement>('login-error');
 const professorDisplayName = requireElement<HTMLElement>('professor-display-name');
+const presencePill = requireElement<HTMLElement>('presence-pill');
 const presenceStatus = requireElement<HTMLElement>('presence-status');
 const serverStatus = requireElement<HTMLElement>('server-status');
 const sessionNotice = requireElement<HTMLElement>('session-notice');
@@ -117,6 +118,7 @@ function render(snapshot: ProfessorPresenceSnapshot): void {
   }
 
   professorDisplayName.textContent = snapshot.professorName ?? '';
+  presencePill.dataset.status = snapshot.status;
   presenceStatus.textContent = getPresenceLabel(snapshot.status);
   serverStatus.textContent = snapshot.serverConnected ? 'Conectado' : 'Desconectado';
   sessionNotice.textContent = snapshot.sessionNotice ?? '';
@@ -211,13 +213,13 @@ function renderSessionRequest(snapshot: ProfessorPresenceSnapshot): void {
 function getPresenceLabel(status: ProfessorPresenceStatus): string {
   switch (status) {
     case ProfessorPresenceStatus.CONNECTED:
-      return '🟢 Online';
+      return 'Online';
     case ProfessorPresenceStatus.CONNECTING:
-      return '🟡 Conectando';
+      return 'Conectando';
     case ProfessorPresenceStatus.ERROR:
-      return '🔴 Erro de conexão';
+      return 'Erro de conexão';
     case ProfessorPresenceStatus.DISCONNECTED:
-      return '🔴 Offline';
+      return 'Offline';
   }
 }
 

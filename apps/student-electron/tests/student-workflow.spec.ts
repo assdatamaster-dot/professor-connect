@@ -58,8 +58,8 @@ test('conecta e atualiza o status quando o aluno chama um professor', async () =
   assert.equal(fixture.manager.beginCalls, 1);
   assert.equal(snapshot.connectionStatus, DesktopConnectionStatus.CONNECTED);
   assert.equal(snapshot.attendanceStatus, DesktopAttendanceStatus.WAITING);
-  assert.equal(view.connectionLabel, '🟢 Conectado');
-  assert.equal(view.attendanceLabel, '🟡 Chamando');
+  assert.equal(view.connectionLabel, 'Conectado');
+  assert.equal(view.attendanceLabel, 'Chamando');
   assert(snapshot.logs.some(({ category }) => category === DesktopLogCategory.CONNECTION));
   assert(snapshot.logs.some(({ category }) => category === DesktopLogCategory.REQUEST));
 });
@@ -72,7 +72,7 @@ test('exibe mídia e controles quando o professor aceita o atendimento', async (
   const view = createDesktopViewModel(snapshot, getTranslations());
 
   assert.equal(snapshot.attendanceStatus, DesktopAttendanceStatus.ACTIVE);
-  assert.equal(view.attendanceLabel, '🔵 Em atendimento');
+  assert.equal(view.attendanceLabel, 'Em atendimento');
   assert.equal(view.isMediaVisible, true);
   assert.equal(view.isShareButtonEnabled, true);
   assert.equal(view.isEndButtonEnabled, true);

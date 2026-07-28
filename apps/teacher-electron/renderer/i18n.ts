@@ -46,17 +46,17 @@ const PORTUGUESE_BRAZIL: TeacherTranslations = {
   noRequests: 'Nenhuma solicitação pendente.',
   noLogs: 'Nenhuma atividade registrada.',
   connection: {
-    [TeacherConnectionStatus.DISCONNECTED]: '🔴 Desconectado',
+    [TeacherConnectionStatus.DISCONNECTED]: 'Desconectado',
     [TeacherConnectionStatus.CONNECTING]: 'Conectando',
-    [TeacherConnectionStatus.CONNECTED]: '🟢 Conectado',
+    [TeacherConnectionStatus.CONNECTED]: 'Conectado',
     [TeacherConnectionStatus.ERROR]: 'Falha de conexão',
   },
   attendance: {
     [TeacherAttendanceStatus.IDLE]: 'Inicializando',
     [TeacherAttendanceStatus.AVAILABLE]: 'Disponível',
-    [TeacherAttendanceStatus.REQUEST_PENDING]: '🟡 Chamando',
+    [TeacherAttendanceStatus.REQUEST_PENDING]: 'Chamando',
     [TeacherAttendanceStatus.PREPARING]: 'Preparando chamada',
-    [TeacherAttendanceStatus.ACTIVE]: '🔵 Em atendimento',
+    [TeacherAttendanceStatus.ACTIVE]: 'Em atendimento',
     [TeacherAttendanceStatus.ENDING]: 'Encerrando',
     [TeacherAttendanceStatus.ENDED]: 'Atendimento encerrado',
     [TeacherAttendanceStatus.ERROR]: 'Atendimento indisponível',
@@ -68,7 +68,7 @@ const PORTUGUESE_BRAZIL: TeacherTranslations = {
   },
   actionStatus: {
     [TeacherActionStatus.IDLE]: 'Disponível',
-    [TeacherActionStatus.REQUESTED]: '🟣 Solicitado',
+    [TeacherActionStatus.REQUESTED]: 'Solicitado',
     [TeacherActionStatus.AUTHORIZED]: 'Autorizado',
   },
 };

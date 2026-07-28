@@ -12,47 +12,208 @@
   </head>
   <body>
     <div class="app-shell">
-      <header class="topbar">
-        <div class="brand">
-          <img src="../assets/icon.svg" width="42" height="42" alt="" />
+      <header class="app-bar">
+        <div class="brand-lockup">
+          <img src="../assets/icon.svg" width="38" height="38" alt="" />
           <div>
-            <h1>Professor Connect</h1>
-            <p>Aplicativo do aluno</p>
+            <strong>Professor Connect</strong>
+            <span>Atendimento do aluno</span>
           </div>
         </div>
         <div id="connection-badge" class="connection-badge" data-status="DISCONNECTED">
           <span class="connection-dot" aria-hidden="true"></span>
-          <span id="connection-text">🔴 Desconectado</span>
+          <span id="connection-text">Conectando...</span>
         </div>
       </header>
 
-      <main class="workspace">
+      <main class="student-workspace">
         <section class="attendance-card" aria-labelledby="attendance-title">
-          <div class="status-heading">
-            <span class="eyebrow">STATUS DO ATENDIMENTO</span>
-            <h2 id="attendance-title"><span id="attendance-text">Disponível</span></h2>
-            <p id="status-message" aria-live="polite">Pronto para iniciar um atendimento.</p>
-          </div>
+          <header class="status-heading">
+            <div class="status-copy">
+              <span class="overline">Sua sala de atendimento</span>
+              <h1 id="attendance-title"><span id="attendance-text">Disponível</span></h1>
+              <p id="status-message" aria-live="polite">Pronto para iniciar um atendimento.</p>
+            </div>
+            <span class="privacy-note">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="5" y="10" width="14" height="11" rx="2" />
+                <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+              </svg>
+              Você decide o que compartilhar
+            </span>
+          </header>
 
           <div id="call-section" class="call-action">
-            <div class="call-illustration" aria-hidden="true">
-              <img src="../assets/support.svg" width="210" height="150" alt="" />
+            <div class="call-message">
+              <span class="help-orb" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M7 11a5 5 0 1 1 5 5H9l-4 3v-5a5 5 0 0 1 2-3Z" />
+                  <path d="M10 8.8a2.2 2.2 0 1 1 3.3 1.9c-.8.5-1.3.8-1.3 1.8M12 14.7h.01" />
+                </svg>
+              </span>
+              <h2>Como podemos ajudar?</h2>
+              <p>
+                Escolha um professor e envie uma solicitação. A conversa começa por áudio e vídeo;
+                outros recursos só são usados com sua permissão.
+              </p>
             </div>
-            <label class="teacher-label" for="teacher-select">Professor online</label>
-            <select id="teacher-select" class="teacher-select" aria-label="Professor online">
-              <option value="">Carregando professores...</option>
-            </select>
-            <button id="call-professor" class="button button--primary" type="button">
-              SOLICITAR ATENDIMENTO
-            </button>
-            <p>O professor selecionado receberá sua solicitação.</p>
+            <div class="call-form">
+              <label for="teacher-select">Professor disponível</label>
+              <div class="select-wrap">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
+                  <path d="M4 21a8 8 0 0 1 16 0" />
+                </svg>
+                <select
+                  id="teacher-select"
+                  class="teacher-select"
+                  aria-label="Professor disponível"
+                >
+                  <option value="">Carregando professores...</option>
+                </select>
+                <svg class="select-chevron" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m8 10 4 4 4-4" />
+                </svg>
+              </div>
+              <button
+                id="call-professor"
+                class="button button--primary button--large"
+                type="button"
+              >
+                Solicitar atendimento
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m9 18 6-6-6-6" />
+                </svg>
+              </button>
+              <span class="call-assurance">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m5 12 4 4L19 6" />
+                </svg>
+                O professor receberá sua solicitação imediatamente
+              </span>
+            </div>
           </div>
+
+          <section id="media-section" class="media-area" hidden aria-label="Atendimento ativo">
+            <div class="session-heading">
+              <div>
+                <span class="session-live"
+                  ><i aria-hidden="true"></i> Atendimento em andamento</span
+                >
+                <strong>Você está com o professor</strong>
+              </div>
+              <span class="session-secure">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 3 5 6v5c0 4.7 2.9 8 7 10 4.1-2 7-5.3 7-10V6l-7-3Z" />
+                  <path d="m9 12 2 2 4-4" />
+                </svg>
+                Sessão protegida
+              </span>
+            </div>
+
+            <div class="media-stage">
+              <figure class="video-tile video-tile--remote">
+                <video id="remote-video" autoplay playsinline></video>
+                <div id="remote-video-placeholder" class="video-placeholder">
+                  <span class="placeholder-avatar" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                      <path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Z" />
+                      <path d="M3.5 22a8.5 8.5 0 0 1 17 0" />
+                    </svg>
+                  </span>
+                  <strong>Vídeo do professor indisponível</strong>
+                  <small>Vocês ainda podem continuar o atendimento.</small>
+                </div>
+                <figcaption>Professor</figcaption>
+              </figure>
+
+              <figure class="video-tile video-tile--local">
+                <video id="local-video" autoplay muted playsinline hidden></video>
+                <div
+                  id="local-video-placeholder"
+                  class="video-placeholder video-placeholder--local"
+                >
+                  <span class="placeholder-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                      <path d="M15 10.5 21 7v10l-6-3.5" />
+                      <rect x="3" y="5" width="12" height="14" rx="2" />
+                      <path d="m5 3 14 18" />
+                    </svg>
+                  </span>
+                  <strong id="local-video-placeholder-title">Câmera desligada</strong>
+                </div>
+                <figcaption>Você</figcaption>
+              </figure>
+            </div>
+
+            <div class="session-controls">
+              <div class="remote-status">
+                <span class="remote-status__icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <path d="m5 3 13 9-6 1 3 6-3 1-3-6-4 4V3Z" />
+                  </svg>
+                </span>
+                <span>
+                  <small>Controle remoto</small>
+                  <strong id="remote-control-text">Inativo</strong>
+                </span>
+                <span class="remote-status__note">Só funciona com sua autorização</span>
+              </div>
+              <div class="button-group">
+                <button id="end-attendance" class="button button--danger" type="button">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="M6.6 10.8c3.5-1.6 7.3-1.6 10.8 0l1.1-2.1c.4-.8.1-1.8-.7-2.2a13 13 0 0 0-11.6 0c-.8.4-1.1 1.4-.7 2.2l1.1 2.1Z"
+                    />
+                    <path d="M8 10v4M16 10v4" />
+                  </svg>
+                  Encerrar
+                </button>
+              </div>
+            </div>
+
+            <section
+              id="file-transfer-panel"
+              class="file-transfer-panel"
+              aria-labelledby="file-transfer-title"
+              hidden
+            >
+              <div class="file-transfer-panel__header">
+                <span class="support-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <path d="M3 7h7l2 2h9v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />
+                    <path d="M12 12v6M9 15l3 3 3-3" />
+                  </svg>
+                </span>
+                <div>
+                  <span class="support-label">Arquivos</span>
+                  <h3 id="file-transfer-title">Transferência de arquivos</h3>
+                </div>
+                <button
+                  id="file-transfer-button"
+                  class="button button--secondary button--compact"
+                  type="button"
+                  disabled
+                >
+                  Selecionar arquivos
+                </button>
+              </div>
+              <p class="file-transfer-note">
+                O destinatário precisa aceitar. Arquivos recebidos nunca são abertos
+                automaticamente.
+              </p>
+              <ul id="file-transfer-list" class="file-transfer-list" aria-live="polite">
+                <li class="file-transfer-empty">Nenhuma transferência nesta sessão.</li>
+              </ul>
+            </section>
+          </section>
 
           <section class="media-panel" aria-labelledby="media-panel-title">
             <div class="media-panel__heading">
               <div>
-                <span class="eyebrow">DISPOSITIVOS</span>
-                <h3 id="media-panel-title">Áudio e vídeo</h3>
+                <span class="overline">Tudo pronto?</span>
+                <h2 id="media-panel-title">Áudio e vídeo</h2>
+                <p>Você pode ajustar estes itens a qualquer momento.</p>
               </div>
               <span
                 id="device-scan-message"
@@ -63,16 +224,21 @@
             </div>
             <div class="media-device-grid">
               <article class="media-device-card">
-                <div class="media-device-card__icon" aria-hidden="true">📷</div>
+                <span class="media-device-card__icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <path d="M15 10.5 21 7v10l-6-3.5" />
+                    <rect x="3" y="5" width="12" height="14" rx="2" />
+                  </svg>
+                </span>
                 <div class="media-device-card__content">
-                  <h4>Câmera</h4>
+                  <h3>Câmera</h3>
                   <p class="device-status">
                     <span
                       id="camera-indicator"
                       class="device-indicator"
                       data-indicator="unavailable"
                     ></span>
-                    <span id="camera-status">Verificando câmera...</span>
+                    <span id="camera-status">Verificando...</span>
                   </p>
                 </div>
                 <button id="toggle-camera" class="button button--device" type="button" disabled>
@@ -80,152 +246,137 @@
                 </button>
               </article>
               <article class="media-device-card">
-                <div class="media-device-card__icon" aria-hidden="true">🎤</div>
+                <span class="media-device-card__icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <rect x="8" y="3" width="8" height="12" rx="4" />
+                    <path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6" />
+                  </svg>
+                </span>
                 <div class="media-device-card__content">
-                  <h4>Microfone</h4>
+                  <h3>Microfone</h3>
                   <p class="device-status">
                     <span
                       id="microphone-indicator"
                       class="device-indicator"
                       data-indicator="unavailable"
                     ></span>
-                    <span id="microphone-status">Verificando microfone...</span>
+                    <span id="microphone-status">Verificando...</span>
                   </p>
                 </div>
                 <button id="toggle-microphone" class="button button--device" type="button" disabled>
                   Ativar
                 </button>
               </article>
-              <article class="media-device-card">
-                <div class="media-device-card__icon" aria-hidden="true">🖥️</div>
+              <article class="media-device-card media-device-card--screen">
+                <span class="media-device-card__icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <rect x="3" y="4" width="18" height="13" rx="2" />
+                    <path d="M8 21h8M12 17v4" />
+                  </svg>
+                </span>
                 <div class="media-device-card__content">
-                  <h4>Compartilhamento de tela</h4>
+                  <h3>Minha tela</h3>
                   <p class="device-status">
                     <span
                       id="screen-indicator"
                       class="device-indicator"
                       data-indicator="inactive"
                     ></span>
-                    <span id="screen-status">Não compartilhando.</span>
+                    <span id="screen-status">Não compartilhada</span>
                   </p>
                 </div>
                 <button id="share-screen" class="button button--device" type="button" disabled>
-                  Compartilhar Todas as Telas
+                  Compartilhar
                 </button>
               </article>
             </div>
           </section>
-
-          <div id="media-section" class="media-area" hidden>
-            <div class="video-grid">
-              <figure class="video-card video-card--remote">
-                <video id="remote-video" autoplay playsinline></video>
-                <div id="remote-video-placeholder" class="video-placeholder">
-                  <span aria-hidden="true">👤</span>
-                  <strong>Vídeo do professor indisponível</strong>
-                  <small>A sessão continua ativa normalmente.</small>
-                </div>
-                <figcaption>Professor</figcaption>
-              </figure>
-              <figure class="video-card video-card--local">
-                <video id="local-video" autoplay muted playsinline hidden></video>
-                <div
-                  id="local-video-placeholder"
-                  class="video-placeholder video-placeholder--local"
-                >
-                  <span aria-hidden="true">📷</span>
-                  <strong id="local-video-placeholder-title">Câmera desligada</strong>
-                  <small>Você ainda pode participar normalmente.</small>
-                </div>
-                <figcaption>Você</figcaption>
-              </figure>
-            </div>
-            <div class="session-controls">
-              <div class="remote-status">
-                <span>Controle remoto</span>
-                <strong id="remote-control-text">Controle Remoto Inativo</strong>
-                <small>Mouse e teclado só podem ser controlados após sua autorização.</small>
-              </div>
-              <div class="button-group">
-                <button id="end-attendance" class="button button--danger" type="button">
-                  Encerrar Atendimento
-                </button>
-              </div>
-            </div>
-            <section
-              id="file-transfer-panel"
-              class="file-transfer-panel"
-              aria-labelledby="file-transfer-title"
-              hidden
-            >
-              <div class="file-transfer-panel__header">
-                <div>
-                  <span class="eyebrow">CANAL P2P PROTEGIDO</span>
-                  <h3 id="file-transfer-title">Transferência de arquivos</h3>
-                </div>
-                <button
-                  id="file-transfer-button"
-                  class="button button--primary"
-                  type="button"
-                  disabled
-                >
-                  📁 Transferir Arquivos
-                </button>
-              </div>
-              <p class="file-transfer-note">
-                O destinatário precisa aceitar. Os arquivos são salvos em Documentos/Professor
-                Connect e nunca são abertos automaticamente.
-              </p>
-              <ul id="file-transfer-list" class="file-transfer-list" aria-live="polite">
-                <li class="file-transfer-empty">Nenhuma transferência nesta sessão.</li>
-              </ul>
-            </section>
-          </div>
         </section>
 
-        <aside class="log-panel" aria-labelledby="log-title">
-          <div class="log-panel__header">
-            <div>
-              <span class="eyebrow">PAINEL DE LOGS</span>
-              <h2 id="log-title">Atividade</h2>
+        <details class="activity-panel">
+          <summary>
+            <span>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 19V9M10 19V5M16 19v-7M22 19V3" />
+              </svg>
+              Detalhes da atividade
+            </span>
+            <small>Informações de conexão e eventos da sessão</small>
+            <svg class="activity-chevron" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m8 10 4 4 4-4" />
+            </svg>
+          </summary>
+          <div class="activity-panel__content">
+            <div class="activity-panel__heading">
+              <div>
+                <span class="overline">Histórico</span>
+                <h2>Atividade recente</h2>
+              </div>
+              <span class="live-label"><i aria-hidden="true"></i> Atualização automática</span>
             </div>
-            <span class="live-label"><span aria-hidden="true"></span> Ao vivo</span>
+            <ul id="log-list" class="log-list" aria-live="polite">
+              <li class="log-empty">Nenhuma atividade registrada.</li>
+            </ul>
           </div>
-          <ul id="log-list" class="log-list" aria-live="polite">
-            <li class="log-empty">Nenhuma atividade registrada.</li>
-          </ul>
-        </aside>
+        </details>
       </main>
     </div>
 
     <section id="remote-control-bar" class="remote-control-bar" aria-live="assertive" hidden>
-      <span class="remote-control-bar__indicator" aria-hidden="true"></span>
+      <span class="remote-control-bar__indicator" aria-hidden="true">
+        <svg viewBox="0 0 24 24">
+          <path d="m5 3 13 9-6 1 3 6-3 1-3-6-4 4V3Z" />
+        </svg>
+      </span>
       <div class="remote-control-bar__content">
-        <strong>Controle Remoto Ativo</strong>
-        <span>Professor: <b id="remote-control-teacher">Professor</b></span>
+        <strong>Controle remoto ativo</strong>
+        <span><b id="remote-control-teacher">Professor</b> pode usar mouse e teclado</span>
       </div>
-      <button id="stop-remote-control" class="button remote-control-bar__stop" type="button">
-        Parar controle
+      <button id="stop-remote-control" class="button button--danger-soft" type="button">
+        Parar agora
       </button>
     </section>
 
-    <dialog id="remote-control-dialog" class="confirmation-dialog">
-      <p class="eyebrow">Autorização necessária</p>
-      <h2>Controle remoto</h2>
-      <p>O professor deseja controlar seu computador.</p>
-      <p class="confirmation-dialog__notice">
-        Ao permitir, todos os monitores conectados serão compartilhados automaticamente e o
-        professor poderá usar o mouse, digitar e executar atalhos de teclado neles. Nenhuma seleção
-        adicional será exibida. Arquivos e área de transferência permanecem bloqueados.
-      </p>
-      <div class="confirmation-dialog__actions">
-        <button id="approve-remote-control" class="button button--primary" type="button">
-          Permitir
-        </button>
-        <button id="deny-remote-control" class="button button--secondary" type="button">
-          Negar
-        </button>
-      </div>
+    <dialog id="remote-control-dialog" class="permission-dialog">
+      <form method="dialog">
+        <span class="dialog-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24">
+            <path d="m5 3 13 9-6 1 3 6-3 1-3-6-4 4V3Z" />
+          </svg>
+        </span>
+        <span class="overline">Sua autorização é necessária</span>
+        <h2>Permitir controle remoto?</h2>
+        <p>O professor quer ajudar diretamente no seu computador.</p>
+        <ul class="permission-list">
+          <li>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m5 12 4 4L19 6" />
+            </svg>
+            Poderá usar mouse, teclado e atalhos
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m5 12 4 4L19 6" />
+            </svg>
+            Suas telas serão compartilhadas durante o controle
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m5 12 4 4L19 6" />
+            </svg>
+            Você pode interromper a qualquer momento
+          </li>
+        </ul>
+        <p class="permission-note">Arquivos e área de transferência permanecem bloqueados.</p>
+        <div class="confirmation-dialog__actions">
+          <button id="approve-remote-control" class="button button--primary" type="button">
+            Permitir controle
+          </button>
+          <button id="deny-remote-control" class="button button--secondary" type="button">
+            Não permitir
+          </button>
+        </div>
+      </form>
     </dialog>
 
     <script type="module" src="./index.js"></script>

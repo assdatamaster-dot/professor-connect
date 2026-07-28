@@ -57,8 +57,8 @@ test('recebe e apresenta uma solicitação de atendimento', async () => {
   assert.equal(snapshot.requests.length, 1);
   assert.equal(snapshot.requests[0]?.studentName, 'Ana Souza');
   assert.equal(snapshot.canAcceptRequests, true);
-  assert.equal(view.connectionLabel, '🟢 Conectado');
-  assert.equal(view.attendanceLabel, '🟡 Chamando');
+  assert.equal(view.connectionLabel, 'Conectado');
+  assert.equal(view.attendanceLabel, 'Chamando');
   assert(snapshot.logs.some(({ message }) => message.includes('Solicitação recebida')));
 });
 
@@ -71,7 +71,7 @@ test('aceita a solicitação e exibe mídia e controles', async () => {
 
   assert.equal(fixture.manager.acceptCalls, 1);
   assert.equal(snapshot.attendanceStatus, TeacherAttendanceStatus.ACTIVE);
-  assert.equal(view.attendanceLabel, '🔵 Em atendimento');
+  assert.equal(view.attendanceLabel, 'Em atendimento');
   assert.equal(snapshot.activeStudentName, 'Ana Souza');
   assert.equal(view.isMediaVisible, true);
   assert.equal(view.canRequestScreenSharing, true);
