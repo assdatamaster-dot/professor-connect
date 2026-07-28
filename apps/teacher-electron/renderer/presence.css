@@ -1483,3 +1483,422 @@ input:focus {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Beta-8B — sala de videoconferência */
+.app-bar {
+  min-height: 58px;
+  padding-block: 9px;
+}
+
+.teacher-workspace:has(#active-attendance:not([hidden])) {
+  height: calc(100vh - 58px);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.teacher-workspace:has(#active-attendance:not([hidden])) .active-attendance {
+  position: relative;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+}
+
+.teacher-workspace:has(#active-attendance:not([hidden])) > .media-panel {
+  display: none;
+}
+
+.teacher-app:has(#active-attendance:not([hidden])) .server-status,
+.teacher-app:has(#active-attendance:not([hidden])) .profile,
+.teacher-app:has(#active-attendance:not([hidden])) #logout-button {
+  display: none;
+}
+
+.session-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+}
+
+.session-meta,
+.session-quality,
+.session-duration {
+  display: inline-flex;
+  align-items: center;
+}
+
+.session-meta {
+  gap: 12px;
+}
+
+.session-quality {
+  gap: 6px;
+  color: var(--ink-secondary);
+  font-size: 0.67rem;
+  font-weight: 700;
+}
+
+.session-quality i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #94a3b8;
+  box-shadow: 0 0 0 3px rgb(148 163 184 / 14%);
+}
+
+.session-quality[data-quality='good'] i {
+  background: var(--success);
+  box-shadow: 0 0 0 3px rgb(16 132 91 / 14%);
+}
+
+.session-quality[data-quality='unstable'] i {
+  background: #e9a23b;
+  box-shadow: 0 0 0 3px rgb(233 162 59 / 16%);
+}
+
+.session-duration {
+  min-width: 48px;
+  justify-content: center;
+  color: var(--ink-secondary);
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.media-stage {
+  min-height: 360px;
+  border-color: #26344e;
+  background:
+    radial-gradient(circle at 20% 24%, rgb(93 108 166 / 23%), transparent 32%),
+    radial-gradient(circle at 82% 72%, rgb(54 84 126 / 18%), transparent 34%),
+    linear-gradient(145deg, #1c2941, #111827 72%);
+}
+
+.video-tile video {
+  object-fit: contain;
+}
+
+.video-tile--remote {
+  inset: auto;
+  top: 50%;
+  left: 50%;
+  width: min(66%, calc((100vh - 230px) * var(--video-ratio, 1.7778)));
+  max-width: calc(100% - 48px);
+  aspect-ratio: var(--video-aspect, 16 / 9);
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 18px;
+  box-shadow: 0 22px 55px rgb(2 6 23 / 42%);
+  transform: translate(-50%, -53%);
+}
+
+.video-tile--local {
+  right: 18px;
+  bottom: 92px;
+  width: clamp(132px, 12vw, 224px);
+  aspect-ratio: var(--video-aspect, 16 / 9);
+  border-radius: 14px;
+}
+
+.screen-share-view {
+  inset: 12px 12px 88px;
+  border: 1px solid rgb(255 255 255 / 9%);
+  border-radius: 14px;
+}
+
+#screen-share-view:not([hidden]) ~ .video-tile--remote {
+  top: auto;
+  right: calc(clamp(132px, 12vw, 224px) + 30px);
+  bottom: 92px;
+  left: auto;
+  width: clamp(132px, 12vw, 224px);
+  aspect-ratio: var(--video-aspect, 16 / 9);
+  border-radius: 14px;
+  transform: none;
+}
+
+.conference-toolbar {
+  position: absolute;
+  z-index: 8;
+  bottom: 15px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 18px;
+  background: rgb(12 19 34 / 88%);
+  box-shadow: 0 18px 40px rgb(2 6 23 / 36%);
+  backdrop-filter: blur(14px);
+  transform: translateX(-50%);
+}
+
+.conference-control {
+  display: inline-flex;
+  min-width: 58px;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 9px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: #d8e0ef;
+  cursor: pointer;
+  font: inherit;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+}
+
+.conference-control:hover:not(:disabled),
+.conference-control:focus-visible {
+  background: rgb(255 255 255 / 10%);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.conference-control:focus-visible {
+  outline: 2px solid #9cafff;
+  outline-offset: 2px;
+}
+
+.conference-control:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.conference-control svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.conference-control span {
+  font-size: 0.58rem;
+  font-weight: 680;
+}
+
+.conference-control[data-state='active'],
+.conference-control--status[data-state='active'] {
+  background: rgb(96 119 242 / 22%);
+  color: #b9c5ff;
+}
+
+.conference-control[data-state='pending'] {
+  color: #f7c66f;
+}
+
+.conference-control--status {
+  cursor: default;
+}
+
+.conference-control--end {
+  margin-left: 4px;
+  background: #d94b5c;
+  color: #fff;
+}
+
+.conference-control--end:hover:not(:disabled) {
+  background: #c83b4d;
+}
+
+.placeholder-action {
+  padding: 5px 9px;
+  border: 1px solid rgb(255 255 255 / 24%);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 8%);
+  color: #f8fafc;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.58rem;
+  font-weight: 700;
+}
+
+.video-tile--local:has(.video-placeholder:not([hidden])) figcaption {
+  display: none;
+}
+
+.video-tile--local .placeholder-action {
+  padding: 3px 6px;
+  font-size: 0.5rem;
+}
+
+#screen-share-view:not([hidden]) ~ .video-tile--remote .video-placeholder strong {
+  display: none;
+}
+
+.support-bar {
+  position: absolute;
+  z-index: 7;
+  top: 52px;
+  left: 14px;
+  display: block;
+  pointer-events: none;
+}
+
+.remote-control-panel {
+  width: fit-content;
+  min-height: 34px;
+  gap: 8px;
+  padding: 6px 9px;
+  border-color: rgb(255 255 255 / 10%);
+  background: rgb(12 19 34 / 70%);
+  color: #e6ebf5;
+  box-shadow: 0 8px 24px rgb(2 6 23 / 22%);
+  backdrop-filter: blur(10px);
+  pointer-events: auto;
+}
+
+.remote-control-panel .support-icon,
+.remote-control-panel .remote-control-capabilities,
+.remote-control-panel .remote-control-actions,
+.remote-control-panel .activity-disclosure {
+  display: none !important;
+}
+
+.remote-control-panel .support-label {
+  color: #aeb9cf;
+  font-size: 0.57rem;
+}
+
+.remote-control-panel .remote-control-state {
+  color: #fff;
+}
+
+.remote-control-panel:has(#remote-control-indicator[data-indicator='active']) {
+  border-color: rgb(57 190 139 / 30%);
+  background: rgb(13 96 69 / 72%);
+}
+
+.file-transfer-panel {
+  position: fixed;
+  z-index: 100;
+  top: 58px;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  width: min(390px, calc(100vw - 28px));
+  align-items: stretch;
+  flex-direction: column;
+  gap: 14px;
+  padding: 64px 22px 24px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 0;
+  border-left: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--surface);
+  box-shadow: -24px 0 55px rgb(15 23 42 / 20%);
+  pointer-events: none;
+  transform: translateX(105%);
+  transition: transform 190ms ease;
+}
+
+.file-transfer-panel > *:not(.drawer-close, .support-icon) {
+  width: 100%;
+  min-width: 0;
+  flex: none;
+}
+
+.file-transfer-panel > .support-icon {
+  flex: 0 0 36px;
+}
+
+.file-transfer-panel.is-open {
+  pointer-events: auto;
+  transform: translateX(0);
+}
+
+.file-transfer-panel .support-icon {
+  display: grid;
+}
+
+.file-transfer-panel .file-transfer-copy p {
+  margin-top: 4px;
+}
+
+.file-transfer-panel #file-transfer-button {
+  width: 100%;
+  min-height: 42px;
+}
+
+.file-transfer-panel .file-transfer-note {
+  margin: 0;
+}
+
+.file-transfer-panel .file-transfer-list {
+  max-height: none;
+}
+
+.drawer-close {
+  position: absolute;
+  top: 16px;
+  right: 18px;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+  color: var(--ink-secondary);
+  cursor: pointer;
+}
+
+.drawer-close svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-width: 1.8;
+}
+
+@media (max-width: 820px) {
+  .session-secure {
+    display: none;
+  }
+
+  .video-tile--remote {
+    width: min(86%, calc((100vh - 250px) * var(--video-ratio, 1.7778)));
+  }
+
+  .conference-toolbar {
+    max-width: calc(100% - 18px);
+    gap: 2px;
+    overflow-x: auto;
+  }
+
+  .conference-control {
+    min-width: 50px;
+    padding-inline: 6px;
+  }
+}
+
+@media (max-width: 560px) {
+  .session-meta {
+    gap: 8px;
+  }
+
+  .session-quality span,
+  .conference-control span {
+    display: none;
+  }
+
+  .conference-control {
+    min-width: 42px;
+    min-height: 42px;
+  }
+
+  .video-tile--local {
+    width: 112px;
+  }
+}

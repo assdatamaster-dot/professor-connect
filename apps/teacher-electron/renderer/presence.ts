@@ -62,6 +62,15 @@ const remoteControlLog = requireElement<HTMLUListElement>('remote-control-log');
 const fileTransferButton = requireElement<HTMLButtonElement>('file-transfer-button');
 const fileTransferPanel = requireElement<HTMLElement>('file-transfer-panel');
 const fileTransferList = requireElement<HTMLUListElement>('file-transfer-list');
+const connectionQuality = requireElement<HTMLElement>('teacher-connection-quality');
+const sessionDuration = requireElement<HTMLTimeElement>('teacher-session-duration');
+const dockMicrophoneButton = requireElement<HTMLButtonElement>('teacher-dock-microphone');
+const dockCameraButton = requireElement<HTMLButtonElement>('teacher-dock-camera');
+const dockScreenStatus = requireElement<HTMLElement>('teacher-dock-screen');
+const dockControlButton = requireElement<HTMLButtonElement>('teacher-dock-control');
+const dockFilesButton = requireElement<HTMLButtonElement>('teacher-dock-files');
+const closeFilesButton = requireElement<HTMLButtonElement>('teacher-close-files');
+const retryCameraButton = requireElement<HTMLButtonElement>('teacher-retry-camera');
 let activeRequestId: string | undefined;
 const mediaDeviceManager = new MediaDeviceManager();
 let peerConnection: RTCPeerConnection | undefined;
@@ -77,6 +86,9 @@ let announcedScreenTrackId: string | undefined;
 let renegotiationQueue = Promise.resolve();
 let webRtcRecoveryTimer: ReturnType<typeof setTimeout> | undefined;
 let webRtcRecoveryInFlight = false;
+let sessionClockTimer: ReturnType<typeof setInterval> | undefined;
+let sessionStartedAt: number | undefined;
+let timedSessionId: string | undefined;
 const remoteControlClient = new RemoteControlClient(
   screenVideo,
   {
@@ -125,7 +137,9 @@ function render(snapshot: ProfessorPresenceSnapshot): void {
   sessionNotice.hidden = snapshot.sessionNotice === undefined;
   activeAttendance.hidden = snapshot.activeSession === undefined;
   activeStudentName.textContent = snapshot.activeSession?.studentName ?? '';
+  dockFilesButton.disabled = snapshot.activeSession === undefined;
   if (snapshot.activeSession === undefined) {
+    setFileDrawerOpen(false);
     fileTransferClient.endSession();
     closeWebRtcSession();
   } else {
@@ -164,6 +178,13 @@ function renderRemoteControl(
         : 'inactive';
   remoteMouseIndicator.dataset.indicator = snapshot.status === 'active' ? 'active' : 'inactive';
   remoteKeyboardIndicator.dataset.indicator = snapshot.status === 'active' ? 'active' : 'inactive';
+  dockControlButton.dataset.state = snapshot.status;
+  dockControlButton.disabled = !hasActiveSession || snapshot.status === 'pending';
+  dockControlButton.setAttribute(
+    'aria-label',
+    snapshot.status === 'active' ? 'Parar controle remoto' : 'Solicitar controle remoto',
+  );
+  dockControlButton.setAttribute('aria-pressed', String(snapshot.status === 'active'));
 
   if (snapshot.status === 'active') {
     remoteControlClient.start();
@@ -319,6 +340,25 @@ cameraButton.addEventListener('click', () => {
     cameraButton.disabled = mediaDeviceManager.camera.getStatus().state === CameraState.NOT_FOUND;
   });
 });
+retryCameraButton.addEventListener('click', () => {
+  retryCameraButton.disabled = true;
+  void mediaDeviceManager.camera.start().finally(() => {
+    retryCameraButton.disabled = false;
+  });
+});
+dockCameraButton.addEventListener('click', () => cameraButton.click());
+dockMicrophoneButton.addEventListener('click', () => microphoneButton.click());
+dockControlButton.addEventListener('click', () => {
+  if (stopRemoteControlButton.hidden) {
+    requestRemoteControlButton.click();
+  } else {
+    stopRemoteControlButton.click();
+  }
+});
+dockFilesButton.addEventListener('click', () => {
+  setFileDrawerOpen(!fileTransferPanel.classList.contains('is-open'));
+});
+closeFilesButton.addEventListener('click', () => setFileDrawerOpen(false));
 microphoneButton.addEventListener('click', () => {
   microphoneButton.disabled = true;
   if (mediaDeviceManager.microphone.getStatus().state !== MicrophoneState.ACTIVE) {
@@ -366,6 +406,7 @@ const unsubscribeScreenShareStarted = window.professorConnectWebRtc.onScreenShar
     screenShareView.hidden = false;
     screenStatus.textContent = 'Compartilhando tela.';
     screenIndicator.dataset.indicator = 'active';
+    dockScreenStatus.dataset.state = 'active';
     attendanceState.textContent = 'Tela compartilhada';
   },
 );
@@ -408,6 +449,8 @@ void mediaDeviceManager.initialize();
 async function startTeacherWebRtc(sessionId: string): Promise<void> {
   closeWebRtcSession();
   activeWebRtcSessionId = sessionId;
+  startSessionClock(sessionId);
+  setConnectionQuality('connecting');
   attendanceState.textContent = 'Conectando câmera e microfone...';
   const connection = new RTCPeerConnection({
     iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
@@ -541,6 +584,7 @@ function hideScreenShare(): void {
   announcedScreenTrackId = undefined;
   screenStatus.textContent = 'Não compartilhando.';
   screenIndicator.dataset.indicator = 'inactive';
+  dockScreenStatus.dataset.state = 'inactive';
 }
 
 async function handleRemoteIceCandidate(
@@ -586,6 +630,9 @@ function serializeIceCandidate(candidate: RTCIceCandidate) {
 
 function closeWebRtcSession(resetStatus = true): void {
   activeWebRtcSessionId = undefined;
+  stopSessionClock();
+  setConnectionQuality('idle');
+  setFileDrawerOpen(false);
   pendingIceCandidates.clear();
   clearWebRtcRecovery();
   fileTransferClient.detachChannel();
@@ -626,11 +673,37 @@ function renderMediaDevices(snapshot: MediaDeviceSnapshot): void {
   cameraIndicator.dataset.indicator = snapshot.camera.indicator;
   cameraButton.textContent = snapshot.camera.state === CameraState.ACTIVE ? 'Desligar' : 'Ligar';
   cameraButton.disabled = snapshot.camera.state === CameraState.NOT_FOUND;
+  dockCameraButton.disabled = cameraButton.disabled;
+  dockCameraButton.dataset.state =
+    snapshot.camera.state === CameraState.ACTIVE ? 'active' : 'inactive';
+  dockCameraButton.setAttribute(
+    'aria-label',
+    snapshot.camera.state === CameraState.ACTIVE ? 'Desligar câmera' : 'Ligar câmera',
+  );
+  dockCameraButton.setAttribute(
+    'aria-pressed',
+    String(snapshot.camera.state === CameraState.ACTIVE),
+  );
+  retryCameraButton.textContent =
+    snapshot.camera.state === CameraState.NOT_FOUND ? 'Tentar novamente' : 'Ligar câmera';
   microphoneStatus.textContent = snapshot.microphone.message;
   microphoneIndicator.dataset.indicator = snapshot.microphone.indicator;
   microphoneButton.textContent =
     snapshot.microphone.state === MicrophoneState.ACTIVE ? 'Mutar' : 'Ativar';
   microphoneButton.disabled = snapshot.microphone.state === MicrophoneState.NOT_FOUND;
+  dockMicrophoneButton.disabled = microphoneButton.disabled;
+  dockMicrophoneButton.dataset.state =
+    snapshot.microphone.state === MicrophoneState.ACTIVE ? 'active' : 'inactive';
+  dockMicrophoneButton.setAttribute(
+    'aria-label',
+    snapshot.microphone.state === MicrophoneState.ACTIVE
+      ? 'Desativar microfone'
+      : 'Ativar microfone',
+  );
+  dockMicrophoneButton.setAttribute(
+    'aria-pressed',
+    String(snapshot.microphone.state === MicrophoneState.ACTIVE),
+  );
   deviceScanMessage.textContent = snapshot.scanError ?? '';
   deviceScanMessage.hidden = snapshot.scanError === undefined;
 
@@ -732,15 +805,18 @@ function handleWebRtcConnectionState(sessionId: string, connection: RTCPeerConne
   }
   if (connection.connectionState === 'connected') {
     clearWebRtcRecovery();
+    setConnectionQuality('good');
     attendanceState.textContent = 'Aluno conectado';
     return;
   }
   if (connection.connectionState === 'disconnected') {
+    setConnectionQuality('unstable');
     attendanceState.textContent = 'Reconectando mídia...';
     scheduleWebRtcRecovery(sessionId, connection, WEBRTC_RECOVERY_DELAY_MS);
     return;
   }
   if (connection.connectionState === 'failed') {
+    setConnectionQuality('unstable');
     attendanceState.textContent = 'Recuperando conexão de mídia...';
     scheduleWebRtcRecovery(sessionId, connection, 0);
   }
@@ -793,6 +869,12 @@ function clearWebRtcRecovery(): void {
   webRtcRecoveryInFlight = false;
 }
 
+remoteVideo.addEventListener('loadedmetadata', () => {
+  synchronizeVideoAspect(remoteVideo);
+});
+remoteVideo.addEventListener('resize', () => {
+  synchronizeVideoAspect(remoteVideo);
+});
 remoteVideo.addEventListener('loadeddata', () => {
   remoteVideoPlaceholder.hidden = remoteVideo.videoWidth > 0;
 });
@@ -800,11 +882,89 @@ remoteVideo.addEventListener('emptied', () => {
   remoteVideoPlaceholder.hidden = false;
 });
 localVideo.addEventListener('loadeddata', () => {
+  synchronizeVideoAspect(localVideo);
   localVideoPlaceholder.hidden = localVideo.videoWidth > 0;
+});
+localVideo.addEventListener('resize', () => {
+  synchronizeVideoAspect(localVideo);
 });
 localVideo.addEventListener('emptied', () => {
   localVideoPlaceholder.hidden = false;
 });
 screenVideo.addEventListener('loadeddata', () => {
+  synchronizeVideoAspect(screenVideo);
   screenVideoPlaceholder.hidden = screenVideo.videoWidth > 0;
 });
+screenVideo.addEventListener('resize', () => {
+  synchronizeVideoAspect(screenVideo);
+});
+
+type ConnectionQuality = 'idle' | 'connecting' | 'good' | 'unstable';
+
+function setConnectionQuality(quality: ConnectionQuality): void {
+  const labels: Record<ConnectionQuality, string> = {
+    idle: 'Aguardando',
+    connecting: 'Conectando',
+    good: 'Boa',
+    unstable: 'Instável',
+  };
+  connectionQuality.dataset.quality = quality;
+  const label = connectionQuality.querySelector('span');
+  if (label !== null) {
+    label.textContent = labels[quality];
+  }
+}
+
+function startSessionClock(sessionId: string): void {
+  if (timedSessionId === sessionId && sessionClockTimer !== undefined) {
+    return;
+  }
+  stopSessionClock();
+  timedSessionId = sessionId;
+  sessionStartedAt = Date.now();
+  updateSessionClock();
+  sessionClockTimer = setInterval(updateSessionClock, 1_000);
+}
+
+function stopSessionClock(): void {
+  if (sessionClockTimer !== undefined) {
+    clearInterval(sessionClockTimer);
+    sessionClockTimer = undefined;
+  }
+  timedSessionId = undefined;
+  sessionStartedAt = undefined;
+  sessionDuration.textContent = '00:00';
+  sessionDuration.dateTime = 'PT0S';
+}
+
+function updateSessionClock(): void {
+  if (sessionStartedAt === undefined) {
+    return;
+  }
+  const elapsedSeconds = Math.max(0, Math.floor((Date.now() - sessionStartedAt) / 1_000));
+  const hours = Math.floor(elapsedSeconds / 3_600);
+  const minutes = Math.floor((elapsedSeconds % 3_600) / 60);
+  const seconds = elapsedSeconds % 60;
+  sessionDuration.textContent =
+    hours > 0
+      ? `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+      : `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  sessionDuration.dateTime = `PT${elapsedSeconds}S`;
+}
+
+function synchronizeVideoAspect(video: HTMLVideoElement): void {
+  if (video.videoWidth <= 0 || video.videoHeight <= 0) {
+    return;
+  }
+  const tile = video.closest<HTMLElement>('.video-tile');
+  tile?.style.setProperty('--video-aspect', `${video.videoWidth} / ${video.videoHeight}`);
+  tile?.style.setProperty('--video-ratio', String(video.videoWidth / video.videoHeight));
+}
+
+function setFileDrawerOpen(isOpen: boolean): void {
+  const canOpen = !fileTransferPanel.hidden && !dockFilesButton.disabled;
+  const nextOpen = isOpen && canOpen;
+  fileTransferPanel.classList.toggle('is-open', nextOpen);
+  fileTransferPanel.setAttribute('aria-hidden', String(!nextOpen));
+  dockFilesButton.setAttribute('aria-expanded', String(nextOpen));
+}

@@ -141,12 +141,25 @@
                   <h1 id="active-student-name"></h1>
                 </div>
               </div>
-              <div class="session-secure">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <rect x="5" y="10" width="14" height="11" rx="2" />
-                  <path d="M8 10V7a4 4 0 0 1 8 0v3" />
-                </svg>
-                Sessão protegida
+              <div class="session-meta" aria-label="Informações da sessão">
+                <span
+                  id="teacher-connection-quality"
+                  class="session-quality"
+                  data-quality="connecting"
+                >
+                  <i aria-hidden="true"></i>
+                  <span>Conectando</span>
+                </span>
+                <time id="teacher-session-duration" class="session-duration" datetime="PT0S">
+                  00:00
+                </time>
+                <span class="session-secure">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <rect x="5" y="10" width="14" height="11" rx="2" />
+                    <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+                  </svg>
+                  Sessão protegida
+                </span>
               </div>
             </header>
 
@@ -197,9 +210,90 @@
                     </svg>
                   </span>
                   <strong id="local-video-placeholder-title">Câmera desligada</strong>
+                  <button id="teacher-retry-camera" class="placeholder-action" type="button">
+                    Tentar novamente
+                  </button>
                 </div>
                 <figcaption>Você</figcaption>
               </figure>
+
+              <nav class="conference-toolbar" aria-label="Controles da chamada">
+                <button
+                  id="teacher-dock-microphone"
+                  class="conference-control"
+                  type="button"
+                  title="Ativar ou desativar microfone"
+                  aria-label="Ativar ou desativar microfone"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <rect x="8" y="3" width="8" height="12" rx="4" />
+                    <path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6" />
+                  </svg>
+                  <span>Microfone</span>
+                </button>
+                <button
+                  id="teacher-dock-camera"
+                  class="conference-control"
+                  type="button"
+                  title="Ligar ou desligar câmera"
+                  aria-label="Ligar ou desligar câmera"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M15 10.5 21 7v10l-6-3.5" />
+                    <rect x="3" y="5" width="12" height="14" rx="2" />
+                  </svg>
+                  <span>Câmera</span>
+                </button>
+                <span
+                  id="teacher-dock-screen"
+                  class="conference-control conference-control--status"
+                  title="Estado da tela do aluno"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <rect x="3" y="4" width="18" height="13" rx="2" />
+                    <path d="M8 21h8M12 17v4" />
+                  </svg>
+                  <span>Tela</span>
+                </span>
+                <button
+                  id="teacher-dock-control"
+                  class="conference-control"
+                  type="button"
+                  title="Solicitar ou parar controle remoto"
+                  aria-label="Solicitar controle remoto"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m5 3 13 9-6 1 3 6-3 1-3-6-4 4V3Z" />
+                  </svg>
+                  <span>Controle</span>
+                </button>
+                <button
+                  id="teacher-dock-files"
+                  class="conference-control"
+                  type="button"
+                  title="Abrir transferência de arquivos"
+                  aria-label="Abrir transferência de arquivos"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M3 7h7l2 2h9v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />
+                  </svg>
+                  <span>Arquivos</span>
+                </button>
+                <button
+                  id="end-session"
+                  class="conference-control conference-control--end"
+                  type="button"
+                  title="Encerrar atendimento"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path
+                      d="M6.6 10.8c3.5-1.6 7.3-1.6 10.8 0l1.1-2.1c.4-.8.1-1.8-.7-2.2a13 13 0 0 0-11.6 0c-.8.4-1.1 1.4-.7 2.2l1.1 2.1Z"
+                    />
+                    <path d="M8 10v4M16 10v4" />
+                  </svg>
+                  <span>Encerrar</span>
+                </button>
+              </nav>
             </div>
 
             <div class="support-bar">
@@ -271,8 +365,20 @@
                 id="file-transfer-panel"
                 class="file-transfer-panel"
                 aria-labelledby="file-transfer-title"
+                aria-modal="false"
                 hidden
               >
+                <button
+                  id="teacher-close-files"
+                  class="drawer-close"
+                  type="button"
+                  aria-label="Fechar transferência de arquivos"
+                  title="Fechar"
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m6 6 12 12M18 6 6 18" />
+                  </svg>
+                </button>
                 <div class="support-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24">
                     <path d="M3 7h7l2 2h9v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />
@@ -299,20 +405,6 @@
                   <li class="file-transfer-empty">Nenhuma transferência nesta sessão.</li>
                 </ul>
               </section>
-
-              <button
-                id="end-session"
-                class="button button--danger end-session-button"
-                type="button"
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path
-                    d="M6.6 10.8c3.5-1.6 7.3-1.6 10.8 0l1.1-2.1c.4-.8.1-1.8-.7-2.2a13 13 0 0 0-11.6 0c-.8.4-1.1 1.4-.7 2.2l1.1 2.1Z"
-                  />
-                  <path d="M8 10v4M16 10v4" />
-                </svg>
-                Encerrar
-              </button>
             </div>
           </section>
 
