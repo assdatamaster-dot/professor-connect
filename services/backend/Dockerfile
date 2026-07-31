@@ -28,6 +28,7 @@ RUN turbo prune @professor-connect/api --docker
 FROM base AS build
 
 COPY --from=pruner /app/out/json/ ./
+COPY --from=pruner /app/out/full/services/backend/database/prisma ./services/backend/database/prisma
 
 RUN npm ci
 

@@ -13,6 +13,19 @@ import {
 
 import type { PersistenceQueue } from '../persistence-queue.js';
 
+type JsonPrimitive = boolean | number | string | null;
+type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
+interface JsonObject {
+  [key: string]: JsonValue;
+}
+
+type SessionRequestWithParticipants = Prisma.SessionRequestGetPayload<{
+  include: { professor: true; student: true };
+}>;
+type AttendanceSessionWithParticipants = Prisma.AttendanceSessionGetPayload<{
+  include: { professor: true; student: true };
+}>;
+
 export interface ProfessorRecord {
   readonly id: string;
   readonly name: string;
@@ -248,7 +261,7 @@ export class SessionRequestRepository {
       include: { professor: true, student: true },
       orderBy: { createdAt: 'asc' },
     });
-    return requests.flatMap((request): SessionRequestRecord[] => {
+    return requests.flatMap((request: SessionRequestWithParticipants): SessionRequestRecord[] => {
       if (request.professorId === null || request.professor === null) {
         return [];
       }
@@ -347,7 +360,7 @@ export class AttendanceSessionRepository {
       include: { professor: true, student: true },
       orderBy: { startedAt: 'asc' },
     });
-    return sessions.map((session) => ({
+    return sessions.map((session: AttendanceSessionWithParticipants) => ({
       sessionId: session.id,
       requestId: session.requestId,
       teacherId: session.professorId,
@@ -448,7 +461,7 @@ export class RecoveryRepository {
   public constructor(private readonly prisma: PrismaClient) {}
 
   public async recoverAfterRestart(now = new Date()): Promise<void> {
-    await this.prisma.$transaction(async (transaction) => {
+    await this.prisma.$transaction(async (transaction: Prisma.TransactionClient) => {
       await transaction.presenceConnection.updateMany({
         where: { isOnline: true },
         data: { isOnline: false, disconnectedAt: now },
@@ -502,7 +515,7 @@ export class WorkflowPresenceRepository {
   public savePresence(client: WorkflowPresenceRecord): void {
     const lastSeen = new Date(client.lastSeen);
     this.queue.enqueue(() =>
-      this.prisma.$transaction(async (transaction) => {
+      this.prisma.$transaction(async (transaction: Prisma.TransactionClient) => {
         if (client.role === 'TEACHER') {
           await transaction.professor.upsert({
             where: { id: client.clientId },
@@ -560,7 +573,7 @@ export class WorkflowRequestRepository {
     recipientTeacherIds: readonly string[] = [],
   ): void {
     this.queue.enqueue(() =>
-      this.prisma.$transaction(async (transaction) => {
+      this.prisma.$transaction(async (transaction: Prisma.TransactionClient) => {
         await transaction.sessionRequest.upsert({
           where: { id: request.requestId },
           create: {
@@ -649,7 +662,7 @@ export class WorkflowSessionRepository {
 
   public saveWorkflowSession(session: WorkflowSessionRecord): void {
     this.queue.enqueue(() =>
-      this.prisma.$transaction(async (transaction) => {
+      this.prisma.$transaction(async (transaction: Prisma.TransactionClient) => {
         await transaction.workflowSession.upsert({
           where: { id: session.id },
           create: {
@@ -691,8 +704,8 @@ function durationSeconds(startedAt: Date, endedAt: Date): number {
   return Math.max(0, Math.floor((endedAt.getTime() - startedAt.getTime()) / 1_000));
 }
 
-function toJson(value: unknown): Prisma.InputJsonValue {
-  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+function toJson(value: Readonly<Record<string, unknown>>): JsonObject {
+  return JSON.parse(JSON.stringify(value)) as JsonObject;
 }
 
 function toRequestStatus(status: SessionRequestRecord['status']): RequestStatus {

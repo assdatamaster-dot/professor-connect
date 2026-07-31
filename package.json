@@ -30,6 +30,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "turbo run lint",
+    "postinstall": "npm run prisma:generate",
     "prisma:generate": "npm run prisma:generate --workspace=@professor-connect/database",
     "presence:client": "npm run presence:client --workspace=@professor-connect/websocket",
     "request:client": "npm run request:client --workspace=@professor-connect/websocket",
