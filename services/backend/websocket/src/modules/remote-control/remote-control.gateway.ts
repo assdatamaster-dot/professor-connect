@@ -145,6 +145,7 @@ export class RemoteControlGateway {
           teacherSocketId: route.recipientSocketId,
         });
         this.clearAuthorizationTimer(approved.sessionId);
+        this.sessionManager.markFeatureUsed(approved.sessionId, 'remote-control');
         this.socketServer
           .to(route.recipientSocketId)
           .emit(REMOTE_CONTROL_CHANNEL_EVENTS.APPROVED, approved);

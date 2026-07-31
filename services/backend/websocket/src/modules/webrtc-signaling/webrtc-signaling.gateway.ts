@@ -118,6 +118,9 @@ export class WebRtcSignalingGateway {
         normalizedPayload.sessionId,
         socket.id,
       );
+      if (event === WEBRTC_SIGNALING_EVENTS.SCREEN_SHARE_START) {
+        this.sessionManager.markFeatureUsed(normalizedPayload.sessionId, 'screen-share');
+      }
       this.socketServer.to(route.recipientSocketId).emit(event, normalizedPayload);
     });
   }

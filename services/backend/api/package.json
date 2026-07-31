@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@professor-connect/config": "0.1.0",
+    "@professor-connect/database": "0.1.0",
     "@professor-connect/websocket": "0.1.0",
     "express": "5.2.1"
   },

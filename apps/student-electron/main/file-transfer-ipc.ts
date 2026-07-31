@@ -13,9 +13,14 @@ export interface FileTransferIpcRegistration {
   dispose(): void;
 }
 
+export interface FileTransferIpcOptions {
+  readonly onAudit?: (entry: FileTransferAuditEntry) => void | Promise<void>;
+}
+
 export function registerFileTransferIpc(
   storage: FileTransferStorage,
   renderer: WebContents,
+  options: FileTransferIpcOptions = {},
 ): FileTransferIpcRegistration {
   const assertSender = (event: IpcMainInvokeEvent): void => {
     if (event.sender.id !== renderer.id) {
@@ -62,7 +67,11 @@ export function registerFileTransferIpc(
   });
   ipcMain.handle(FILE_TRANSFER_IPC_CHANNELS.APPEND_AUDIT, (event, payload: unknown) => {
     assertSender(event);
-    return withFileTransferError(() => storage.appendAudit(requireAudit(payload)));
+    return withFileTransferError(async () => {
+      const entry = requireAudit(payload);
+      await storage.appendAudit(entry);
+      await options.onAudit?.(entry);
+    });
   });
 
   return {

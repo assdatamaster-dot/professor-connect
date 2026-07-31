@@ -21,6 +21,13 @@ export interface SessionRequestManagerOptions {
   readonly idFactory?: () => string;
   readonly timeoutMs?: number;
   readonly scheduler?: (task: () => void, timeoutMs: number) => NodeJS.Timeout;
+  readonly persistence?: SessionRequestPersistence;
+  readonly audit?: AuditPersistence;
+  readonly initialHistory?: readonly SessionRequest[];
 }
 
 export type SessionRequestExpirationHandler = (delivery: SessionRequestDelivery) => void;
+import type {
+  AuditPersistence,
+  SessionRequestPersistence,
+} from '../../persistence/persistence.types.js';

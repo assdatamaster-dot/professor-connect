@@ -6,3 +6,373 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+enum UserStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+}
+
+enum UserRoleName {
+  ADMIN
+  TEACHER
+  STUDENT
+}
+
+enum PresenceRole {
+  TEACHER
+  STUDENT
+}
+
+enum RequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
+enum AttendanceSessionStatus {
+  ACTIVE
+  FINISHED
+  INTERRUPTED
+}
+
+enum WorkflowSessionStatus {
+  WAITING
+  ACTIVE
+  FINISHED
+}
+
+enum SupportCallStatus {
+  CREATED
+  CONNECTING
+  CONNECTED
+  FINISHED
+  FAILED
+  CANCELLED
+}
+
+enum FileTransferStatus {
+  REQUESTED
+  ACCEPTED
+  IN_PROGRESS
+  COMPLETED
+  REJECTED
+  CANCELLED
+  FAILED
+}
+
+enum FileTransferDirection {
+  TEACHER_TO_STUDENT
+  STUDENT_TO_TEACHER
+}
+
+enum AuditSeverity {
+  INFO
+  WARNING
+  ERROR
+}
+
+model Organization {
+  id         String      @id @default(uuid()) @db.Uuid
+  name       String
+  slug       String      @unique
+  createdAt  DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  users      User[]
+  professors Professor[]
+  students   Student[]
+
+  @@map("organizations")
+}
+
+model User {
+  id             String        @id @default(uuid()) @db.Uuid
+  organizationId String?       @map("organization_id") @db.Uuid
+  email          String        @unique
+  displayName    String        @map("display_name")
+  passwordHash   String?       @map("password_hash")
+  status         UserStatus    @default(INVITED)
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  roles          UserRole[]
+  tokens         AuthToken[]
+  professor      Professor?
+  student        Student?
+
+  @@index([organizationId])
+  @@map("users")
+}
+
+model Role {
+  id          String           @id @default(uuid()) @db.Uuid
+  name        UserRoleName     @unique
+  description String?
+  users       UserRole[]
+  permissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String           @id @default(uuid()) @db.Uuid
+  code        String           @unique
+  description String?
+  roles       RolePermission[]
+
+  @@map("permissions")
+}
+
+model UserRole {
+  userId     String   @map("user_id") @db.Uuid
+  roleId     String   @map("role_id") @db.Uuid
+  assignedAt DateTime @default(now()) @map("assigned_at") @db.Timestamptz(3)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  roleId       String     @map("role_id") @db.Uuid
+  permissionId String     @map("permission_id") @db.Uuid
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model AuthToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@map("auth_tokens")
+}
+
+model Professor {
+  id                String                    @id
+  organizationId    String?                   @map("organization_id") @db.Uuid
+  userId            String?                   @unique @map("user_id") @db.Uuid
+  name              String
+  createdAt         DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  organization      Organization?             @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  user              User?                     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  presences         PresenceConnection[]
+  requests          SessionRequest[]
+  requestRecipients SessionRequestRecipient[]
+  sessions          AttendanceSession[]
+
+  @@index([organizationId, name])
+  @@map("professors")
+}
+
+model Student {
+  id             String               @id
+  organizationId String?              @map("organization_id") @db.Uuid
+  userId         String?              @unique @map("user_id") @db.Uuid
+  name           String
+  createdAt      DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+  organization   Organization?        @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  user           User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  presences      PresenceConnection[]
+  requests       SessionRequest[]
+  sessions       AttendanceSession[]
+
+  @@index([organizationId, name])
+  @@map("students")
+}
+
+model PresenceConnection {
+  id             String       @id @default(uuid()) @db.Uuid
+  professorId    String?      @map("professor_id")
+  studentId      String?      @map("student_id")
+  role           PresenceRole
+  socketId       String       @map("socket_id")
+  connectedAt    DateTime     @map("connected_at") @db.Timestamptz(3)
+  lastHeartbeat  DateTime     @map("last_heartbeat") @db.Timestamptz(3)
+  disconnectedAt DateTime?    @map("disconnected_at") @db.Timestamptz(3)
+  isOnline       Boolean      @default(true) @map("is_online")
+  professor      Professor?   @relation(fields: [professorId], references: [id], onDelete: Cascade)
+  student        Student?     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([socketId, connectedAt])
+  @@index([isOnline, role])
+  @@index([professorId, connectedAt])
+  @@index([studentId, connectedAt])
+  @@map("presence_connections")
+}
+
+model SessionRequest {
+  id          String                    @id @db.Uuid
+  professorId String?                   @map("professor_id")
+  studentId   String                    @map("student_id")
+  status      RequestStatus             @default(PENDING)
+  createdAt   DateTime                  @map("created_at") @db.Timestamptz(3)
+  respondedAt DateTime?                 @map("responded_at") @db.Timestamptz(3)
+  expiresAt   DateTime?                 @map("expires_at") @db.Timestamptz(3)
+  professor   Professor?                @relation(fields: [professorId], references: [id], onDelete: Restrict)
+  student     Student                   @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  session     AttendanceSession?
+  events      DomainEvent[]
+  recipients  SessionRequestRecipient[]
+  calls       SupportCall[]
+
+  @@index([status, createdAt])
+  @@index([professorId, status])
+  @@index([studentId, createdAt])
+  @@map("session_requests")
+}
+
+model SessionRequestRecipient {
+  requestId   String         @map("request_id") @db.Uuid
+  professorId String         @map("professor_id")
+  rejectedAt  DateTime?      @map("rejected_at") @db.Timestamptz(3)
+  request     SessionRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  professor   Professor      @relation(fields: [professorId], references: [id], onDelete: Restrict)
+
+  @@id([requestId, professorId])
+  @@index([professorId, rejectedAt])
+  @@map("session_request_recipients")
+}
+
+model AttendanceSession {
+  id                String                  @id @db.Uuid
+  requestId         String                  @unique @map("request_id") @db.Uuid
+  professorId       String                  @map("professor_id")
+  studentId         String                  @map("student_id")
+  status            AttendanceSessionStatus @default(ACTIVE)
+  startedAt         DateTime                @map("started_at") @db.Timestamptz(3)
+  endedAt           DateTime?               @map("ended_at") @db.Timestamptz(3)
+  durationSeconds   Int?                    @map("duration_seconds")
+  endReason         String?                 @map("end_reason")
+  usedScreenShare   Boolean                 @default(false) @map("used_screen_share")
+  usedRemoteControl Boolean                 @default(false) @map("used_remote_control")
+  usedFileTransfer  Boolean                 @default(false) @map("used_file_transfer")
+  request           SessionRequest          @relation(fields: [requestId], references: [id], onDelete: Restrict)
+  professor         Professor               @relation(fields: [professorId], references: [id], onDelete: Restrict)
+  student           Student                 @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  fileTransfers     FileTransfer[]
+  events            DomainEvent[]
+
+  @@index([status, startedAt])
+  @@index([professorId, startedAt])
+  @@index([studentId, startedAt])
+  @@map("attendance_sessions")
+}
+
+model WorkflowSession {
+  id           String                       @id @db.Uuid
+  status       WorkflowSessionStatus        @default(WAITING)
+  createdAt    DateTime                     @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime                     @map("updated_at") @db.Timestamptz(3)
+  participants WorkflowSessionParticipant[]
+
+  @@index([status, updatedAt])
+  @@map("workflow_sessions")
+}
+
+model WorkflowSessionParticipant {
+  id        BigInt          @id @default(autoincrement())
+  sessionId String          @map("session_id") @db.Uuid
+  clientId  String          @map("client_id")
+  joinedAt  DateTime        @default(now()) @map("joined_at") @db.Timestamptz(3)
+  session   WorkflowSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, clientId])
+  @@index([clientId])
+  @@map("workflow_session_participants")
+}
+
+model SupportCall {
+  id          String            @id @db.Uuid
+  requestId   String            @map("request_id") @db.Uuid
+  sessionId   String?           @map("session_id") @db.Uuid
+  studentId   String            @map("student_id")
+  professorId String            @map("professor_id")
+  status      SupportCallStatus @default(CREATED)
+  createdAt   DateTime          @map("created_at") @db.Timestamptz(3)
+  connectedAt DateTime?         @map("connected_at") @db.Timestamptz(3)
+  finishedAt  DateTime?         @map("finished_at") @db.Timestamptz(3)
+  request     SessionRequest    @relation(fields: [requestId], references: [id], onDelete: Restrict)
+
+  @@unique([requestId])
+  @@index([status, createdAt])
+  @@index([studentId, createdAt])
+  @@index([professorId, createdAt])
+  @@map("support_calls")
+}
+
+model FileTransfer {
+  id            String                @id @db.Uuid
+  sessionId     String                @map("session_id") @db.Uuid
+  direction     FileTransferDirection
+  fileName      String                @map("file_name")
+  mimeType      String?               @map("mime_type")
+  byteSize      BigInt                @map("byte_size")
+  checksum      String?
+  status        FileTransferStatus
+  failureReason String?               @map("failure_reason")
+  startedAt     DateTime              @map("started_at") @db.Timestamptz(3)
+  completedAt   DateTime?             @map("completed_at") @db.Timestamptz(3)
+  session       AttendanceSession     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, startedAt])
+  @@index([status, startedAt])
+  @@map("file_transfers")
+}
+
+model DomainEvent {
+  id         BigInt             @id @default(autoincrement())
+  requestId  String?            @map("request_id") @db.Uuid
+  sessionId  String?            @map("session_id") @db.Uuid
+  type       String
+  payload    Json?
+  occurredAt DateTime           @default(now()) @map("occurred_at") @db.Timestamptz(3)
+  request    SessionRequest?    @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  session    AttendanceSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([type, occurredAt])
+  @@index([sessionId, occurredAt])
+  @@map("domain_events")
+}
+
+model AuditLog {
+  id         BigInt        @id @default(autoincrement())
+  actorType  String?       @map("actor_type")
+  actorId    String?       @map("actor_id")
+  action     String
+  entityType String?       @map("entity_type")
+  entityId   String?       @map("entity_id")
+  severity   AuditSeverity @default(INFO)
+  metadata   Json?
+  occurredAt DateTime      @default(now()) @map("occurred_at") @db.Timestamptz(3)
+
+  @@index([action, occurredAt])
+  @@index([entityType, entityId, occurredAt])
+  @@map("audit_logs")
+}
+
+model ApplicationLog {
+  id         BigInt        @id @default(autoincrement())
+  level      AuditSeverity
+  origin     String
+  event      String
+  context    Json?
+  occurredAt DateTime      @default(now()) @map("occurred_at") @db.Timestamptz(3)
+
+  @@index([level, occurredAt])
+  @@index([event, occurredAt])
+  @@map("application_logs")
+}

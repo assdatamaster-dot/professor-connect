@@ -85,3 +85,30 @@ test('somente professor ou aluno participantes podem encerrar', () => {
   );
   assert.equal(manager.listActiveSessions().length, 1);
 });
+
+test('encerra sessões do participante desconectado e preserva os sockets da entrega', () => {
+  const professors = new PresenceManager(undefined, () => 'teacher-id');
+  const students = new StudentPresenceManager();
+  professors.registerProfessor({ name: 'Carlos', socketId: 'teacher-socket' });
+  students.registerStudent({ id: 'student-id', name: 'Ana', socketId: 'student-socket' });
+  const manager = new SessionManager(professors, students, { idFactory: () => 'session-id' });
+  manager.createSession({
+    requestId: 'request-id',
+    teacherId: 'teacher-id',
+    teacherName: 'Carlos',
+    studentId: 'student-id',
+    studentName: 'Ana',
+    createdAt: new Date().toISOString(),
+    status: 'accepted',
+  });
+
+  students.removeStudent('student-socket');
+  const [finished] = manager.endSessionsForParticipant('student-socket');
+
+  assert.equal(finished?.session.status, 'finished');
+  assert.equal(finished?.teacherSocketId, 'teacher-socket');
+  assert.equal(finished?.studentSocketId, 'student-socket');
+  assert.deepEqual(manager.listActiveSessions(), []);
+  assert.equal(manager.listHistory()[0]?.status, 'finished');
+  assert.deepEqual(manager.endSessionsForParticipant('unknown-socket'), []);
+});

@@ -12,6 +12,7 @@ import {
   type RemoteControlStopPayload,
 } from '@professor-connect/protocol';
 import { io, type Socket } from 'socket.io-client';
+import type { FileTransferAuditEntry } from '@professor-connect/engine/file-transfer-node';
 
 import type {
   OnlineTeacher,
@@ -36,6 +37,7 @@ export interface StudentIdentity {
 }
 
 interface StudentPresenceClientEvents {
+  'file-transfer:audit': (payload: FileTransferAuditEntry & { readonly sessionId: string }) => void;
   'student:disconnect': (acknowledge: () => void) => void;
   'student:heartbeat': () => void;
   'student:register': (payload: StudentIdentity) => void;
@@ -247,6 +249,16 @@ export class StudentPresenceController {
     }
     this.socket.emit('session:end', { sessionId });
     return this.getSessionSnapshot();
+  }
+
+  public reportFileTransfer(entry: FileTransferAuditEntry): void {
+    if (entry.direction !== 'sent') return;
+    const sessionId = this.sessionState.activeSessionId;
+    const socket = this.socket;
+    if (sessionId === undefined || socket === undefined || !socket.connected) {
+      throw new Error('Sessão ativa necessária para auditar a transferência');
+    }
+    socket.emit('file-transfer:audit', { ...entry, sessionId });
   }
 
   public approveRemoteControl(): StudentSessionSnapshot {

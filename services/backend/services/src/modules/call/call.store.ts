@@ -1,7 +1,10 @@
 import type { Call, CallId, RequestId } from '@professor-connect/protocol';
+import type { WorkflowCallPersistence } from '../../persistence/persistence.types.js';
 
 export class CallStore {
   private readonly calls = new Map<CallId, Call>();
+
+  public constructor(private readonly persistence?: WorkflowCallPersistence) {}
 
   public createCall(call: Call): Call {
     if (this.calls.has(call.callId)) {
@@ -13,6 +16,7 @@ export class CallStore {
     }
 
     this.calls.set(call.callId, call);
+    this.persistence?.saveWorkflowCall(call);
 
     return call;
   }
@@ -31,11 +35,16 @@ export class CallStore {
     }
 
     this.calls.set(call.callId, call);
+    this.persistence?.saveWorkflowCall(call);
 
     return call;
   }
 
   public removeCall(callId: CallId): boolean {
+    const call = this.calls.get(callId);
+    if (call !== undefined) {
+      this.persistence?.saveWorkflowCall(call);
+    }
     return this.calls.delete(callId);
   }
 

@@ -1,5 +1,7 @@
 # Arquitetura do monorepo
 
+> A persistência PostgreSQL/Prisma, os repositories e o fluxo de recuperação estão documentados em [persistence.md](./persistence.md).
+
 ## Objetivo
 
 A Sprint A-1 organiza o Professor Connect por responsabilidade e direção de dependência, mantendo

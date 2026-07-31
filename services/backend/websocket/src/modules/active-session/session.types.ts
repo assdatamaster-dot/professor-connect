@@ -20,6 +20,9 @@ export interface SessionDelivery {
 export interface SessionManagerOptions {
   readonly clock?: () => Date;
   readonly idFactory?: () => string;
+  readonly persistence?: AttendanceSessionPersistence;
+  readonly audit?: AuditPersistence;
+  readonly initialHistory?: readonly AttendanceSession[];
 }
 
 export interface SessionSignalingRoute {
@@ -29,3 +32,7 @@ export interface SessionSignalingRoute {
 }
 
 export type SessionEndedListener = (delivery: SessionDelivery) => void;
+import type {
+  AttendanceSessionPersistence,
+  AuditPersistence,
+} from '../../persistence/persistence.types.js';

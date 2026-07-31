@@ -34,13 +34,15 @@ RUN npm ci
 COPY --from=pruner /app/out/full/ ./
 COPY --from=pruner /app/tsconfig.base.json ./tsconfig.base.json
 
+RUN npm run prisma:generate
 RUN npx turbo run build --filter=@professor-connect/api...
 
 FROM base AS production-dependencies
 
 COPY --from=pruner /app/out/json/ ./
+COPY --from=pruner /app/out/full/services/backend/database/prisma ./services/backend/database/prisma
 
-RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
+RUN npm ci --omit=dev && npm run prisma:generate && npm cache clean --force
 
 FROM base AS production
 
@@ -60,6 +62,9 @@ COPY --chown=node:node --from=build /app/services/backend/api/package.json ./ser
 COPY --chown=node:node --from=build /app/services/backend/api/dist ./services/backend/api/dist
 COPY --chown=node:node --from=build /app/services/backend/config/package.json ./services/backend/config/package.json
 COPY --chown=node:node --from=build /app/services/backend/config/dist ./services/backend/config/dist
+COPY --chown=node:node --from=build /app/services/backend/database/package.json ./services/backend/database/package.json
+COPY --chown=node:node --from=build /app/services/backend/database/dist ./services/backend/database/dist
+COPY --chown=node:node --from=build /app/services/backend/database/prisma ./services/backend/database/prisma
 COPY --chown=node:node --from=build /app/services/backend/services/package.json ./services/backend/services/package.json
 COPY --chown=node:node --from=build /app/services/backend/services/dist ./services/backend/services/dist
 COPY --chown=node:node --from=build /app/services/backend/websocket/package.json ./services/backend/websocket/package.json
@@ -74,4 +79,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 
 STOPSIGNAL SIGTERM
 
-CMD ["node", "services/backend/api/dist/server.js"]
+CMD ["sh", "-c", "npx --no-install prisma migrate deploy --schema services/backend/database/prisma/schema.prisma && node services/backend/api/dist/server.js"]

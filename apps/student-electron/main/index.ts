@@ -81,6 +81,7 @@ async function createMainWindow(): Promise<void> {
   fileTransferIpcRegistration = registerFileTransferIpc(
     fileTransferStorage,
     mainWindow.webContents,
+    { onAudit: (entry) => presenceController?.reportFileTransfer(entry) },
   );
   const captureTargetRegistry = requireScreenCaptureTargetRegistry();
   const captureCoordinator = requireAllScreensCaptureCoordinator();

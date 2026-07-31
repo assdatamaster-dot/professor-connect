@@ -15,9 +15,18 @@ export class SessionManager {
   private readonly activeSessions = new Map<string, AttendanceSession>();
   private readonly history = new Map<string, AttendanceSession>();
   private readonly sessionIdsByRequestId = new Map<string, string>();
+  private readonly participantSocketsBySessionId = new Map<
+    string,
+    {
+      readonly teacherSocketId: string | undefined;
+      readonly studentSocketId: string | undefined;
+    }
+  >();
   private readonly endedListeners = new Set<SessionEndedListener>();
   private readonly clock: () => Date;
   private readonly idFactory: () => string;
+  private readonly persistence: SessionManagerOptions['persistence'];
+  private readonly audit: SessionManagerOptions['audit'];
 
   public constructor(
     private readonly professorPresenceManager = new PresenceManager(),
@@ -26,6 +35,12 @@ export class SessionManager {
   ) {
     this.clock = options.clock ?? (() => new Date());
     this.idFactory = options.idFactory ?? randomUUID;
+    this.persistence = options.persistence;
+    this.audit = options.audit;
+    for (const session of options.initialHistory ?? []) {
+      this.history.set(session.sessionId, session);
+      this.sessionIdsByRequestId.set(session.requestId, session.sessionId);
+    }
   }
 
   public createSession(request: SessionRequest): SessionDelivery {
@@ -47,9 +62,24 @@ export class SessionManager {
       status: 'active',
     };
 
+    const delivery = this.createDelivery(session);
+    if (delivery.teacherSocketId === undefined || delivery.studentSocketId === undefined) {
+      throw new Error('Os dois participantes precisam estar online para criar a sessão');
+    }
     this.activeSessions.set(session.sessionId, session);
     this.sessionIdsByRequestId.set(session.requestId, session.sessionId);
-    return this.createDelivery(session);
+    this.participantSocketsBySessionId.set(session.sessionId, {
+      teacherSocketId: delivery.teacherSocketId,
+      studentSocketId: delivery.studentSocketId,
+    });
+    this.persistence?.saveSession(session);
+    this.audit?.record({
+      action: 'session.started',
+      entityType: 'attendance-session',
+      entityId: session.sessionId,
+      metadata: { requestId: session.requestId },
+    });
+    return delivery;
   }
 
   public findSession(sessionId: string): AttendanceSession | undefined {
@@ -70,16 +100,42 @@ export class SessionManager {
       throw new Error(`Sessão ativa não encontrada: ${sessionId}`);
     }
 
-    const teacher = this.professorPresenceManager.findProfessorBySocketId(participantSocketId);
-    const student = this.studentPresenceManager.findStudentBySocketId(participantSocketId);
-    if (teacher?.id !== session.teacherId && student?.id !== session.studentId) {
+    const participantSockets = this.participantSocketsBySessionId.get(sessionId);
+    if (
+      participantSockets?.teacherSocketId !== participantSocketId &&
+      participantSockets?.studentSocketId !== participantSocketId
+    ) {
       throw new Error('Somente um participante pode encerrar a sessão');
     }
 
+    return this.finishSession(session, 'participant');
+  }
+
+  public endSessionsForParticipant(participantSocketId: string): readonly SessionDelivery[] {
+    const sessions = this.listActiveSessions().filter((session) => {
+      const participantSockets = this.participantSocketsBySessionId.get(session.sessionId);
+      return (
+        participantSockets?.teacherSocketId === participantSocketId ||
+        participantSockets?.studentSocketId === participantSocketId
+      );
+    });
+
+    return sessions.map((session) => this.finishSession(session, 'participant-disconnected'));
+  }
+
+  private finishSession(session: AttendanceSession, endReason: string): SessionDelivery {
     const finishedSession: AttendanceSession = { ...session, status: 'finished' };
-    this.activeSessions.delete(sessionId);
-    this.history.set(sessionId, finishedSession);
+    this.activeSessions.delete(session.sessionId);
+    this.history.set(session.sessionId, finishedSession);
     const delivery = this.createDelivery(finishedSession);
+    this.participantSocketsBySessionId.delete(session.sessionId);
+    this.persistence?.saveSession(finishedSession, endReason);
+    this.audit?.record({
+      action: 'session.finished',
+      entityType: 'attendance-session',
+      entityId: session.sessionId,
+      metadata: { endReason },
+    });
     for (const listener of this.endedListeners) {
       listener(delivery);
     }
@@ -118,11 +174,26 @@ export class SessionManager {
     return () => this.endedListeners.delete(listener);
   }
 
+  public markFeatureUsed(
+    sessionId: string,
+    feature: 'screen-share' | 'remote-control' | 'file-transfer',
+  ): void {
+    if (!this.activeSessions.has(sessionId)) {
+      throw new Error(`Sessão ativa não encontrada: ${sessionId}`);
+    }
+    this.persistence?.markFeatureUsed(sessionId, feature);
+  }
+
   private createDelivery(session: AttendanceSession): SessionDelivery {
+    const participantSockets = this.participantSocketsBySessionId.get(session.sessionId);
     return {
       session,
-      teacherSocketId: this.professorPresenceManager.findProfessorById(session.teacherId)?.socketId,
-      studentSocketId: this.studentPresenceManager.findStudentById(session.studentId)?.socketId,
+      teacherSocketId:
+        participantSockets?.teacherSocketId ??
+        this.professorPresenceManager.findProfessorById(session.teacherId)?.socketId,
+      studentSocketId:
+        participantSockets?.studentSocketId ??
+        this.studentPresenceManager.findStudentById(session.studentId)?.socketId,
     };
   }
 }

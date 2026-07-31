@@ -13,6 +13,7 @@ import {
   type RemoteControlStopPayload,
 } from '@professor-connect/protocol';
 import { io, type Socket } from 'socket.io-client';
+import type { FileTransferAuditEntry } from '@professor-connect/engine/file-transfer-node';
 
 import {
   ProfessorPresenceStatus,
@@ -38,6 +39,7 @@ const SESSION_REQUEST_TIMEOUT_MS = 30_000;
 const MAXIMUM_REMOTE_CONTROL_LOG_ENTRIES = 100;
 
 interface ProfessorPresenceClientEvents {
+  'file-transfer:audit': (payload: FileTransferAuditEntry & { readonly sessionId: string }) => void;
   'professor:heartbeat': () => void;
   'professor:online': (payload: { readonly name: string }) => void;
   'session:accept': (payload: { readonly requestId: string }) => void;
@@ -318,6 +320,16 @@ export class ProfessorPresenceController {
       REMOTE_CONTROL_CHANNEL_EVENTS.KEYBOARD,
       { ...reference, event },
     );
+  }
+
+  public reportFileTransfer(entry: FileTransferAuditEntry): void {
+    if (entry.direction !== 'sent') return;
+    const session = this.activeSession;
+    const socket = this.socket;
+    if (session === undefined || socket === undefined || !socket.connected) {
+      throw new Error('Sessão ativa necessária para auditar a transferência');
+    }
+    socket.emit('file-transfer:audit', { ...entry, sessionId: session.sessionId });
   }
 
   public stopRemoteControl(): ProfessorPresenceSnapshot {

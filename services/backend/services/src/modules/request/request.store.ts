@@ -1,9 +1,12 @@
 import { RequestStatus, type RequestId, type ServiceRequest } from '@professor-connect/protocol';
+import type { WorkflowRequestPersistence } from '../../persistence/persistence.types.js';
 
 export class RequestStore {
   private readonly requests = new Map<RequestId, ServiceRequest>();
   private readonly recipientTeacherIds = new Map<RequestId, ReadonlySet<string>>();
   private readonly rejectedTeacherIds = new Map<RequestId, Set<string>>();
+
+  public constructor(private readonly persistence?: WorkflowRequestPersistence) {}
 
   public createRequest(request: ServiceRequest, teacherIds: readonly string[]): ServiceRequest {
     if (this.requests.has(request.requestId)) {
@@ -13,6 +16,7 @@ export class RequestStore {
     this.requests.set(request.requestId, request);
     this.recipientTeacherIds.set(request.requestId, new Set(teacherIds));
     this.rejectedTeacherIds.set(request.requestId, new Set());
+    this.persistence?.saveWorkflowRequest(request, teacherIds);
 
     return request;
   }
@@ -27,6 +31,7 @@ export class RequestStore {
     }
 
     this.requests.set(request.requestId, request);
+    this.persistence?.saveWorkflowRequest(request);
 
     return request;
   }
@@ -59,6 +64,7 @@ export class RequestStore {
     }
 
     rejectedTeachers.add(teacherId);
+    this.persistence?.recordWorkflowRejection(requestId, teacherId);
   }
 
   public hasTeacherRejected(requestId: RequestId, teacherId: string): boolean {

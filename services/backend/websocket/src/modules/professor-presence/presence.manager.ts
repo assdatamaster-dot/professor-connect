@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
+import type { ProfessorPersistence } from '../../persistence/persistence.types.js';
+
 export interface Professor {
   readonly id: string;
   readonly name: string;
@@ -22,6 +24,7 @@ export class PresenceManager {
   public constructor(
     private readonly clock: Clock = () => new Date(),
     private readonly idFactory: IdFactory = randomUUID,
+    private readonly persistence?: ProfessorPersistence,
   ) {}
 
   public registerProfessor(input: RegisterProfessorInput): Professor {
@@ -35,6 +38,7 @@ export class PresenceManager {
     };
 
     this.professorsBySocketId.set(input.socketId, professor);
+    this.persistence?.saveProfessor(professor);
     return professor;
   }
 
@@ -42,6 +46,9 @@ export class PresenceManager {
     const professor = this.professorsBySocketId.get(socketId);
 
     this.professorsBySocketId.delete(socketId);
+    if (professor !== undefined) {
+      this.persistence?.markOffline(socketId, this.clock());
+    }
     return professor;
   }
 
@@ -58,6 +65,7 @@ export class PresenceManager {
     };
 
     this.professorsBySocketId.set(socketId, updatedProfessor);
+    this.persistence?.updateHeartbeat(socketId, updatedProfessor.lastHeartbeat);
     return updatedProfessor;
   }
 
@@ -81,6 +89,7 @@ export class PresenceManager {
 
     for (const professor of expiredProfessors) {
       this.professorsBySocketId.delete(professor.socketId);
+      this.persistence?.markOffline(professor.socketId, this.clock());
     }
 
     return expiredProfessors;

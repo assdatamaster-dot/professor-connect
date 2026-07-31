@@ -75,3 +75,10 @@ export { SessionManager } from './modules/session/session.manager.js';
 export { SessionService } from './modules/session/session.service.js';
 export { SessionStore } from './modules/session/session.store.js';
 export { SESSION_EVENTS } from './modules/session/session.events.js';
+export type {
+  WorkflowCallPersistence,
+  WorkflowPersistence,
+  WorkflowPresencePersistence,
+  WorkflowRequestPersistence,
+  WorkflowSessionPersistence,
+} from './persistence/persistence.types.js';

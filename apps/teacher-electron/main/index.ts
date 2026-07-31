@@ -28,6 +28,7 @@ async function createMainWindow(): Promise<void> {
   const manager = createTeacherWorkflowManager();
 
   workflowController = new TeacherWorkflowController(manager);
+  presenceController = new ProfessorPresenceController(configPath);
   mainWindow = new BrowserWindow(createWindowOptions(preloadPath, iconPath));
   const window = mainWindow;
   ipcRegistration = registerTeacherIpc(workflowController, mainWindow.webContents);
@@ -59,8 +60,8 @@ async function createMainWindow(): Promise<void> {
   fileTransferIpcRegistration = registerFileTransferIpc(
     fileTransferStorage,
     mainWindow.webContents,
+    { onAudit: (entry) => presenceController?.reportFileTransfer(entry) },
   );
-  presenceController = new ProfessorPresenceController(configPath);
   presenceIpcRegistration = registerPresenceIpc(presenceController, mainWindow.webContents);
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));

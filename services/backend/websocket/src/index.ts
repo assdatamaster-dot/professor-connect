@@ -93,3 +93,16 @@ export {
   type WebRtcSessionDescription,
 } from './modules/webrtc-signaling/webrtc-signaling.gateway.js';
 export { RemoteControlGateway } from './modules/remote-control/remote-control.gateway.js';
+export {
+  FILE_TRANSFER_AUDIT_EVENT,
+  FileTransferAuditGateway,
+  type FileTransferAuditPayload,
+} from './modules/file-transfer/file-transfer.gateway.js';
+export type {
+  AttendanceSessionPersistence,
+  AuditPersistence,
+  FileTransferPersistence,
+  ProfessorPersistence,
+  SessionRequestPersistence,
+  StudentPersistence,
+} from './persistence/persistence.types.js';

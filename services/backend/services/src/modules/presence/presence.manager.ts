@@ -1,12 +1,16 @@
 import { ClientRole, PresenceStatus, type ClientPresence } from '@professor-connect/protocol';
 
 import type { PresenceClock, PresenceRegistration } from './presence.types.js';
+import type { WorkflowPresencePersistence } from '../../persistence/persistence.types.js';
 
 export class PresenceManager {
   private readonly clients = new Map<string, ClientPresence>();
   private readonly clientIdsByConnection = new Map<string, string>();
 
-  public constructor(private readonly clock: PresenceClock = () => new Date()) {}
+  public constructor(
+    private readonly clock: PresenceClock = () => new Date(),
+    private readonly persistence?: WorkflowPresencePersistence,
+  ) {}
 
   public registerClient(registration: PresenceRegistration): ClientPresence {
     const existingClient = this.clients.get(registration.clientId);
@@ -39,6 +43,7 @@ export class PresenceManager {
 
     this.clients.set(client.clientId, client);
     this.clientIdsByConnection.set(client.connectionId, client.clientId);
+    this.persistence?.savePresence(client);
 
     return client;
   }
@@ -52,6 +57,7 @@ export class PresenceManager {
     };
 
     this.clients.set(clientId, updatedClient);
+    this.persistence?.savePresence(updatedClient);
 
     return updatedClient;
   }
@@ -64,6 +70,7 @@ export class PresenceManager {
     };
 
     this.clients.set(clientId, updatedClient);
+    this.persistence?.savePresence(updatedClient);
 
     return updatedClient;
   }
@@ -109,6 +116,7 @@ export class PresenceManager {
 
     this.clients.set(clientId, recoveredClient);
     this.clientIdsByConnection.set(connectionId, clientId);
+    this.persistence?.savePresence(recoveredClient);
 
     return recoveredClient;
   }

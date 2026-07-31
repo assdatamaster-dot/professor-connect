@@ -1,7 +1,10 @@
 import { SessionStatus, type Session } from '@professor-connect/protocol';
+import type { WorkflowSessionPersistence } from '../../persistence/persistence.types.js';
 
 export class SessionStore {
   private readonly sessions = new Map<string, Session>();
+
+  public constructor(private readonly persistence?: WorkflowSessionPersistence) {}
 
   public createSession(session: Session): Session {
     if (this.sessions.has(session.id)) {
@@ -9,6 +12,7 @@ export class SessionStore {
     }
 
     this.sessions.set(session.id, session);
+    this.persistence?.saveWorkflowSession(session);
 
     return session;
   }
@@ -23,6 +27,7 @@ export class SessionStore {
     }
 
     this.sessions.set(session.id, session);
+    this.persistence?.saveWorkflowSession(session);
 
     return session;
   }
@@ -43,6 +48,7 @@ export class SessionStore {
   }
 
   public deleteSession(sessionId: string): boolean {
+    this.persistence?.removeWorkflowSession(sessionId);
     return this.sessions.delete(sessionId);
   }
 

@@ -57,8 +57,9 @@ test('entrega aceite, recusa e timeout em tempo real', async () => {
     idFactory: () => `request-${++requestSequence}`,
     timeoutMs: 500,
   });
+  let sessionSequence = 0;
   const activeSessions = new SessionManager(professors, students, {
-    idFactory: () => 'session-1',
+    idFactory: () => `session-${++sessionSequence}`,
   });
   const messages: string[] = [];
   const gateway = initializeWebSocket(
@@ -191,6 +192,19 @@ test('entrega aceite, recusa e timeout em tempo real', async () => {
     assert(messages.includes('Offer enviada'));
     assert(messages.includes('Answer enviada'));
     assert(messages.includes('ICE Candidate encaminhado'));
+
+    const requestedBeforeDisconnect = waitForRequested(teacher);
+    student.emit('request:session', { teacherId: 'teacher-id' });
+    const disconnectRequest = await requestedBeforeDisconnect;
+    const teacherStartedBeforeDisconnect = waitForStarted(teacher);
+    const studentStartedBeforeDisconnect = waitForStarted(student);
+    teacher.emit('session:accept', { requestId: disconnectRequest.requestId });
+    await Promise.all([teacherStartedBeforeDisconnect, studentStartedBeforeDisconnect]);
+    const teacherEndedAfterDisconnect = waitForEnded(teacher);
+    student.disconnect();
+    assert.equal((await teacherEndedAfterDisconnect).sessionId, 'session-2');
+    assert.deepEqual(activeSessions.listActiveSessions(), []);
+    assert.equal(activeSessions.listHistory().length, 2);
   } finally {
     teacher.disconnect();
     student.disconnect();

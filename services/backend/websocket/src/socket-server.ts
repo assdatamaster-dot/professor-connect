@@ -19,6 +19,7 @@ import {
   SessionService,
   SessionStore,
   type HeartbeatSettings,
+  type WorkflowPersistence,
 } from '@professor-connect/services';
 
 import { CommunicationGateway } from './modules/communication/communication.gateway.js';
@@ -41,6 +42,8 @@ import { SessionGateway } from './modules/active-session/session.gateway.js';
 import { SessionManager } from './modules/active-session/session.manager.js';
 import { WebRtcSignalingGateway } from './modules/webrtc-signaling/webrtc-signaling.gateway.js';
 import { RemoteControlGateway } from './modules/remote-control/remote-control.gateway.js';
+import { FileTransferAuditGateway } from './modules/file-transfer/file-transfer.gateway.js';
+import type { FileTransferPersistence } from './persistence/persistence.types.js';
 
 export function initializeWebSocket(
   httpServer: HttpServer,
@@ -59,6 +62,8 @@ export function initializeWebSocket(
   ),
   activeSessionManager = new SessionManager(professorPresenceManager, studentPresenceManager),
   remoteControlRequestTimeoutMilliseconds?: number,
+  workflowPersistence: WorkflowPersistence = {},
+  fileTransferPersistence?: FileTransferPersistence,
 ): CommunicationGateway {
   const socketServer = new SocketServer<ClientToServerEvents, ServerToClientEvents>(httpServer, {
     serveClient: false,
@@ -66,19 +71,24 @@ export function initializeWebSocket(
 
   const communicationService = new CommunicationService();
   const connectionService = new ConnectionService(new ConnectionManager());
-  const presenceService = new PresenceService(new WorkflowPresenceManager(), connectionService);
+  const presenceService = new PresenceService(
+    new WorkflowPresenceManager(undefined, workflowPersistence.presence),
+    connectionService,
+  );
   const requestService = new RequestService(
-    new RequestManager(new RequestStore(), { stateMachineLogger: logger }),
+    new RequestManager(new RequestStore(workflowPersistence.request), {
+      stateMachineLogger: logger,
+    }),
     presenceService,
     requestTimeoutMilliseconds,
   );
   const callService = new CallService(
-    new CallManager(new CallStore(), { stateMachineLogger: logger }),
+    new CallManager(new CallStore(workflowPersistence.call), { stateMachineLogger: logger }),
     requestService,
     logger,
   );
   const sessionService = new SessionService(
-    new WorkflowSessionManager(new SessionStore()),
+    new WorkflowSessionManager(new SessionStore(workflowPersistence.session)),
     connectionService,
   );
   const heartbeatService = new HeartbeatService(
@@ -133,8 +143,6 @@ export function initializeWebSocket(
   );
   studentPresenceGateway.registerEvents();
   const activeSessionGateway = new SessionGateway(socketServer, activeSessionManager, logger);
-  activeSessionGateway.registerEvents();
-  new WebRtcSignalingGateway(socketServer, activeSessionManager, logger).registerEvents();
   const remoteControlGateway = new RemoteControlGateway(
     socketServer,
     activeSessionManager,
@@ -144,6 +152,16 @@ export function initializeWebSocket(
       : { requestTimeoutMs: remoteControlRequestTimeoutMilliseconds },
   );
   remoteControlGateway.registerEvents();
+  activeSessionGateway.registerEvents();
+  new WebRtcSignalingGateway(socketServer, activeSessionManager, logger).registerEvents();
+  if (fileTransferPersistence !== undefined) {
+    new FileTransferAuditGateway(
+      socketServer,
+      activeSessionManager,
+      fileTransferPersistence,
+      logger,
+    ).registerEvents();
+  }
   const sessionRequestGateway = new SessionRequestGateway(
     socketServer,
     sessionRequestManager,

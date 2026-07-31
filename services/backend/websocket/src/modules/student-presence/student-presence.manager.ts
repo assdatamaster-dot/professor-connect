@@ -17,7 +17,10 @@ type Clock = () => Date;
 export class StudentPresenceManager {
   private readonly studentsBySocketId = new Map<string, OnlineStudent>();
 
-  public constructor(private readonly clock: Clock = () => new Date()) {}
+  public constructor(
+    private readonly clock: Clock = () => new Date(),
+    private readonly persistence?: StudentPersistence,
+  ) {}
 
   public registerStudent(input: RegisterStudentInput): OnlineStudent {
     const registeredAt = this.clock();
@@ -30,6 +33,7 @@ export class StudentPresenceManager {
     };
 
     this.studentsBySocketId.set(input.socketId, student);
+    this.persistence?.saveStudent(student);
     return student;
   }
 
@@ -37,6 +41,9 @@ export class StudentPresenceManager {
     const student = this.studentsBySocketId.get(socketId);
 
     this.studentsBySocketId.delete(socketId);
+    if (student !== undefined) {
+      this.persistence?.markOffline(socketId, this.clock());
+    }
     return student;
   }
 
@@ -53,6 +60,7 @@ export class StudentPresenceManager {
     };
 
     this.studentsBySocketId.set(socketId, updatedStudent);
+    this.persistence?.updateHeartbeat(socketId, updatedStudent.lastHeartbeat);
     return updatedStudent;
   }
 
@@ -76,8 +84,10 @@ export class StudentPresenceManager {
 
     for (const student of expiredStudents) {
       this.studentsBySocketId.delete(student.socketId);
+      this.persistence?.markOffline(student.socketId, this.clock());
     }
 
     return expiredStudents;
   }
 }
+import type { StudentPersistence } from '../../persistence/persistence.types.js';

@@ -43,6 +43,20 @@ test('recusa a solicitação e impede resposta de outro professor', () => {
   manager.close();
 });
 
+test('não aceita a solicitação depois que o aluno fica offline', () => {
+  const { manager, students } = createScenario(1_000);
+  manager.createRequest('student-socket', 'teacher-id');
+  students.removeStudent('student-socket');
+
+  assert.throws(
+    () => manager.acceptRequest('request-1', 'teacher-socket'),
+    /Aluno solicitante não está mais online/,
+  );
+  assert.equal(manager.listPendingRequests()[0]?.status, 'pending');
+  assert.equal(manager.listHistory()[0]?.status, 'pending');
+  manager.close();
+});
+
 test('expira em 30 segundos, remove dos pendentes e preserva no histórico', async () => {
   const { manager } = createScenario(30);
   const expired = new Promise<void>((resolve) => {
@@ -63,6 +77,7 @@ test('expira em 30 segundos, remove dos pendentes e preserva no histórico', asy
 function createScenario(timeoutMs: number): {
   readonly manager: SessionRequestManager;
   readonly professors: PresenceManager;
+  readonly students: StudentPresenceManager;
 } {
   let professorSequence = 0;
   const professors = new PresenceManager(
@@ -81,6 +96,7 @@ function createScenario(timeoutMs: number): {
 
   return {
     professors,
+    students,
     manager: new SessionRequestManager(professors, students, {
       clock: () => new Date('2026-07-22T12:00:00.000Z'),
       idFactory: () => `request-${++requestSequence}`,

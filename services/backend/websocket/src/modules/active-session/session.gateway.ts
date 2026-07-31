@@ -67,11 +67,21 @@ export class SessionGateway {
         const sessionId = requireSessionId(payload);
         const delivery = this.manager.endSession(sessionId, socket.id);
 
-        this.logger.info('Sessão encerrada', { sessionId });
-        this.emitToParticipants(SESSION_EVENTS.ENDED, delivery);
-        this.logger.info('Sessão removida', { sessionId });
+        this.finishSessionDelivery(delivery);
       });
     });
+    socket.on('disconnect', () => {
+      for (const delivery of this.manager.endSessionsForParticipant(socket.id)) {
+        this.finishSessionDelivery(delivery);
+      }
+    });
+  }
+
+  private finishSessionDelivery(delivery: SessionDelivery): void {
+    const { sessionId } = delivery.session;
+    this.logger.info('Sessão encerrada', { sessionId });
+    this.emitToParticipants(SESSION_EVENTS.ENDED, delivery);
+    this.logger.info('Sessão removida', { sessionId });
   }
 
   private emitToParticipants(

@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 
 import { environment } from '@professor-connect/config';
+import { DatabasePersistence } from '@professor-connect/database';
 import {
   initializeWebSocket,
   PresenceManager,
@@ -10,15 +11,36 @@ import {
 } from '@professor-connect/websocket';
 
 import { createApp } from './app.js';
-import { logger } from './utils/logger.js';
+import { createLogger } from './utils/logger.js';
 
-const professorPresenceManager = new PresenceManager();
-const studentPresenceManager = new StudentPresenceManager();
+const persistence = new DatabasePersistence(undefined, (error) => {
+  console.error('Falha na fila de persistência', error);
+});
+const logger = createLogger(persistence.audit);
+
+await persistence.recovery.recoverAfterRestart();
+const [requestHistory, sessionHistory] = await Promise.all([
+  persistence.sessionRequest.listHistory(),
+  persistence.attendanceSession.listHistory(),
+]);
+
+const professorPresenceManager = new PresenceManager(undefined, undefined, persistence.professor);
+const studentPresenceManager = new StudentPresenceManager(undefined, persistence.student);
 const sessionRequestManager = new SessionRequestManager(
   professorPresenceManager,
   studentPresenceManager,
+  {
+    timeoutMs: environment.requestTimeoutMs,
+    persistence: persistence.sessionRequest,
+    audit: persistence.audit,
+    initialHistory: requestHistory,
+  },
 );
-const activeSessionManager = new SessionManager(professorPresenceManager, studentPresenceManager);
+const activeSessionManager = new SessionManager(professorPresenceManager, studentPresenceManager, {
+  persistence: persistence.attendanceSession,
+  audit: persistence.audit,
+  initialHistory: sessionHistory,
+});
 const httpServer = createServer(
   createApp(
     professorPresenceManager,
@@ -40,6 +62,14 @@ const communicationGateway = initializeWebSocket(
   studentPresenceManager,
   sessionRequestManager,
   activeSessionManager,
+  undefined,
+  {
+    presence: persistence.workflowPresence,
+    request: persistence.workflowRequest,
+    call: persistence.workflowCall,
+    session: persistence.workflowSession,
+  },
+  persistence.fileTransfer,
 );
 
 httpServer.on('error', (error) => {
@@ -57,8 +87,16 @@ httpServer.listen(environment.port, environment.host, () => {
 function shutdown(signal: NodeJS.Signals): void {
   logger.info('Encerrando servidor', { signal });
 
-  communicationGateway.close(() => {
-    logger.info('Servidor encerrado');
+  communicationGateway.close(async () => {
+    try {
+      logger.info('Servidor encerrado');
+      await persistence.flush();
+    } catch (error) {
+      console.error('Falha ao finalizar persistência', error);
+      process.exitCode = 1;
+    } finally {
+      await persistence.disconnect();
+    }
   });
 }
 

@@ -21,6 +21,8 @@ export class SessionRequestManager {
   private readonly idFactory: () => string;
   private readonly timeoutMs: number;
   private readonly scheduler: (task: () => void, timeoutMs: number) => NodeJS.Timeout;
+  private readonly persistence: SessionRequestManagerOptions['persistence'];
+  private readonly audit: SessionRequestManagerOptions['audit'];
 
   public constructor(
     private readonly professorPresenceManager = new PresenceManager(),
@@ -31,9 +33,15 @@ export class SessionRequestManager {
     this.idFactory = options.idFactory ?? randomUUID;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.scheduler = options.scheduler ?? setTimeout;
+    this.persistence = options.persistence;
+    this.audit = options.audit;
 
     if (!Number.isInteger(this.timeoutMs) || this.timeoutMs <= 0) {
       throw new Error('Timeout da solicitação deve ser um inteiro positivo');
+    }
+
+    for (const request of options.initialHistory ?? []) {
+      this.historyById.set(request.requestId, request);
     }
   }
 
@@ -60,6 +68,15 @@ export class SessionRequestManager {
 
     this.pendingById.set(request.requestId, request);
     this.historyById.set(request.requestId, request);
+    this.persistence?.saveRequest(request);
+    this.audit?.record({
+      action: 'session-request.created',
+      actorType: 'student',
+      actorId: request.studentId,
+      entityType: 'session-request',
+      entityId: request.requestId,
+      metadata: { teacherId: request.teacherId },
+    });
     const timer = this.scheduler(() => this.expireRequest(request.requestId), this.timeoutMs);
     timer.unref?.();
     this.expirationTimers.set(request.requestId, timer);
@@ -107,10 +124,24 @@ export class SessionRequestManager {
     if (teacher?.id !== request.teacherId) {
       throw new Error('Somente o professor solicitado pode responder');
     }
+    if (
+      status === 'accepted' &&
+      this.studentPresenceManager.findStudentById(request.studentId) === undefined
+    ) {
+      throw new Error('Aluno solicitante não está mais online');
+    }
 
     const completedRequest = { ...request, status };
     this.clearPendingRequest(requestId);
     this.historyById.set(requestId, completedRequest);
+    this.persistence?.saveRequest(completedRequest);
+    this.audit?.record({
+      action: `session-request.${status}`,
+      actorType: 'professor',
+      actorId: request.teacherId,
+      entityType: 'session-request',
+      entityId: request.requestId,
+    });
     return this.createDelivery(completedRequest);
   }
 
@@ -123,6 +154,13 @@ export class SessionRequestManager {
     const expiredRequest: SessionRequest = { ...request, status: 'expired' };
     this.clearPendingRequest(requestId);
     this.historyById.set(requestId, expiredRequest);
+    this.persistence?.saveRequest(expiredRequest);
+    this.audit?.record({
+      action: 'session-request.expired',
+      entityType: 'session-request',
+      entityId: request.requestId,
+      severity: 'warning',
+    });
     const delivery = this.createDelivery(expiredRequest);
 
     for (const handler of this.expirationHandlers) {
