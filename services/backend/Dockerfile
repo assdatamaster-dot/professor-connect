@@ -57,6 +57,7 @@ ENV NODE_ENV=production \
     PORT=3000
 
 COPY --chown=node:node --from=production-dependencies /app/node_modules ./node_modules
+COPY --chown=node:node --from=build /app/package.json ./package.json
 COPY --chown=node:node --from=build /app/packages/protocol/package.json ./packages/protocol/package.json
 COPY --chown=node:node --from=build /app/packages/protocol/dist ./packages/protocol/dist
 COPY --chown=node:node --from=build /app/services/backend/api/package.json ./services/backend/api/package.json
@@ -80,4 +81,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 
 STOPSIGNAL SIGTERM
 
-CMD ["sh", "-c", "npx --no-install prisma migrate deploy --schema services/backend/database/prisma/schema.prisma && node services/backend/api/dist/server.js"]
+CMD ["sh", "-c", "npm run backend:prepare && exec node services/backend/api/dist/server.js"]

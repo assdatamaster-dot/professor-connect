@@ -20,6 +20,7 @@
     "prisma:generate": "prisma generate --schema prisma/schema.prisma",
     "prisma:migrate": "prisma migrate dev --schema prisma/schema.prisma",
     "prisma:seed": "tsx prisma/seed.ts",
+    "prisma:validate": "prisma validate --schema prisma/schema.prisma",
     "test": "tsx --test tests/*.spec.ts",
     "pretypecheck": "npm run prisma:generate",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tests/tsconfig.json --noEmit && tsc -p prisma/tsconfig.json --noEmit"

@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 
+import { assertMigrationsApplied } from './migration-readiness.js';
 import { PersistenceQueue, type PersistenceErrorHandler } from './persistence-queue.js';
 import { prismaClient } from './prisma-client.js';
 import {
@@ -50,6 +51,10 @@ export class DatabasePersistence {
 
   public flush(): Promise<void> {
     return this.queue.flush();
+  }
+
+  public assertMigrationsApplied(): Promise<void> {
+    return assertMigrationsApplied(this.prisma);
   }
 
   public disconnect(): Promise<void> {

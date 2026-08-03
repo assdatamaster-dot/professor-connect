@@ -27,6 +27,12 @@ O estágio final do Dockerfile é `production`, portanto não é necessário inf
 EasyPanel. Consulte o [App Service oficial](https://easypanel.io/docs/services/app) para as opções
 de fonte, Dockerfile, ambiente, domínio e proxy.
 
+O `CMD` executa `npm run backend:prepare`, que regenera o Prisma Client e aplica
+`prisma migrate deploy`. A API só é importada depois que os dois comandos terminam com sucesso.
+Não configure `node services/backend/api/dist/server.js` como comando personalizado, pois isso
+contornaria o fluxo de preparação. Se o serviço for criado com Nixpacks em vez do Dockerfile, o
+`nixpacks.toml` também usa `npm run start` e preserva a mesma sequência.
+
 ## 3. Configurar as variáveis
 
 Em **Environment**, adicione:
@@ -73,7 +79,9 @@ clientes deve ser o domínio HTTPS, nunca o IP/porta interna do contêiner.
 
 ## 5. Publicar e validar
 
-Clique em **Deploy** e acompanhe os logs de build. Quando o serviço estiver em execução, abra:
+Clique em **Deploy** e acompanhe os logs. Em um banco novo, antes de `Servidor iniciado`, devem
+aparecer a geração do Prisma Client e a aplicação das cinco migrations. Em deploys seguintes,
+`prisma migrate deploy` informa que não há migrations pendentes. Somente então abra:
 
 ```text
 https://api.professor-connect.example/health
@@ -107,6 +115,8 @@ manutenção.
 - DNS resolvendo para a VPS;
 - Dockerfile localizado a partir da raiz do repositório;
 - banco persistente e variáveis de autenticação configurados;
+- logs mostram `prisma generate` e `prisma migrate deploy` antes de `Servidor iniciado`;
+- nenhum comando de start personalizado contorna o `CMD` da imagem;
 - proxy apontando para a porta `3000`;
 - HTTPS válido;
 - exatamente uma réplica;

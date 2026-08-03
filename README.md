@@ -104,9 +104,9 @@ npm install
 cp .env.example .env
 ```
 
-No PowerShell, use `Copy-Item .env.example .env` no lugar de `cp`. Os valores padrão permitem
-iniciar o servidor sem alterar o arquivo. A variável `DATABASE_URL` fica reservada para o Prisma;
-o backend não tenta acessar um banco nesta sprint. `REQUEST_TIMEOUT_MS` controla a expiração das
+No PowerShell, use `Copy-Item .env.example .env` no lugar de `cp`. `DATABASE_URL` deve apontar para
+PostgreSQL; ao executar `npm run dev` ou `npm run start`, o Prisma Client é regenerado e as
+migrations pendentes são aplicadas antes da API. `REQUEST_TIMEOUT_MS` controla a expiração das
 solicitações. `HEARTBEAT_INTERVAL_MS`, `HEARTBEAT_TIMEOUT_MS` e `RECONNECT_WINDOW_MS` controlam,
 respectivamente, o ciclo de verificação, a expiração e a janela de recuperação. Os padrões são
 `30000`, `90000` e `90000` milissegundos.
@@ -115,6 +115,12 @@ Para gerar novamente o cliente Prisma após alterações futuras no schema:
 
 ```bash
 npm run prisma:generate
+```
+
+Para executar explicitamente a preparação usada no deploy:
+
+```bash
+npm run backend:prepare
 ```
 
 ## Desenvolvimento

@@ -68,6 +68,8 @@ services:
     read_only: true
     tmpfs:
       - /tmp:size=16m,mode=1777
+      # `backend:prepare` regenera o Prisma Client antes do start, mesmo com o rootfs read-only.
+      - /app/node_modules/.prisma:size=64m,mode=1777
     security_opt:
       - no-new-privileges:true
     stop_grace_period: 20s

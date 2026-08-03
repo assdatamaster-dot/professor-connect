@@ -3,7 +3,7 @@ cmds = ["npm ci --include=dev"]
 
 [phases.build]
 dependsOn = ["install"]
-cmds = ["npx turbo run build"]
+cmds = ["npm run prisma:generate", "npm run build-backend"]
 
 [start]
 cmd = "npm run start"

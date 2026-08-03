@@ -20,6 +20,7 @@ const persistence = new DatabasePersistence(undefined, (error) => {
 const logger = createLogger(persistence.audit);
 const authService = new AuthService();
 
+await persistence.assertMigrationsApplied();
 await persistence.recovery.recoverAfterRestart();
 const [requestHistory, sessionHistory] = await Promise.all([
   persistence.sessionRequest.listHistory(),

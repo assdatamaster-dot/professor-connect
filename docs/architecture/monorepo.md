@@ -171,13 +171,15 @@ de diretório. Builds dependem dos builds dos workspaces importados.
 
 | Comando                   | Finalidade                                      |
 | ------------------------- | ----------------------------------------------- |
-| `npm run dev`             | iniciar API e Socket.IO em desenvolvimento      |
-| `npm run start`           | iniciar o backend compilado                     |
+| `npm run dev`             | preparar banco e iniciar API em desenvolvimento |
+| `npm run start`           | preparar banco e iniciar o backend compilado    |
+| `npm run backend:prepare` | gerar Prisma Client e aplicar migrations        |
 | `npm run desktop:student` | compilar e abrir o Electron do aluno            |
 | `npm run build`           | compilar todos os workspaces                    |
 | `npm run test`            | executar todos os testes                        |
 | `npm run check`           | executar lint, tipos, testes e formatação       |
 | `npm run prisma:generate` | gerar o cliente Prisma no workspace de database |
+| `npm run prisma:deploy`   | aplicar migrations pendentes no PostgreSQL      |
 
 ## Docker
 

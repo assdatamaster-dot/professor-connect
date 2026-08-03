@@ -45,9 +45,13 @@ Os contratos Socket.IO existentes são síncronos. Para não mudar a experiênci
 ```mermaid
 sequenceDiagram
   participant API
+  participant PrismaCLI
   participant RecoveryRepository
   participant PostgreSQL
   participant Managers
+  API->>PrismaCLI: prisma generate
+  API->>PrismaCLI: prisma migrate deploy
+  API->>PostgreSQL: valida migrations aplicadas
   API->>RecoveryRepository: recoverAfterRestart()
   RecoveryRepository->>PostgreSQL: transação de reconciliação
   API->>PostgreSQL: carrega históricos
@@ -60,7 +64,8 @@ Conexões de socket não são restauradas, pois deixaram de existir. Elas são m
 ## Operação
 
 - Desenvolvimento: `docker compose up --build`.
-- Aplicar migrations: `npm run prisma:deploy --workspace=@professor-connect/database`.
+- Preparar banco e client: `npm run backend:prepare`.
+- Aplicar somente migrations: `npm run prisma:deploy`.
 - Gerar client: `npm run prisma:generate`.
 - Seed: `npm run prisma:seed --workspace=@professor-connect/database`.
 - Produção: defina `POSTGRES_PASSWORD` e, quando externo ao Compose, `DATABASE_URL`.
