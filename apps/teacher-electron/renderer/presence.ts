@@ -17,7 +17,9 @@ const WEBRTC_RECOVERY_DELAY_MS = 3_000;
 const loginView = requireElement<HTMLElement>('login-view');
 const onlineView = requireElement<HTMLElement>('online-view');
 const loginForm = requireElement<HTMLFormElement>('login-form');
-const nameInput = requireElement<HTMLInputElement>('professor-name');
+const emailInput = requireElement<HTMLInputElement>('login-email');
+const passwordInput = requireElement<HTMLInputElement>('login-password');
+const organizationInput = requireElement<HTMLInputElement>('login-organization');
 const loginButton = requireElement<HTMLButtonElement>('login-button');
 const loginError = requireElement<HTMLElement>('login-error');
 const professorDisplayName = requireElement<HTMLElement>('professor-display-name');
@@ -125,7 +127,7 @@ function render(snapshot: ProfessorPresenceSnapshot): void {
   if (!isActive) {
     remoteControlClient.stop();
     fileTransferClient.endSession();
-    nameInput.focus();
+    emailInput.focus();
     return;
   }
 
@@ -257,20 +259,35 @@ loginForm.addEventListener('submit', (event) => {
   loginError.hidden = true;
   loginButton.disabled = true;
 
-  void window.professorConnectPresence.connect(nameInput.value).catch((error: unknown) => {
-    loginButton.disabled = false;
-    loginError.textContent = error instanceof Error ? error.message : 'Não foi possível conectar.';
-    loginError.hidden = false;
-  });
+  void window.professorConnectAuth
+    .login({
+      email: emailInput.value,
+      password: passwordInput.value,
+      ...(organizationInput.value.trim().length === 0
+        ? {}
+        : { organizationSlug: organizationInput.value.trim() }),
+    })
+    .then(() => {
+      passwordInput.value = '';
+    })
+    .catch((error: unknown) => {
+      loginButton.disabled = false;
+      loginError.textContent =
+        error instanceof Error ? error.message : 'Não foi possível conectar.';
+      loginError.hidden = false;
+    });
 });
 
 logoutButton.addEventListener('click', () => {
   logoutButton.disabled = true;
-  void window.professorConnectPresence.disconnect().then((snapshot) => {
-    logoutButton.disabled = false;
-    nameInput.value = '';
-    render(snapshot);
-  });
+  void window.professorConnectAuth
+    .logout()
+    .then(() => window.professorConnectPresence.getState())
+    .then((snapshot) => {
+      logoutButton.disabled = false;
+      passwordInput.value = '';
+      render(snapshot);
+    });
 });
 
 acceptSessionButton.addEventListener('click', () => {

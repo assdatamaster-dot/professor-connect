@@ -88,19 +88,21 @@ model Organization {
 }
 
 model User {
-  id             String        @id @default(uuid()) @db.Uuid
-  organizationId String?       @map("organization_id") @db.Uuid
-  email          String        @unique
-  displayName    String        @map("display_name")
-  passwordHash   String?       @map("password_hash")
-  status         UserStatus    @default(INVITED)
-  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
-  roles          UserRole[]
-  tokens         AuthToken[]
-  professor      Professor?
-  student        Student?
+  id                 String             @id @default(uuid()) @db.Uuid
+  organizationId     String             @map("organization_id") @db.Uuid
+  email              String             @unique
+  displayName        String             @map("display_name")
+  passwordHash       String?            @map("password_hash")
+  passwordChangedAt  DateTime?          @map("password_changed_at") @db.Timestamptz(3)
+  status             UserStatus         @default(INVITED)
+  createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  roles              UserRole[]
+  tokens             AuthToken[]
+  professor          Professor?
+  student            Student?
+  externalIdentities ExternalIdentity[]
 
   @@index([organizationId])
   @@map("users")
@@ -147,16 +149,34 @@ model RolePermission {
 }
 
 model AuthToken {
-  id        String    @id @default(uuid()) @db.Uuid
-  userId    String    @map("user_id") @db.Uuid
-  tokenHash String    @unique @map("token_hash")
-  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
-  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
-  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  tokenHash  String    @unique @map("token_hash")
+  familyId   String    @map("family_id") @db.Uuid
+  userAgent  String?   @map("user_agent")
+  ipAddress  String?   @map("ip_address")
+  lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz(3)
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, expiresAt])
+  @@index([familyId])
   @@map("auth_tokens")
+}
+
+model ExternalIdentity {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  provider       String
+  providerUserId String   @map("provider_user_id")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
+  @@map("external_identities")
 }
 
 model Professor {

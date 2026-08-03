@@ -10,6 +10,7 @@ import {
 } from '@professor-connect/websocket';
 
 import { createApp } from '../src/app.js';
+import { AUTHORIZATION_HEADERS, TestAuthService } from './auth-fixture.js';
 
 test('expõe solicitações pendentes e o histórico completo', async () => {
   const professors = new PresenceManager(
@@ -29,7 +30,9 @@ test('expõe solicitações pendentes e o histórico completo', async () => {
   students.registerStudent({ id: 'student-id', name: 'Ana', socketId: 'student-socket' });
   manager.createRequest('student-socket', 'teacher-id');
 
-  const server = createServer(createApp(professors, students, manager, activeSessions));
+  const server = createServer(
+    createApp(professors, students, manager, activeSessions, new TestAuthService()),
+  );
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
 
   try {
@@ -37,19 +40,21 @@ test('expõe solicitações pendentes e o histórico completo', async () => {
     assert(address !== null && typeof address === 'object');
     const baseUrl = `http://127.0.0.1:${address.port}`;
 
-    const pending = (await (await fetch(`${baseUrl}/api/sessions/pending`)).json()) as unknown[];
+    const authenticatedFetch = (path: string) =>
+      fetch(`${baseUrl}${path}`, { headers: AUTHORIZATION_HEADERS });
+    const pending = (await (await authenticatedFetch('/api/sessions/pending')).json()) as unknown[];
     assert.equal(pending.length, 1);
     assert.equal((pending[0] as { status: string }).status, 'pending');
 
     const acceptedRequest = manager.acceptRequest('request-id', 'teacher-socket');
     activeSessions.createSession(acceptedRequest.request);
 
-    assert.deepEqual(await (await fetch(`${baseUrl}/api/sessions/pending`)).json(), []);
-    const history = (await (await fetch(`${baseUrl}/api/sessions/history`)).json()) as unknown[];
+    assert.deepEqual(await (await authenticatedFetch('/api/sessions/pending')).json(), []);
+    const history = (await (await authenticatedFetch('/api/sessions/history')).json()) as unknown[];
     assert.equal(history.length, 1);
     assert.equal((history[0] as { status: string }).status, 'accepted');
 
-    assert.deepEqual(await (await fetch(`${baseUrl}/api/sessions/active`)).json(), [
+    assert.deepEqual(await (await authenticatedFetch('/api/sessions/active')).json(), [
       {
         sessionId: 'session-id',
         teacherName: 'Carlos',
@@ -58,7 +63,7 @@ test('expõe solicitações pendentes e o histórico completo', async () => {
         status: 'active',
       },
     ]);
-    const details = (await (await fetch(`${baseUrl}/api/sessions/session-id`)).json()) as Record<
+    const details = (await (await authenticatedFetch('/api/sessions/session-id')).json()) as Record<
       string,
       unknown
     >;
@@ -67,9 +72,9 @@ test('expõe solicitações pendentes e o histórico completo', async () => {
     assert.equal(details.studentId, 'student-id');
 
     activeSessions.endSession('session-id', 'student-socket');
-    assert.deepEqual(await (await fetch(`${baseUrl}/api/sessions/active`)).json(), []);
+    assert.deepEqual(await (await authenticatedFetch('/api/sessions/active')).json(), []);
     const finishedDetails = (await (
-      await fetch(`${baseUrl}/api/sessions/session-id`)
+      await authenticatedFetch('/api/sessions/session-id')
     ).json()) as Record<string, unknown>;
     assert.equal(finishedDetails.status, 'finished');
   } finally {

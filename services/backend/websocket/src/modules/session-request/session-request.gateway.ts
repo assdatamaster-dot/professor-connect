@@ -1,6 +1,7 @@
 import type { Server, Socket } from 'socket.io';
 
 import type { CommunicationLogger } from '../communication/communication.types.js';
+import type { SocketIdentity } from '../../auth/socket-auth.types.js';
 import type { SessionGateway } from '../active-session/session.gateway.js';
 import type { SessionRequestManager } from './session-request.manager.js';
 
@@ -88,6 +89,7 @@ export class SessionRequestGateway {
   private registerSocketEvents(socket: SessionRequestSocket): void {
     socket.on(SESSION_REQUEST_EVENTS.REQUEST, (payload) => {
       this.handleSafely('Nova solicitação inválida', () => {
+        requireRole(socket, 'STUDENT', 'session.request');
         const teacherId = requireText(payload, 'teacherId');
         const delivery = this.manager.createRequest(socket.id, teacherId);
         const { request, teacherSocketId } = delivery;
@@ -114,6 +116,7 @@ export class SessionRequestGateway {
 
     socket.on(SESSION_REQUEST_EVENTS.ACCEPT, (payload) => {
       this.handleSafely('Não foi possível aceitar a solicitação', () => {
+        requireRole(socket, 'TEACHER', 'session.respond');
         const delivery = this.manager.acceptRequest(requireText(payload, 'requestId'), socket.id);
         this.emitStudentResponse(SESSION_REQUEST_EVENTS.ACCEPTED, delivery);
         this.logger.info('Solicitação aceita', { requestId: delivery.request.requestId });
@@ -123,6 +126,7 @@ export class SessionRequestGateway {
 
     socket.on(SESSION_REQUEST_EVENTS.REJECT, (payload) => {
       this.handleSafely('Não foi possível recusar a solicitação', () => {
+        requireRole(socket, 'TEACHER', 'session.respond');
         const delivery = this.manager.rejectRequest(requireText(payload, 'requestId'), socket.id);
         this.emitStudentResponse(SESSION_REQUEST_EVENTS.REJECTED, delivery);
         this.logger.info('Solicitação recusada', { requestId: delivery.request.requestId });
@@ -151,6 +155,22 @@ export class SessionRequestGateway {
       this.logger.error(message, error);
     }
   }
+}
+
+function requireRole(
+  socket: SessionRequestSocket,
+  role: 'TEACHER' | 'STUDENT',
+  permission: string,
+): SocketIdentity {
+  const identity = (socket.data as { identity?: SocketIdentity }).identity;
+  if (
+    identity === undefined ||
+    !identity.roles.includes(role) ||
+    !identity.permissions.includes(permission)
+  ) {
+    throw new Error('Operação não autorizada');
+  }
+  return identity;
 }
 
 function requireText(payload: unknown, property: 'requestId' | 'teacherId'): string {

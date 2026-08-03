@@ -63,6 +63,14 @@ const dockControlButton = requireElement<HTMLButtonElement>('student-dock-contro
 const dockFilesButton = requireElement<HTMLButtonElement>('student-dock-files');
 const closeFilesButton = requireElement<HTMLButtonElement>('student-close-files');
 const retryCameraButton = requireElement<HTMLButtonElement>('student-retry-camera');
+const authenticationDialog = requireElement<HTMLDialogElement>('authentication-dialog');
+const authenticationForm = requireElement<HTMLFormElement>('authentication-form');
+const authenticationEmail = requireElement<HTMLInputElement>('authentication-email');
+const authenticationPassword = requireElement<HTMLInputElement>('authentication-password');
+const authenticationOrganization = requireElement<HTMLInputElement>('authentication-organization');
+const authenticationError = requireElement<HTMLElement>('authentication-error');
+const authenticationSubmit = requireElement<HTMLButtonElement>('authentication-submit');
+const studentLogout = requireElement<HTMLButtonElement>('student-logout');
 const mediaDeviceManager = new MediaDeviceManager();
 let peerConnection: RTCPeerConnection | undefined;
 let cameraSender: RTCRtpSender | undefined;
@@ -439,32 +447,81 @@ window.addEventListener(
   },
   { once: true },
 );
-void window.professorConnectSession
-  .getOnlineTeachers()
-  .then((teachers) => {
-    const options = teachers.map((teacher) => {
+async function loadOnlineTeachers(): Promise<void> {
+  await window.professorConnectSession
+    .getOnlineTeachers()
+    .then((teachers) => {
+      const options = teachers.map((teacher) => {
+        const option = document.createElement('option');
+
+        option.value = teacher.id;
+        option.textContent = teacher.name;
+        return option;
+      });
+      const placeholder = document.createElement('option');
+
+      placeholder.value = '';
+      placeholder.textContent =
+        teachers.length > 0 ? 'Selecione um professor' : 'Nenhum professor online';
+      teacherSelect.replaceChildren(placeholder, ...options);
+      callButton.disabled = true;
+    })
+    .catch(() => {
       const option = document.createElement('option');
 
-      option.value = teacher.id;
-      option.textContent = teacher.name;
-      return option;
+      option.value = '';
+      option.textContent = 'Não foi possível carregar professores';
+      teacherSelect.replaceChildren(option);
+      callButton.disabled = true;
     });
-    const placeholder = document.createElement('option');
+}
 
-    placeholder.value = '';
-    placeholder.textContent =
-      teachers.length > 0 ? 'Selecione um professor' : 'Nenhum professor online';
-    teacherSelect.replaceChildren(placeholder, ...options);
-    callButton.disabled = true;
-  })
-  .catch(() => {
-    const option = document.createElement('option');
+authenticationForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  authenticationSubmit.disabled = true;
+  authenticationError.hidden = true;
+  void window.professorConnectAuth
+    .login({
+      email: authenticationEmail.value,
+      password: authenticationPassword.value,
+      ...(authenticationOrganization.value.trim().length === 0
+        ? {}
+        : { organizationSlug: authenticationOrganization.value.trim() }),
+    })
+    .then(async () => {
+      authenticationPassword.value = '';
+      authenticationDialog.close();
+      studentLogout.hidden = false;
+      await loadOnlineTeachers();
+    })
+    .catch((error: unknown) => {
+      authenticationError.textContent =
+        error instanceof Error ? error.message : 'Não foi possível entrar.';
+      authenticationError.hidden = false;
+    })
+    .finally(() => {
+      authenticationSubmit.disabled = false;
+    });
+});
 
-    option.value = '';
-    option.textContent = 'Não foi possível carregar professores';
-    teacherSelect.replaceChildren(option);
-    callButton.disabled = true;
+studentLogout.addEventListener('click', () => {
+  studentLogout.disabled = true;
+  void window.professorConnectAuth.logout().finally(() => {
+    studentLogout.disabled = false;
+    studentLogout.hidden = true;
+    authenticationDialog.showModal();
   });
+});
+
+void window.professorConnectAuth.getIdentity().then((identity) => {
+  if (identity === undefined) {
+    authenticationDialog.showModal();
+    authenticationEmail.focus();
+  } else {
+    studentLogout.hidden = false;
+    void loadOnlineTeachers();
+  }
+});
 void window.professorConnectSession.getState().then((snapshot) => {
   activeTeacherName = snapshot.activeTeacherName;
   if (snapshot.activeSessionId !== undefined) {

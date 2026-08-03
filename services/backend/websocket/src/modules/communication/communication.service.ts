@@ -61,15 +61,17 @@ export class CommunicationService {
     server: CommunicationServer,
     event: EventType.CONNECTION_LOST | EventType.CONNECTION_TIMEOUT,
     payload: ConnectionLifecyclePayload,
+    room?: string,
   ): void {
     const message = this.createMessage(event, payload);
+    const target = room === undefined ? server : server.to(room);
 
     if (event === EventType.CONNECTION_LOST) {
-      server.emit(EventType.CONNECTION_LOST, message);
+      target.emit(EventType.CONNECTION_LOST, message);
       return;
     }
 
-    server.emit(EventType.CONNECTION_TIMEOUT, message);
+    target.emit(EventType.CONNECTION_TIMEOUT, message);
   }
 
   public sendConnectionRecovered(
@@ -151,8 +153,9 @@ export class CommunicationService {
   public broadcastOnlineClients(
     server: CommunicationServer,
     clients: readonly ClientPresence[],
+    room?: string,
   ): void {
-    server.emit(
+    (room === undefined ? server : server.to(room)).emit(
       EventType.PRESENCE_ONLINE,
       this.createPresenceListMessage(EventType.PRESENCE_ONLINE, clients),
     );
@@ -161,22 +164,31 @@ export class CommunicationService {
   public broadcastAvailableTeachers(
     server: CommunicationServer,
     clients: readonly ClientPresence[],
+    room?: string,
   ): void {
-    server.emit(
+    (room === undefined ? server : server.to(room)).emit(
       EventType.PRESENCE_AVAILABLE,
       this.createPresenceListMessage(EventType.PRESENCE_AVAILABLE, clients),
     );
   }
 
-  public broadcastBusyClient(server: CommunicationServer, client: ClientPresence): void {
-    server.emit(
+  public broadcastBusyClient(
+    server: CommunicationServer,
+    client: ClientPresence,
+    room?: string,
+  ): void {
+    (room === undefined ? server : server.to(room)).emit(
       EventType.PRESENCE_BUSY,
       this.createPresenceListMessage(EventType.PRESENCE_BUSY, [client]),
     );
   }
 
-  public broadcastOfflineClient(server: CommunicationServer, client: ClientPresence): void {
-    server.emit(
+  public broadcastOfflineClient(
+    server: CommunicationServer,
+    client: ClientPresence,
+    room?: string,
+  ): void {
+    (room === undefined ? server : server.to(room)).emit(
       EventType.PRESENCE_OFFLINE,
       this.createPresenceListMessage(EventType.PRESENCE_OFFLINE, [client]),
     );

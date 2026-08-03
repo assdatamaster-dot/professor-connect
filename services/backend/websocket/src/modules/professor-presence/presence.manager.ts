@@ -8,11 +8,14 @@ export interface Professor {
   readonly socketId: string;
   readonly onlineSince: Date;
   readonly lastHeartbeat: Date;
+  readonly organizationId?: string;
 }
 
 export interface RegisterProfessorInput {
+  readonly id?: string;
   readonly name: string;
   readonly socketId: string;
+  readonly organizationId?: string;
 }
 
 type Clock = () => Date;
@@ -30,11 +33,12 @@ export class PresenceManager {
   public registerProfessor(input: RegisterProfessorInput): Professor {
     const registeredAt = this.clock();
     const professor: Professor = {
-      id: this.idFactory(),
+      id: input.id ?? this.idFactory(),
       name: input.name,
       socketId: input.socketId,
       onlineSince: registeredAt,
       lastHeartbeat: registeredAt,
+      ...(input.organizationId === undefined ? {} : { organizationId: input.organizationId }),
     };
 
     this.professorsBySocketId.set(input.socketId, professor);

@@ -47,7 +47,7 @@ export class RequestService {
 
   public createRequest(connectionId: string): RequestDelivery {
     const student = this.requireClientWithRole(connectionId, ClientRole.STUDENT);
-    const availableTeachers = this.presenceService.listAvailableTeachers();
+    const availableTeachers = this.presenceService.listAvailableTeachers(student.organizationId);
     const request = this.requestManager.createRequest(
       student.clientId,
       availableTeachers.map((teacher) => teacher.clientId),

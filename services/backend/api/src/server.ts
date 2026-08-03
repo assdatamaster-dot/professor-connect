@@ -11,12 +11,14 @@ import {
 } from '@professor-connect/websocket';
 
 import { createApp } from './app.js';
+import { AuthService } from './auth/auth.service.js';
 import { createLogger } from './utils/logger.js';
 
 const persistence = new DatabasePersistence(undefined, (error) => {
   console.error('Falha na fila de persistência', error);
 });
 const logger = createLogger(persistence.audit);
+const authService = new AuthService();
 
 await persistence.recovery.recoverAfterRestart();
 const [requestHistory, sessionHistory] = await Promise.all([
@@ -47,6 +49,7 @@ const httpServer = createServer(
     studentPresenceManager,
     sessionRequestManager,
     activeSessionManager,
+    authService,
   ),
 );
 const communicationGateway = initializeWebSocket(
@@ -70,6 +73,7 @@ const communicationGateway = initializeWebSocket(
     session: persistence.workflowSession,
   },
   persistence.fileTransfer,
+  { authenticate: (accessToken) => authService.verifyAccessToken(accessToken) },
 );
 
 httpServer.on('error', (error) => {

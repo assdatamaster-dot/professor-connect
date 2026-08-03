@@ -26,7 +26,41 @@ export interface Environment {
   readonly heartbeatIntervalMs: number;
   readonly heartbeatTimeoutMs: number;
   readonly reconnectWindowMs: number;
+  readonly corsOrigins: readonly string[];
+  readonly jwtAccessSecret: string;
+  readonly jwtRefreshSecret: string;
+  readonly jwtIssuer: string;
+  readonly jwtAudience: string;
+  readonly accessTokenTtlSeconds: number;
+  readonly refreshTokenTtlSeconds: number;
+  readonly bcryptRounds: number;
+  readonly trustProxy: boolean;
 }
+
+const DEVELOPMENT_ACCESS_SECRET = 'development-access-secret-change-before-production';
+const DEVELOPMENT_REFRESH_SECRET = 'development-refresh-secret-change-before-production';
+
+function requireSecret(value: string | undefined, name: string, nodeEnv: NodeEnvironment): string {
+  const secret =
+    value ??
+    (name === 'JWT_ACCESS_SECRET' ? DEVELOPMENT_ACCESS_SECRET : DEVELOPMENT_REFRESH_SECRET);
+  if (nodeEnv === 'production' && value === undefined) {
+    throw new Error(`${name} é obrigatório em produção`);
+  }
+  if (secret.length < 32) {
+    throw new Error(`${name} deve possuir ao menos 32 caracteres`);
+  }
+  return secret;
+}
+
+function parseBoolean(value: string | undefined, fallback: boolean): boolean {
+  if (value === undefined) return fallback;
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  throw new Error('Valor booleano inválido');
+}
+
+const nodeEnv = parseNodeEnvironment(process.env.NODE_ENV);
 
 function isNodeEnvironment(value: string): value is NodeEnvironment {
   return VALID_NODE_ENVIRONMENTS.some((candidate) => candidate === value);
@@ -96,7 +130,7 @@ if (reconnectWindowMs > heartbeatTimeoutMs) {
 
 export const environment: Environment = Object.freeze({
   host: process.env.HOST ?? DEFAULT_HOST,
-  nodeEnv: parseNodeEnvironment(process.env.NODE_ENV),
+  nodeEnv,
   port: parsePort(process.env.PORT),
   requestTimeoutMs: parsePositiveInteger(
     process.env.REQUEST_TIMEOUT_MS,
@@ -106,4 +140,26 @@ export const environment: Environment = Object.freeze({
   heartbeatIntervalMs,
   heartbeatTimeoutMs,
   reconnectWindowMs,
+  corsOrigins: Object.freeze(
+    (process.env.CORS_ORIGINS ?? '')
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter((origin) => origin.length > 0),
+  ),
+  jwtAccessSecret: requireSecret(process.env.JWT_ACCESS_SECRET, 'JWT_ACCESS_SECRET', nodeEnv),
+  jwtRefreshSecret: requireSecret(process.env.JWT_REFRESH_SECRET, 'JWT_REFRESH_SECRET', nodeEnv),
+  jwtIssuer: process.env.JWT_ISSUER ?? 'professor-connect',
+  jwtAudience: process.env.JWT_AUDIENCE ?? 'professor-connect-clients',
+  accessTokenTtlSeconds: parsePositiveInteger(
+    process.env.ACCESS_TOKEN_TTL_SECONDS,
+    900,
+    'ACCESS_TOKEN_TTL_SECONDS',
+  ),
+  refreshTokenTtlSeconds: parsePositiveInteger(
+    process.env.REFRESH_TOKEN_TTL_SECONDS,
+    2_592_000,
+    'REFRESH_TOKEN_TTL_SECONDS',
+  ),
+  bcryptRounds: parsePositiveInteger(process.env.BCRYPT_ROUNDS, 12, 'BCRYPT_ROUNDS'),
+  trustProxy: parseBoolean(process.env.TRUST_PROXY, false),
 });

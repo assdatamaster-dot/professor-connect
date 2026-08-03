@@ -44,7 +44,10 @@ import type {
 } from '../src/modules/communication/communication.types.js';
 import { SignalingManager } from '../src/modules/signaling/signaling.manager.js';
 import { SignalingError } from '../src/modules/signaling/signaling.types.js';
-import { initializeWebSocket } from '../src/socket-server.js';
+import {
+  authenticatedSocketOptions,
+  initializeTestWebSocket,
+} from './authenticated-socket-fixture.js';
 
 const STUDENT_ID = 'student-signaling';
 const TEACHER_ID = 'teacher-signaling';
@@ -65,15 +68,21 @@ test('encaminha Offer, Answer e ICE Candidates entre dois clientes', async () =>
     },
   };
   const httpServer = createServer();
-  const gateway = initializeWebSocket(httpServer, logger);
+  const gateway = initializeTestWebSocket(httpServer, logger);
 
   await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve));
   const address = httpServer.address();
   assert(address !== null && typeof address === 'object');
 
   const serverUrl = `http://127.0.0.1:${address.port}`;
-  const clientA: TestClient = io(serverUrl, { transports: ['websocket'], reconnection: false });
-  const clientB: TestClient = io(serverUrl, { transports: ['websocket'], reconnection: false });
+  const clientA: TestClient = io(serverUrl, {
+    ...authenticatedSocketOptions('STUDENT', STUDENT_ID),
+    reconnection: false,
+  });
+  const clientB: TestClient = io(serverUrl, {
+    ...authenticatedSocketOptions('TEACHER', TEACHER_ID),
+    reconnection: false,
+  });
 
   try {
     await Promise.all([waitForConnection(clientA), waitForConnection(clientB)]);

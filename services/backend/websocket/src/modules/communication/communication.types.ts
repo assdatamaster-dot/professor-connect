@@ -28,6 +28,7 @@ import type {
   SignalingClientToServerEvents,
   SignalingServerToClientEvents,
 } from '../signaling/signaling.types.js';
+import type { AuthenticatedSocketData } from '../../auth/socket-auth.types.js';
 
 export interface CommunicationPingPayload {
   readonly type: 'ping';
@@ -41,6 +42,11 @@ export type PingMessage = SocketMessage<CommunicationPingPayload>;
 export type PongResponse = SocketMessage<CommunicationPongPayload>;
 
 export type ClientToServerEvents = SignalingClientToServerEvents & {
+  'auth:refresh': (
+    payload: { readonly token: string },
+    acknowledge?: (result: { readonly ok: boolean }) => void,
+  ) => void;
+} & {
   [EventType.COMMUNICATION_PING]: (message: PingMessage) => void;
 } & {
   [EventType.HEARTBEAT_PONG]: (message: SocketMessage<HeartbeatPongPayload>) => void;
@@ -126,7 +132,7 @@ export interface CommunicationLogger {
 }
 
 type InterServerEvents = Record<never, never>;
-type CommunicationSocketData = Record<never, never>;
+type CommunicationSocketData = AuthenticatedSocketData;
 
 export type CommunicationServer = Server<
   ClientToServerEvents,

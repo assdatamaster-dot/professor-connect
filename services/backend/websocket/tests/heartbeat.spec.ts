@@ -17,7 +17,10 @@ import {
   type SocketMessage,
 } from '@professor-connect/protocol';
 
-import { initializeWebSocket } from '../src/socket-server.js';
+import {
+  authenticatedSocketOptions,
+  initializeTestWebSocket,
+} from './authenticated-socket-fixture.js';
 import type {
   ClientToServerEvents,
   CommunicationLogger,
@@ -37,18 +40,23 @@ test('recupera o cliente e a Session pelo protocolo oficial antes do timeout', a
     },
   };
   const httpServer = createServer();
-  const gateway = initializeWebSocket(httpServer, logger, 60_000, {
-    intervalMs: 50,
-    timeoutMs: 1_000,
-    reconnectWindowMs: 800,
+  const gateway = initializeTestWebSocket(httpServer, logger, {
+    requestTimeout: 60_000,
+    heartbeat: { intervalMs: 50, timeoutMs: 1_000, reconnectWindowMs: 800 },
   });
 
   await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve));
   const address = httpServer.address();
   assert(address !== null && typeof address === 'object');
   const url = `http://127.0.0.1:${address.port}`;
-  const observer: TestClient = io(url, { transports: ['websocket'], reconnection: false });
-  const firstClient: TestClient = io(url, { transports: ['websocket'], reconnection: false });
+  const observer: TestClient = io(url, {
+    ...authenticatedSocketOptions('STUDENT', 'observer'),
+    reconnection: false,
+  });
+  const firstClient: TestClient = io(url, {
+    ...authenticatedSocketOptions('STUDENT', CLIENT_ID),
+    reconnection: false,
+  });
   let recoveredClient: TestClient | undefined;
 
   try {
@@ -77,7 +85,10 @@ test('recupera o cliente e a Session pelo protocolo oficial antes do timeout', a
     assert.equal(lostPayload.clientId, CLIENT_ID);
     assert.equal(lostPayload.connectionId, previousConnectionId);
 
-    recoveredClient = io(url, { transports: ['websocket'], reconnection: false });
+    recoveredClient = io(url, {
+      ...authenticatedSocketOptions('STUDENT', CLIENT_ID),
+      reconnection: false,
+    });
     await waitForConnection(recoveredClient);
     const connectionRecovered = waitForEvent(recoveredClient, EventType.CONNECTION_RECOVERED);
     registerPresence(recoveredClient);

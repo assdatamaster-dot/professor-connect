@@ -17,12 +17,14 @@ export interface ClientPresence {
   readonly role: ClientRole;
   readonly status: PresenceStatus;
   readonly lastSeen: string;
+  readonly organizationId?: string;
 }
 
 export interface PresenceRegisterPayload {
   readonly clientId: string;
   readonly displayName: string;
   readonly role: ClientRole;
+  readonly organizationId?: string;
 }
 
 export interface PresenceUpdatePayload {

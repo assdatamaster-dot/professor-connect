@@ -32,6 +32,12 @@ export {
   type SignalingSessionReader,
 } from './modules/signaling/signaling.types.js';
 export { initializeWebSocket } from './socket-server.js';
+export type {
+  AuthenticatedSocketData,
+  SocketAuthenticationOptions,
+  SocketIdentity,
+  SocketUserRole,
+} from './auth/socket-auth.types.js';
 export {
   PROFESSOR_PRESENCE_EVENTS,
   ProfessorPresenceGateway,

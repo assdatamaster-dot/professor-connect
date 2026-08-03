@@ -24,6 +24,9 @@
           <span class="connection-dot" aria-hidden="true"></span>
           <span id="connection-text">Conectando...</span>
         </div>
+        <button id="student-logout" class="button button--secondary" type="button" hidden>
+          Sair
+        </button>
       </header>
 
       <main class="student-workspace">
@@ -474,6 +477,32 @@
             Não permitir
           </button>
         </div>
+      </form>
+    </dialog>
+
+    <dialog id="authentication-dialog" class="permission-dialog">
+      <form id="authentication-form">
+        <span class="overline">Área do aluno</span>
+        <h2>Entre para solicitar atendimento</h2>
+        <label for="authentication-email">E-mail</label>
+        <input id="authentication-email" type="email" autocomplete="username" required />
+        <label for="authentication-password">Senha</label>
+        <input
+          id="authentication-password"
+          type="password"
+          autocomplete="current-password"
+          required
+        />
+        <label for="authentication-organization">Instituição <small>(opcional)</small></label>
+        <input
+          id="authentication-organization"
+          autocomplete="organization"
+          placeholder="minha-escola"
+        />
+        <p id="authentication-error" class="error-message" role="alert" hidden></p>
+        <button id="authentication-submit" class="button button--primary" type="submit">
+          Entrar
+        </button>
       </form>
     </dialog>
 

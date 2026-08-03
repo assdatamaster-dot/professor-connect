@@ -39,17 +39,31 @@
           <div class="login-panel__content">
             <span class="overline">Área do professor</span>
             <h2>Bem-vindo de volta</h2>
-            <p class="login-intro">
-              Informe como seus alunos verão seu nome durante o atendimento.
-            </p>
+            <p class="login-intro">Entre com sua identidade institucional.</p>
             <form id="login-form">
-              <label for="professor-name">Seu nome</label>
+              <label for="login-email">E-mail</label>
               <input
-                id="professor-name"
-                name="professorName"
-                autocomplete="name"
-                placeholder="Ex.: Prof. Mariana"
+                id="login-email"
+                name="email"
+                type="email"
+                autocomplete="username"
+                placeholder="professor@instituicao.edu"
                 required
+              />
+              <label for="login-password">Senha</label>
+              <input
+                id="login-password"
+                name="password"
+                type="password"
+                autocomplete="current-password"
+                required
+              />
+              <label for="login-organization">Instituição <small>(opcional)</small></label>
+              <input
+                id="login-organization"
+                name="organization"
+                autocomplete="organization"
+                placeholder="minha-escola"
               />
               <p id="login-error" class="error-message" role="alert" hidden></p>
               <button id="login-button" class="button button--primary button--large" type="submit">

@@ -77,6 +77,9 @@ export class CommunicationGateway {
 
   private handleConnection(socket: CommunicationSocket): void {
     this.connectionService.registerClient(socket.id);
+    if (socket.data.identity?.organizationId !== undefined) {
+      void socket.join(organizationRoom(socket.data.identity.organizationId));
+    }
     this.logger.info('Cliente conectado', { socketId: socket.id });
 
     socket.on(COMMUNICATION_EVENTS.ping, (message) => {
@@ -155,26 +158,42 @@ export class CommunicationGateway {
     socket.on(EventType.PRESENCE_REGISTER, (message) => {
       this.handleSafely(EventType.PRESENCE_REGISTER, () => {
         this.requireEvent(message, EventType.PRESENCE_REGISTER);
-        this.validatePresenceRegistration(message.payload);
+        const identity = socket.data.identity;
+        const role = identity?.roles.includes('TEACHER')
+          ? ClientRole.TEACHER
+          : identity?.roles.includes('STUDENT')
+            ? ClientRole.STUDENT
+            : undefined;
+        const authenticatedRegistration: PresenceRegisterPayload =
+          identity === undefined
+            ? message.payload
+            : role === undefined || identity.profileId === undefined
+              ? (() => {
+                  throw new Error('Perfil autenticado não pode registrar presença');
+                })()
+              : {
+                  clientId: identity.profileId,
+                  displayName: identity.displayName,
+                  role,
+                  organizationId: identity.organizationId,
+                };
+        this.validatePresenceRegistration(authenticatedRegistration);
 
-        const recovery = this.heartbeatService.recoverClient(message.payload.clientId, socket.id);
+        const recovery = this.heartbeatService.recoverClient(
+          authenticatedRegistration.clientId,
+          socket.id,
+        );
 
         if (recovery !== undefined) {
-          this.communicationService.broadcastOnlineClients(
-            this.server,
-            this.presenceService.listOnlineClients(),
-          );
+          this.broadcastOnlineClients(identity?.organizationId);
           return;
         }
 
-        const client = this.presenceService.registerClient(socket.id, message.payload);
+        const client = this.presenceService.registerClient(socket.id, authenticatedRegistration);
 
         this.heartbeatService.registerClient(client.clientId, socket.id);
 
-        this.communicationService.broadcastOnlineClients(
-          this.server,
-          this.presenceService.listOnlineClients(),
-        );
+        this.broadcastOnlineClients(identity?.organizationId);
         this.logger.info('Cliente registrado', {
           clientId: client.clientId,
           connectionId: client.connectionId,
@@ -205,7 +224,7 @@ export class CommunicationGateway {
         this.requireEvent(message, EventType.PRESENCE_ONLINE);
         this.communicationService.sendOnlineClients(
           socket,
-          this.presenceService.listOnlineClients(),
+          this.presenceService.listOnlineClients(socket.data.identity?.organizationId),
         );
       });
     });
@@ -215,7 +234,7 @@ export class CommunicationGateway {
         this.requireEvent(message, EventType.PRESENCE_AVAILABLE);
         this.communicationService.sendAvailableTeachers(
           socket,
-          this.presenceService.listAvailableTeachers(),
+          this.presenceService.listAvailableTeachers(socket.data.identity?.organizationId),
         );
       });
     });
@@ -392,26 +411,38 @@ export class CommunicationGateway {
   }
 
   private broadcastPresenceStatus(client: ClientPresence): void {
+    const room =
+      client.organizationId === undefined ? undefined : organizationRoom(client.organizationId);
     switch (client.status) {
       case PresenceStatus.ONLINE:
         this.communicationService.broadcastOnlineClients(
           this.server,
-          this.presenceService.listOnlineClients(),
+          this.presenceService.listOnlineClients(client.organizationId),
+          room,
         );
         break;
       case PresenceStatus.AVAILABLE:
         this.communicationService.broadcastAvailableTeachers(
           this.server,
-          this.presenceService.listAvailableTeachers(),
+          this.presenceService.listAvailableTeachers(client.organizationId),
+          room,
         );
         break;
       case PresenceStatus.BUSY:
-        this.communicationService.broadcastBusyClient(this.server, client);
+        this.communicationService.broadcastBusyClient(this.server, client, room);
         break;
       case PresenceStatus.OFFLINE:
-        this.communicationService.broadcastOfflineClient(this.server, client);
+        this.communicationService.broadcastOfflineClient(this.server, client, room);
         break;
     }
+  }
+
+  private broadcastOnlineClients(organizationId?: string): void {
+    this.communicationService.broadcastOnlineClients(
+      this.server,
+      this.presenceService.listOnlineClients(organizationId),
+      organizationId === undefined ? undefined : organizationRoom(organizationId),
+    );
   }
 
   private validatePresenceRegistration(payload: PresenceRegisterPayload): void {
@@ -474,24 +505,38 @@ export class CommunicationGateway {
       case EventType.HEARTBEAT_PING:
         this.communicationService.sendHeartbeatPing(this.server, event.connectionId);
         break;
-      case EventType.CONNECTION_LOST:
+      case EventType.CONNECTION_LOST: {
+        const client = this.presenceService.findClient(event.payload.clientId);
         this.communicationService.broadcastConnectionLifecycle(
           this.server,
           EventType.CONNECTION_LOST,
           event.payload,
+          client?.organizationId === undefined
+            ? undefined
+            : organizationRoom(client.organizationId),
         );
         break;
+      }
       case EventType.CONNECTION_TIMEOUT: {
+        const offlineClient = this.presenceService.findClient(event.payload.clientId);
         this.server.sockets.sockets.get(event.payload.connectionId)?.disconnect(true);
         this.communicationService.broadcastConnectionLifecycle(
           this.server,
           EventType.CONNECTION_TIMEOUT,
           event.payload,
+          offlineClient?.organizationId === undefined
+            ? undefined
+            : organizationRoom(offlineClient.organizationId),
         );
-        const offlineClient = this.presenceService.findClient(event.payload.clientId);
 
         if (offlineClient !== undefined) {
-          this.communicationService.broadcastOfflineClient(this.server, offlineClient);
+          this.communicationService.broadcastOfflineClient(
+            this.server,
+            offlineClient,
+            offlineClient.organizationId === undefined
+              ? undefined
+              : organizationRoom(offlineClient.organizationId),
+          );
         }
         break;
       }
@@ -567,4 +612,8 @@ export class CommunicationGateway {
       throw new Error(`Envelope inválido para o evento ${event}`);
     }
   }
+}
+
+function organizationRoom(organizationId: string): string {
+  return `organization:${organizationId}`;
 }

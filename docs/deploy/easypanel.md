@@ -39,14 +39,26 @@ REQUEST_TIMEOUT_MS=60000
 HEARTBEAT_INTERVAL_MS=30000
 HEARTBEAT_TIMEOUT_MS=90000
 RECONNECT_WINDOW_MS=90000
+DATABASE_URL=postgresql://USER:SENHA@HOST:5432/professor_connect
+JWT_ACCESS_SECRET=<segredo-aleatorio-exclusivo-com-32-ou-mais-caracteres>
+JWT_REFRESH_SECRET=<outro-segredo-aleatorio-com-32-ou-mais-caracteres>
+JWT_ISSUER=professor-connect
+JWT_AUDIENCE=professor-connect-clients
+ACCESS_TOKEN_TTL_SECONDS=900
+REFRESH_TOKEN_TTL_SECONDS=2592000
+BCRYPT_ROUNDS=12
+TRUST_PROXY=true
+CORS_ORIGINS=
 ```
 
 `REQUEST_TIMEOUT_MS` limita somente solicitações de atendimento ainda não respondidas. Ele não
 define duração para uma sessão nem para o controle remoto já autorizado.
 
 Não copie `BACKEND_BIND_ADDRESS`, `BACKEND_PORT` ou `PROFESSOR_CONNECT_IMAGE`; elas existem apenas
-para o Compose. `DATABASE_URL` e `WEBRTC_*` não são necessárias para executar o backend Beta-1A.
-Não configure mount ou banco para esta versão.
+para o Compose. `DATABASE_URL` é obrigatória e deve apontar para PostgreSQL persistente. Gere os
+dois segredos JWT separadamente e nunca os registre no repositório ou nos logs. `CORS_ORIGINS`
+pode ficar vazio para clientes Electron; inclua origens HTTPS separadas por vírgula ao publicar
+um cliente web.
 
 ## 4. Configurar domínio e proxy
 
@@ -75,8 +87,8 @@ Resposta esperada:
 }
 ```
 
-Mantenha **1 réplica**. O backend atual guarda Presence, Requests, Sessions, Calls e sockets em
-memória; múltiplas réplicas não compartilham esse estado e estão fora da arquitetura Beta-1A.
+Mantenha **1 réplica**. Identidade, refresh tokens, auditoria e histórico são persistidos, mas a
+coordenação de sockets ativos ainda exige uma única réplica até a adoção de um adapter distribuído.
 
 ## 6. Atualizar
 
@@ -94,7 +106,7 @@ manutenção.
 
 - DNS resolvendo para a VPS;
 - Dockerfile localizado a partir da raiz do repositório;
-- sete variáveis de backend configuradas;
+- banco persistente e variáveis de autenticação configurados;
 - proxy apontando para a porta `3000`;
 - HTTPS válido;
 - exatamente uma réplica;

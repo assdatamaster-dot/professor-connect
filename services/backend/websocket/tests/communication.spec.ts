@@ -15,7 +15,10 @@ import type {
   PongResponse,
   ServerToClientEvents,
 } from '../src/modules/communication/communication.types.js';
-import { initializeWebSocket } from '../src/socket-server.js';
+import {
+  authenticatedSocketOptions,
+  initializeTestWebSocket,
+} from './authenticated-socket-fixture.js';
 
 test('responde ping com SocketMessage e registra o ciclo da conexão', async () => {
   const messages: string[] = [];
@@ -37,7 +40,7 @@ test('responde ping com SocketMessage e registra o ciclo da conexão', async () 
     },
   };
   const httpServer = createServer();
-  const gateway = initializeWebSocket(httpServer, logger);
+  const gateway = initializeTestWebSocket(httpServer, logger);
 
   await new Promise<void>((resolve) => {
     httpServer.listen(0, '127.0.0.1', resolve);
@@ -48,7 +51,7 @@ test('responde ping com SocketMessage e registra o ciclo da conexão', async () 
 
   const client: Socket<ServerToClientEvents, ClientToServerEvents> = io(
     `http://127.0.0.1:${address.port}`,
-    { transports: ['websocket'] },
+    authenticatedSocketOptions('STUDENT', 'communication-client'),
   );
 
   try {
@@ -75,6 +78,26 @@ test('responde ping com SocketMessage e registra o ciclo da conexão', async () 
     ]);
   } finally {
     client.close();
+    await new Promise<void>((resolve) => gateway.close(resolve));
+  }
+});
+
+test('rejeita handshake Socket.IO sem access token', async () => {
+  const httpServer = createServer();
+  const gateway = initializeTestWebSocket(httpServer, { info(): void {}, error(): void {} });
+  await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve));
+  const address = httpServer.address();
+  assert(address !== null && typeof address === 'object');
+  const client = io(`http://127.0.0.1:${address.port}`, {
+    transports: ['websocket'],
+    reconnection: false,
+  });
+  try {
+    const error = await new Promise<Error>((resolve) => client.once('connect_error', resolve));
+    assert.equal(error.message, 'unauthorized');
+    assert.equal(client.connected, false);
+  } finally {
+    client.disconnect();
     await new Promise<void>((resolve) => gateway.close(resolve));
   }
 });

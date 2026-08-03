@@ -1,5 +1,7 @@
 # Professor Connect
 
+> A arquitetura de identidade, JWT, RBAC, Socket.IO autenticado e armazenamento seguro do Electron está documentada em [Sprint BETA-9C](docs/sprints/SPR-BETA-9C.md).
+
 O Professor Connect é uma plataforma planejada para aproximar alunos e professores em
 atendimentos remotos. Este repositório contém a fundação técnica do produto: organização do
 monorepo, limites entre módulos, ferramentas de qualidade e documentação para orientar a

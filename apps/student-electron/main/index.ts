@@ -9,9 +9,15 @@ import {
 } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readFile } from 'node:fs/promises';
 
 import { createStructuredLogger } from '@professor-connect/engine';
 import { FileTransferStorage } from '@professor-connect/engine/file-transfer-node';
+import { DesktopAuthClient } from '@professor-connect/shared';
+import {
+  ElectronSecureTokenStore,
+  registerDesktopAuthIpc,
+} from '@professor-connect/shared/electron';
 
 import { AllScreensCaptureCoordinator } from './all-screens-capture.coordinator.js';
 import { registerFileTransferIpc, type FileTransferIpcRegistration } from './file-transfer-ipc.js';
@@ -39,6 +45,7 @@ let workflowController: StudentWorkflowController | undefined;
 let screenCaptureTargetRegistry: ScreenCaptureTargetRegistry | undefined;
 let allScreensCaptureCoordinator: AllScreensCaptureCoordinator | undefined;
 let unsubscribeCaptureSession: (() => void) | undefined;
+let authIpcRegistration: { dispose(): void } | undefined;
 
 async function createMainWindow(): Promise<void> {
   const preloadPath = path.join(currentDirectory, '..', 'preload', 'index.js');
@@ -46,6 +53,11 @@ async function createMainWindow(): Promise<void> {
   const configPath = path.join(currentDirectory, '..', 'config.json');
   const iconPath = path.join(currentDirectory, '..', 'assets', 'logo.png');
   const manager = createDesktopWorkflowManager();
+  const { serverUrl } = JSON.parse(await readFile(configPath, 'utf8')) as { serverUrl: string };
+  const authClient = new DesktopAuthClient(
+    serverUrl,
+    new ElectronSecureTokenStore(app.getPath('userData')),
+  );
 
   workflowController = new StudentWorkflowController(manager, {
     startInput: DEFAULT_STUDENT_WORKFLOW_INPUT,
@@ -93,11 +105,28 @@ async function createMainWindow(): Promise<void> {
     undefined,
     undefined,
     remoteControlReceiver,
+    authClient,
   );
   sessionIpcRegistration = registerSessionIpc(presenceController, mainWindow.webContents, {
     onScreenShareStopped: () => captureCoordinator.clear(),
     prepareAllScreensCapture: () => captureCoordinator.prepare(),
   });
+  authIpcRegistration = registerDesktopAuthIpc(
+    authClient,
+    mainWindow.webContents,
+    {
+      login: 'student:auth:login',
+      logout: 'student:auth:logout',
+      getIdentity: 'student:auth:get-identity',
+    },
+    {
+      requiredRole: 'STUDENT',
+      afterLogin: () => presenceController?.connect() ?? Promise.resolve(),
+      beforeLogout: () => {
+        presenceController?.disconnect();
+      },
+    },
+  );
   unsubscribeCaptureSession = presenceController.onSessionStateChanged((snapshot) => {
     if (snapshot.activeSessionId === undefined) {
       captureCoordinator.clear();
@@ -114,20 +143,25 @@ async function createMainWindow(): Promise<void> {
     allScreensCaptureCoordinator?.clear();
     presenceController?.dispose();
     sessionIpcRegistration?.dispose();
+    authIpcRegistration?.dispose();
     workflowController?.dispose();
     fileTransferIpcRegistration = undefined;
     ipcRegistration = undefined;
     presenceController = undefined;
     sessionIpcRegistration = undefined;
+    authIpcRegistration = undefined;
     workflowController = undefined;
     unsubscribeCaptureSession = undefined;
     mainWindow = undefined;
   });
 
   await mainWindow.loadFile(rendererPath);
-  void presenceController.connect().catch((error: unknown) => {
-    studentMainLogger.error('presence-connect-failed', error);
-  });
+  const savedIdentity = await authClient.getIdentity();
+  if (savedIdentity?.roles.includes('STUDENT') === true) {
+    void presenceController.connect().catch((error: unknown) => {
+      studentMainLogger.error('presence-connect-failed', error);
+    });
+  }
 }
 
 function registerDisplayMediaRequestHandler(): void {

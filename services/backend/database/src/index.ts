@@ -1,6 +1,7 @@
 export { DatabasePersistence } from './database-persistence.js';
 export { PersistenceQueue, type PersistenceErrorHandler } from './persistence-queue.js';
 export { prismaClient } from './prisma-client.js';
+export { Prisma } from '@prisma/client';
 export {
   AttendanceSessionRepository,
   AuditRepository,

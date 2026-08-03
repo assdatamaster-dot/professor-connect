@@ -44,6 +44,7 @@ import { WebRtcSignalingGateway } from './modules/webrtc-signaling/webrtc-signal
 import { RemoteControlGateway } from './modules/remote-control/remote-control.gateway.js';
 import { FileTransferAuditGateway } from './modules/file-transfer/file-transfer.gateway.js';
 import type { FileTransferPersistence } from './persistence/persistence.types.js';
+import type { SocketAuthenticationOptions } from './auth/socket-auth.types.js';
 
 export function initializeWebSocket(
   httpServer: HttpServer,
@@ -64,9 +65,74 @@ export function initializeWebSocket(
   remoteControlRequestTimeoutMilliseconds?: number,
   workflowPersistence: WorkflowPersistence = {},
   fileTransferPersistence?: FileTransferPersistence,
+  authentication?: SocketAuthenticationOptions,
 ): CommunicationGateway {
+  const connectionLimiter = new SlidingWindowLimiter(60, 60_000);
   const socketServer = new SocketServer<ClientToServerEvents, ServerToClientEvents>(httpServer, {
     serveClient: false,
+    maxHttpBufferSize: 1_000_000,
+    connectTimeout: 10_000,
+  });
+
+  socketServer.use(async (socket, next) => {
+    try {
+      if (!connectionLimiter.consume(socket.handshake.address)) {
+        throw new Error('Limite de conexões excedido');
+      }
+      if (authentication === undefined) {
+        throw new Error('Autenticação Socket.IO não configurada');
+      }
+      const handshakeToken = socket.handshake.auth.token;
+      const authorization = socket.handshake.headers.authorization;
+      const token =
+        typeof handshakeToken === 'string'
+          ? handshakeToken
+          : authorization?.startsWith('Bearer ')
+            ? authorization.slice(7)
+            : undefined;
+      if (token === undefined || token.length === 0) throw new Error('Token ausente');
+      const identity = await authentication.authenticate(token);
+      if (
+        identity.organizationId.length === 0 ||
+        !identity.permissions.includes('socket.connect')
+      ) {
+        throw new Error('Conexão não autorizada');
+      }
+      socket.data.identity = identity;
+      next();
+    } catch (error) {
+      logger.error('Handshake Socket.IO rejeitado', error);
+      next(new Error('unauthorized'));
+    }
+  });
+  socketServer.on('connection', (socket) => {
+    const eventLimiter = new SlidingWindowLimiter(1_000, 10_000);
+    socket.use((_packet, next) => {
+      if (eventLimiter.consume(socket.id)) next();
+      else {
+        logger.error('Flood Socket.IO bloqueado', new Error('Limite de eventos excedido'));
+        next(new Error('rate_limit_exceeded'));
+      }
+    });
+    socket.on('auth:refresh', async (payload, acknowledge) => {
+      try {
+        if (authentication === undefined || typeof payload?.token !== 'string')
+          throw new Error('Token inválido');
+        const refreshedIdentity = await authentication.authenticate(payload.token);
+        const currentIdentity = socket.data.identity;
+        if (
+          refreshedIdentity.userId !== currentIdentity.userId ||
+          refreshedIdentity.organizationId !== currentIdentity.organizationId ||
+          refreshedIdentity.sessionFamilyId !== currentIdentity.sessionFamilyId
+        )
+          throw new Error('Troca de identidade não autorizada');
+        socket.data.identity = refreshedIdentity;
+        acknowledge?.({ ok: true });
+      } catch {
+        acknowledge?.({ ok: false });
+        socket.disconnect(true);
+      }
+    });
   });
 
   const communicationService = new CommunicationService();
@@ -178,4 +244,24 @@ export function initializeWebSocket(
   });
 
   return communicationGateway;
+}
+
+class SlidingWindowLimiter {
+  private readonly windows = new Map<string, { count: number; resetAt: number }>();
+
+  public constructor(
+    private readonly limit: number,
+    private readonly windowMs: number,
+  ) {}
+
+  public consume(key: string): boolean {
+    const now = Date.now();
+    const current = this.windows.get(key);
+    if (current === undefined || current.resetAt <= now) {
+      this.windows.set(key, { count: 1, resetAt: now + this.windowMs });
+      return true;
+    }
+    current.count += 1;
+    return current.count <= this.limit;
+  }
 }

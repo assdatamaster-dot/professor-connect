@@ -55,6 +55,12 @@ export class SessionRequestManager {
     if (teacher === undefined) {
       throw new Error('Professor não está online');
     }
+    if (
+      (student.organizationId !== undefined || teacher.organizationId !== undefined) &&
+      student.organizationId !== teacher.organizationId
+    ) {
+      throw new Error('Professor e aluno devem pertencer à mesma instituição');
+    }
 
     const request: SessionRequest = {
       requestId: this.idFactory(),

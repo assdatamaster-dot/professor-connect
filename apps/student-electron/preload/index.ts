@@ -1,4 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
+import type { DesktopAuthApi } from '@professor-connect/shared' with {
+  'resolution-mode': 'import',
+};
 
 import type {
   DesktopStateListener,
@@ -172,3 +175,8 @@ contextBridge.exposeInMainWorld('professorConnect', workflowApi);
 contextBridge.exposeInMainWorld('professorConnectSession', sessionApi);
 contextBridge.exposeInMainWorld('professorConnectWebRtc', webRtcApi);
 contextBridge.exposeInMainWorld('professorConnectFileTransfer', fileTransferApi);
+contextBridge.exposeInMainWorld('professorConnectAuth', {
+  login: (credentials) => ipcRenderer.invoke('student:auth:login', credentials),
+  logout: () => ipcRenderer.invoke('student:auth:logout'),
+  getIdentity: () => ipcRenderer.invoke('student:auth:get-identity'),
+} satisfies DesktopAuthApi);

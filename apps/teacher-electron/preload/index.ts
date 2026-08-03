@@ -1,4 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
+import type { DesktopAuthApi } from '@professor-connect/shared' with {
+  'resolution-mode': 'import',
+};
 
 import type {
   TeacherStateListener,
@@ -54,6 +57,12 @@ const workflowApi: TeacherWorkflowApi = {
     ipcRenderer.on(channels.stateChanged, handler);
     return () => ipcRenderer.removeListener(channels.stateChanged, handler);
   },
+};
+
+const authApi: DesktopAuthApi = {
+  login: (credentials) => ipcRenderer.invoke('teacher:auth:login', credentials),
+  logout: () => ipcRenderer.invoke('teacher:auth:logout'),
+  getIdentity: () => ipcRenderer.invoke('teacher:auth:get-identity'),
 };
 
 const presenceChannels = {
@@ -200,3 +209,4 @@ contextBridge.exposeInMainWorld('professorConnectTeacher', workflowApi);
 contextBridge.exposeInMainWorld('professorConnectPresence', presenceApi);
 contextBridge.exposeInMainWorld('professorConnectWebRtc', webRtcApi);
 contextBridge.exposeInMainWorld('professorConnectFileTransfer', fileTransferApi);
+contextBridge.exposeInMainWorld('professorConnectAuth', authApi);

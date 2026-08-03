@@ -4,12 +4,14 @@ export interface OnlineStudent {
   readonly socketId: string;
   readonly onlineSince: Date;
   readonly lastHeartbeat: Date;
+  readonly organizationId?: string;
 }
 
 export interface RegisterStudentInput {
   readonly id: string;
   readonly name: string;
   readonly socketId: string;
+  readonly organizationId?: string;
 }
 
 type Clock = () => Date;
@@ -30,6 +32,7 @@ export class StudentPresenceManager {
       socketId: input.socketId,
       onlineSince: registeredAt,
       lastHeartbeat: registeredAt,
+      ...(input.organizationId === undefined ? {} : { organizationId: input.organizationId }),
     };
 
     this.studentsBySocketId.set(input.socketId, student);

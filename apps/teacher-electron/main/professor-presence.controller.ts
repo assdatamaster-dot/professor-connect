@@ -37,8 +37,13 @@ import type {
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const SESSION_REQUEST_TIMEOUT_MS = 30_000;
 const MAXIMUM_REMOTE_CONTROL_LOG_ENTRIES = 100;
+const SOCKET_AUTH_REFRESH_INTERVAL_MS = 60_000;
 
 interface ProfessorPresenceClientEvents {
+  'auth:refresh': (
+    payload: { readonly token: string },
+    acknowledge?: (result: { readonly ok: boolean }) => void,
+  ) => void;
   'file-transfer:audit': (payload: FileTransferAuditEntry & { readonly sessionId: string }) => void;
   'professor:heartbeat': () => void;
   'professor:online': (payload: { readonly name: string }) => void;
@@ -80,6 +85,10 @@ interface SessionRequestTimeoutPayload {
 type PresenceListener = (snapshot: ProfessorPresenceSnapshot) => void;
 type PresenceSocket = Socket<ProfessorPresenceServerEvents, ProfessorPresenceClientEvents>;
 
+export interface AuthenticatedTransport {
+  getAccessToken(): Promise<string>;
+}
+
 export class ProfessorPresenceController {
   private connectionGeneration = 0;
   private readonly listeners = new Set<PresenceListener>();
@@ -90,6 +99,7 @@ export class ProfessorPresenceController {
   private readonly screenShareStoppedListeners = new Set<ScreenShareListener>();
   private readonly sessionRequestExpirationTimers = new Map<string, NodeJS.Timeout>();
   private heartbeatTimer: NodeJS.Timeout | undefined;
+  private authRefreshTimer: NodeJS.Timeout | undefined;
   private professorName: string | undefined;
   private sessionRequests: ProfessorSessionRequest[] = [];
   private activeSession: ProfessorActiveSession | undefined;
@@ -101,6 +111,7 @@ export class ProfessorPresenceController {
   public constructor(
     private readonly configPath: string,
     private readonly sessionRequestTimeoutMs = SESSION_REQUEST_TIMEOUT_MS,
+    private readonly authenticatedTransport?: AuthenticatedTransport,
   ) {}
 
   public async connect(nameInput: string): Promise<ProfessorPresenceSnapshot> {
@@ -134,17 +145,23 @@ export class ProfessorPresenceController {
     }
 
     const { serverUrl } = config;
-    const socket: PresenceSocket = io(serverUrl, { autoConnect: false });
+    const accessToken = await this.authenticatedTransport?.getAccessToken();
+    const socket: PresenceSocket = io(serverUrl, {
+      autoConnect: false,
+      ...(accessToken === undefined ? {} : { auth: { token: accessToken } }),
+    });
 
     this.socket = socket;
     socket.on('connect', () => {
       this.status = ProfessorPresenceStatus.CONNECTED;
       socket.emit('professor:online', { name });
       this.startHeartbeat(socket);
+      this.startAuthRefresh(socket);
       this.notifyListeners();
     });
     socket.on('disconnect', () => {
       this.stopHeartbeat();
+      this.stopAuthRefresh();
       this.status = ProfessorPresenceStatus.DISCONNECTED;
       const remoteSessionId = this.remoteControl.sessionId;
       if (remoteSessionId !== undefined) {
@@ -154,6 +171,7 @@ export class ProfessorPresenceController {
     });
     socket.on('connect_error', () => {
       this.stopHeartbeat();
+      this.stopAuthRefresh();
       this.status = ProfessorPresenceStatus.ERROR;
       this.notifyListeners();
     });
@@ -241,6 +259,25 @@ export class ProfessorPresenceController {
     socket.connect();
 
     return this.getSnapshot();
+  }
+
+  private startAuthRefresh(socket: PresenceSocket): void {
+    this.stopAuthRefresh();
+    if (this.authenticatedTransport === undefined) return;
+    this.authRefreshTimer = setInterval(() => {
+      void this.authenticatedTransport
+        ?.getAccessToken()
+        .then((token) => {
+          if (socket.connected) socket.emit('auth:refresh', { token });
+        })
+        .catch(() => socket.disconnect());
+    }, SOCKET_AUTH_REFRESH_INTERVAL_MS);
+    this.authRefreshTimer.unref();
+  }
+
+  private stopAuthRefresh(): void {
+    if (this.authRefreshTimer !== undefined) clearInterval(this.authRefreshTimer);
+    this.authRefreshTimer = undefined;
   }
 
   public disconnect(): ProfessorPresenceSnapshot {

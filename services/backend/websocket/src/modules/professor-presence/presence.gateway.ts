@@ -1,6 +1,7 @@
 import type { Server, Socket } from 'socket.io';
 
 import type { CommunicationLogger } from '../communication/communication.types.js';
+import type { SocketIdentity } from '../../auth/socket-auth.types.js';
 import type { PresenceManager } from './presence.manager.js';
 
 export const PROFESSOR_PRESENCE_EVENTS = {
@@ -45,11 +46,19 @@ export class ProfessorPresenceGateway {
   }
 
   private registerSocketEvents(socket: ProfessorPresenceSocket): void {
-    socket.on(PROFESSOR_PRESENCE_EVENTS.ONLINE, (payload) => {
-      const name = normalizeProfessorName(payload);
+    socket.on(PROFESSOR_PRESENCE_EVENTS.ONLINE, (_payload) => {
+      const identity = readIdentity(socket);
+      const name = identity?.displayName ?? normalizeProfessorName(_payload);
 
-      if (name === undefined) {
-        this.logger.error('Nome do professor inválido', new Error('Nome obrigatório'));
+      if (
+        name === undefined ||
+        (identity !== undefined &&
+          (!identity.roles.includes('TEACHER') || identity.profileId === undefined))
+      ) {
+        this.logger.error(
+          'Perfil do professor inválido',
+          new Error('Perfil autenticado obrigatório'),
+        );
         return;
       }
 
@@ -58,7 +67,12 @@ export class ProfessorPresenceGateway {
         this.logger.info(`Professor ${previousProfessor.name} desconectado`);
       }
 
-      this.presenceManager.registerProfessor({ name, socketId: socket.id });
+      this.presenceManager.registerProfessor({
+        ...(identity?.profileId === undefined ? {} : { id: identity.profileId }),
+        name,
+        ...(identity === undefined ? {} : { organizationId: identity.organizationId }),
+        socketId: socket.id,
+      });
       this.logger.info(`Professor ${name} conectado`);
     });
 
@@ -90,11 +104,13 @@ export class ProfessorPresenceGateway {
   }
 }
 
-function normalizeProfessorName(payload: ProfessorOnlinePayload): string | undefined {
-  if (typeof payload !== 'object' || payload === null || typeof payload.name !== 'string') {
-    return undefined;
-  }
+function readIdentity(socket: ProfessorPresenceSocket): SocketIdentity | undefined {
+  return (socket.data as { identity?: SocketIdentity }).identity;
+}
 
+function normalizeProfessorName(payload: ProfessorOnlinePayload): string | undefined {
+  if (typeof payload !== 'object' || payload === null || typeof payload.name !== 'string')
+    return undefined;
   const name = payload.name.trim();
-  return name.length > 0 ? name : undefined;
+  return name.length === 0 ? undefined : name;
 }

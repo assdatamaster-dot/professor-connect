@@ -1,8 +1,14 @@
 import { app, BrowserWindow, dialog, session } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readFile } from 'node:fs/promises';
 
 import { FileTransferStorage } from '@professor-connect/engine/file-transfer-node';
+import { DesktopAuthClient } from '@professor-connect/shared';
+import {
+  ElectronSecureTokenStore,
+  registerDesktopAuthIpc,
+} from '@professor-connect/shared/electron';
 
 import { registerFileTransferIpc, type FileTransferIpcRegistration } from './file-transfer-ipc.js';
 import { registerTeacherIpc, type TeacherIpcRegistration } from './ipc.js';
@@ -19,6 +25,7 @@ let ipcRegistration: TeacherIpcRegistration | undefined;
 let presenceIpcRegistration: PresenceIpcRegistration | undefined;
 let presenceController: ProfessorPresenceController | undefined;
 let workflowController: TeacherWorkflowController | undefined;
+let authIpcRegistration: { dispose(): void } | undefined;
 
 async function createMainWindow(): Promise<void> {
   const preloadPath = path.join(currentDirectory, '..', 'preload', 'index.js');
@@ -26,9 +33,14 @@ async function createMainWindow(): Promise<void> {
   const configPath = path.join(currentDirectory, '..', 'config.json');
   const iconPath = path.join(currentDirectory, '..', 'assets', 'logo.png');
   const manager = createTeacherWorkflowManager();
+  const { serverUrl } = JSON.parse(await readFile(configPath, 'utf8')) as { serverUrl: string };
+  const authClient = new DesktopAuthClient(
+    serverUrl,
+    new ElectronSecureTokenStore(app.getPath('userData')),
+  );
 
   workflowController = new TeacherWorkflowController(manager);
-  presenceController = new ProfessorPresenceController(configPath);
+  presenceController = new ProfessorPresenceController(configPath, undefined, authClient);
   mainWindow = new BrowserWindow(createWindowOptions(preloadPath, iconPath));
   const window = mainWindow;
   ipcRegistration = registerTeacherIpc(workflowController, mainWindow.webContents);
@@ -63,6 +75,24 @@ async function createMainWindow(): Promise<void> {
     { onAudit: (entry) => presenceController?.reportFileTransfer(entry) },
   );
   presenceIpcRegistration = registerPresenceIpc(presenceController, mainWindow.webContents);
+  authIpcRegistration = registerDesktopAuthIpc(
+    authClient,
+    mainWindow.webContents,
+    {
+      login: 'teacher:auth:login',
+      logout: 'teacher:auth:logout',
+      getIdentity: 'teacher:auth:get-identity',
+    },
+    {
+      requiredRole: 'TEACHER',
+      afterLogin: (identity) =>
+        presenceController?.connect(identity.displayName).then(() => undefined) ??
+        Promise.resolve(),
+      beforeLogout: () => {
+        presenceController?.disconnect();
+      },
+    },
+  );
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   mainWindow.webContents.on('will-navigate', (event) => event.preventDefault());
@@ -71,17 +101,23 @@ async function createMainWindow(): Promise<void> {
     fileTransferIpcRegistration?.dispose();
     ipcRegistration?.dispose();
     presenceIpcRegistration?.dispose();
+    authIpcRegistration?.dispose();
     workflowController?.dispose();
     presenceController?.dispose();
     fileTransferIpcRegistration = undefined;
     ipcRegistration = undefined;
     presenceIpcRegistration = undefined;
+    authIpcRegistration = undefined;
     workflowController = undefined;
     presenceController = undefined;
     mainWindow = undefined;
   });
 
   await mainWindow.loadFile(rendererPath);
+  const savedIdentity = await authClient.getIdentity();
+  if (savedIdentity?.roles.includes('TEACHER') === true) {
+    void presenceController.connect(savedIdentity.displayName).catch(() => authClient.logout());
+  }
 }
 
 app.whenReady().then(async () => {

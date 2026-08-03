@@ -1,6 +1,7 @@
 import type { Server, Socket } from 'socket.io';
 
 import type { CommunicationLogger } from '../communication/communication.types.js';
+import type { SocketIdentity } from '../../auth/socket-auth.types.js';
 import type { StudentPresenceManager } from './student-presence.manager.js';
 
 export const STUDENT_PRESENCE_EVENTS = {
@@ -48,17 +49,31 @@ export class StudentPresenceGateway {
   }
 
   private registerSocketEvents(socket: StudentPresenceSocket): void {
-    socket.on(STUDENT_PRESENCE_EVENTS.REGISTER, (payload) => {
-      const registration = normalizeStudentRegistration(payload);
+    socket.on(STUDENT_PRESENCE_EVENTS.REGISTER, (_payload) => {
+      const identity = readIdentity(socket);
+      const registration =
+        identity === undefined ? normalizeStudentRegistration(_payload) : undefined;
 
-      if (registration === undefined) {
-        this.logger.error('Dados do aluno inválidos', new Error('ID e nome são obrigatórios'));
+      if (
+        identity === undefined
+          ? registration === undefined
+          : !identity.roles.includes('STUDENT') || identity.profileId === undefined
+      ) {
+        this.logger.error('Perfil do aluno inválido', new Error('Perfil autenticado obrigatório'));
         return;
       }
 
       this.removeConnectedStudent(socket.id);
-      this.presenceManager.registerStudent({ ...registration, socketId: socket.id });
-      this.logger.info(`Aluno ${registration.name} conectado`);
+      const id = identity?.profileId ?? registration?.id;
+      const name = identity?.displayName ?? registration?.name;
+      if (id === undefined || name === undefined) return;
+      this.presenceManager.registerStudent({
+        id,
+        name,
+        ...(identity === undefined ? {} : { organizationId: identity.organizationId }),
+        socketId: socket.id,
+      });
+      this.logger.info(`Aluno ${name} conectado`);
     });
 
     socket.on(STUDENT_PRESENCE_EVENTS.HEARTBEAT, () => {
@@ -95,6 +110,10 @@ export class StudentPresenceGateway {
   }
 }
 
+function readIdentity(socket: StudentPresenceSocket): SocketIdentity | undefined {
+  return (socket.data as { identity?: SocketIdentity }).identity;
+}
+
 function normalizeStudentRegistration(
   payload: StudentRegisterPayload,
 ): StudentRegisterPayload | undefined {
@@ -103,11 +122,9 @@ function normalizeStudentRegistration(
     payload === null ||
     typeof payload.id !== 'string' ||
     typeof payload.name !== 'string'
-  ) {
+  )
     return undefined;
-  }
-
   const id = payload.id.trim();
   const name = payload.name.trim();
-  return id.length > 0 && name.length > 0 ? { id, name } : undefined;
+  return id.length === 0 || name.length === 0 ? undefined : { id, name };
 }

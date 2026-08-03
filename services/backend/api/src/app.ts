@@ -1,4 +1,7 @@
 import express, { type Express } from 'express';
+import cors from 'cors';
+import rateLimit from 'express-rate-limit';
+import helmet from 'helmet';
 
 import {
   PresenceManager,
@@ -6,12 +9,17 @@ import {
   SessionRequestManager,
   StudentPresenceManager,
 } from '@professor-connect/websocket';
+import { environment } from '@professor-connect/config';
 
-import { globalErrorMiddleware } from './middlewares/global-error-middleware.js';
+import { AuthService } from './auth/auth.service.js';
+import type { AuthServiceContract } from './auth/auth.types.js';
+import { authenticate, requirePermission } from './middlewares/auth-middleware.js';
+import { globalErrorMiddleware, HttpError } from './middlewares/global-error-middleware.js';
 import { healthRouter } from './routes/health-router.js';
 import { createProfessorsRouter } from './routes/professors-router.js';
 import { createStudentsRouter } from './routes/students-router.js';
 import { createSessionsRouter } from './routes/sessions-router.js';
+import { createAuthRouter } from './routes/auth-router.js';
 
 export function createApp(
   professorPresenceManager = new PresenceManager(),
@@ -21,13 +29,51 @@ export function createApp(
     studentPresenceManager,
   ),
   activeSessionManager = new SessionManager(professorPresenceManager, studentPresenceManager),
+  authService: AuthServiceContract = new AuthService(),
 ): Express {
   const app = express();
 
+  app.disable('x-powered-by');
+  if (environment.trustProxy) app.set('trust proxy', 1);
+  app.use(helmet({ crossOriginResourcePolicy: { policy: 'same-site' } }));
+  app.use(
+    cors({
+      origin(origin, callback) {
+        if (origin === undefined || environment.corsOrigins.includes(origin)) callback(null, true);
+        else callback(new HttpError('Origem CORS não autorizada', 403, 'cors_forbidden'));
+      },
+      methods: ['GET', 'POST', 'DELETE'],
+      allowedHeaders: ['Authorization', 'Content-Type'],
+      maxAge: 600,
+    }),
+  );
+  app.use(express.json({ limit: '64kb', strict: true }));
+  app.use(
+    rateLimit({ windowMs: 60_000, limit: 300, standardHeaders: 'draft-8', legacyHeaders: false }),
+  );
   app.use('/health', healthRouter);
-  app.use('/api/professors', createProfessorsRouter(professorPresenceManager));
-  app.use('/api/students', createStudentsRouter(studentPresenceManager));
-  app.use('/api/sessions', createSessionsRouter(sessionRequestManager, activeSessionManager));
+  app.use('/api/auth', createAuthRouter(authService));
+  app.use(
+    '/api/professors',
+    authenticate(authService),
+    requirePermission('professors.online.read'),
+    createProfessorsRouter(professorPresenceManager),
+  );
+  app.use(
+    '/api/students',
+    authenticate(authService),
+    requirePermission('students.online.read'),
+    createStudentsRouter(studentPresenceManager),
+  );
+  app.use(
+    '/api/sessions',
+    authenticate(authService),
+    requirePermission('sessions.read'),
+    createSessionsRouter(sessionRequestManager, activeSessionManager),
+  );
+  app.use((_request, response) =>
+    response.status(404).json({ code: 'not_found', message: 'Recurso não encontrado' }),
+  );
   app.use(globalErrorMiddleware);
 
   return app;

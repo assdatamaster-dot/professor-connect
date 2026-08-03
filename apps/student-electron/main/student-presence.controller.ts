@@ -29,6 +29,7 @@ import type {
 import { RemoteControlReceiver } from './remote-control.receiver.js';
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
+const SOCKET_AUTH_REFRESH_INTERVAL_MS = 60_000;
 const remoteControlLogger = createStructuredLogger('student-presence.remote-control');
 
 export interface StudentIdentity {
@@ -37,6 +38,10 @@ export interface StudentIdentity {
 }
 
 interface StudentPresenceClientEvents {
+  'auth:refresh': (
+    payload: { readonly token: string },
+    acknowledge?: (result: { readonly ok: boolean }) => void,
+  ) => void;
   'file-transfer:audit': (payload: FileTransferAuditEntry & { readonly sessionId: string }) => void;
   'student:disconnect': (acknowledge: () => void) => void;
   'student:heartbeat': () => void;
@@ -88,6 +93,11 @@ interface StudentConnectConfig {
 
 type StudentPresenceSocket = Socket<StudentPresenceServerEvents, StudentPresenceClientEvents>;
 
+export interface AuthenticatedTransport {
+  getAccessToken(): Promise<string>;
+  fetch(input: URL | string, init?: RequestInit): Promise<Response>;
+}
+
 export class StudentPresenceController {
   private readonly sessionListeners = new Set<StudentSessionListener>();
   private readonly offerListeners = new Set<WebRtcDescriptionListener>();
@@ -96,6 +106,7 @@ export class StudentPresenceController {
   private readonly remoteControlReceiver: RemoteControlReceiver;
   private readonly unsubscribeRemoteControl: () => void;
   private heartbeatTimer: NodeJS.Timeout | undefined;
+  private authRefreshTimer: NodeJS.Timeout | undefined;
   private socket: StudentPresenceSocket | undefined;
   private sessionState: Omit<StudentSessionSnapshot, 'remoteControl'> = {
     status: 'idle',
@@ -109,6 +120,7 @@ export class StudentPresenceController {
     private readonly identity: StudentIdentity = { id: randomUUID(), name: 'Aluno' },
     private readonly heartbeatIntervalMs = HEARTBEAT_INTERVAL_MS,
     remoteControlReceiver = new RemoteControlReceiver(),
+    private readonly authenticatedTransport?: AuthenticatedTransport,
   ) {
     this.remoteControlReceiver = remoteControlReceiver;
     this.unsubscribeRemoteControl = this.remoteControlReceiver.onStateChanged(() => {
@@ -120,19 +132,26 @@ export class StudentPresenceController {
     this.disconnectSocket();
 
     const { serverUrl } = await this.loadConfig();
-    const socket: StudentPresenceSocket = io(serverUrl, { autoConnect: false });
+    const accessToken = await this.authenticatedTransport?.getAccessToken();
+    const socket: StudentPresenceSocket = io(serverUrl, {
+      autoConnect: false,
+      ...(accessToken === undefined ? {} : { auth: { token: accessToken } }),
+    });
 
     this.socket = socket;
     socket.on('connect', () => {
       socket.emit('student:register', this.identity);
       this.startHeartbeat(socket);
+      this.startAuthRefresh(socket);
     });
     socket.on('disconnect', () => {
       this.stopHeartbeat();
+      this.stopAuthRefresh();
       this.remoteControlReceiver.handleTransportLoss();
     });
     socket.on('connect_error', () => {
       this.stopHeartbeat();
+      this.stopAuthRefresh();
       this.remoteControlReceiver.handleTransportLoss();
     });
     socket.on('session:accepted', () => {
@@ -201,9 +220,31 @@ export class StudentPresenceController {
     socket.connect();
   }
 
+  private startAuthRefresh(socket: StudentPresenceSocket): void {
+    this.stopAuthRefresh();
+    if (this.authenticatedTransport === undefined) return;
+    this.authRefreshTimer = setInterval(() => {
+      void this.authenticatedTransport
+        ?.getAccessToken()
+        .then((token) => {
+          if (socket.connected) socket.emit('auth:refresh', { token });
+        })
+        .catch(() => socket.disconnect());
+    }, SOCKET_AUTH_REFRESH_INTERVAL_MS);
+    this.authRefreshTimer.unref();
+  }
+
+  private stopAuthRefresh(): void {
+    if (this.authRefreshTimer !== undefined) clearInterval(this.authRefreshTimer);
+    this.authRefreshTimer = undefined;
+  }
+
   public async getOnlineTeachers(): Promise<readonly OnlineTeacher[]> {
     const { serverUrl } = await this.loadConfig();
-    const response = await fetch(new URL('/api/professors/online', serverUrl));
+    const response =
+      this.authenticatedTransport === undefined
+        ? await fetch(new URL('/api/professors/online', serverUrl))
+        : await this.authenticatedTransport.fetch(new URL('/api/professors/online', serverUrl));
     if (!response.ok) {
       throw new Error(`Não foi possível listar professores (${response.status})`);
     }
@@ -338,6 +379,11 @@ export class StudentPresenceController {
     this.iceCandidateListeners.clear();
     this.unsubscribeRemoteControl();
     this.remoteControlReceiver.dispose();
+  }
+
+  public disconnect(): void {
+    this.disconnectSocket();
+    this.updateSessionState('idle', 'Autenticação necessária.', undefined, undefined);
   }
 
   private updateSessionState(

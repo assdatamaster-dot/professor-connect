@@ -57,12 +57,18 @@ export class PresenceService {
     return this.presenceManager.findClient(clientId);
   }
 
-  public listOnlineClients(): readonly ClientPresence[] {
-    return this.presenceManager.listOnlineClients();
+  public listOnlineClients(organizationId?: string): readonly ClientPresence[] {
+    const clients = this.presenceManager.listOnlineClients();
+    return organizationId === undefined
+      ? clients
+      : clients.filter((client) => client.organizationId === organizationId);
   }
 
-  public listAvailableTeachers(): readonly ClientPresence[] {
-    return this.presenceManager.listAvailableTeachers();
+  public listAvailableTeachers(organizationId?: string): readonly ClientPresence[] {
+    const teachers = this.presenceManager.listAvailableTeachers();
+    return organizationId === undefined
+      ? teachers
+      : teachers.filter((teacher) => teacher.organizationId === organizationId);
   }
 
   public listConnectedStudents(): readonly ClientPresence[] {

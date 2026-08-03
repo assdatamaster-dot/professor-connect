@@ -5,7 +5,6 @@ import { test } from 'node:test';
 import { io, type Socket } from 'socket.io-client';
 
 import {
-  initializeWebSocket,
   PresenceManager,
   SessionManager,
   SessionRequestManager,
@@ -17,6 +16,10 @@ import {
   type WebRtcDescriptionPayload,
   type WebRtcIceCandidatePayload,
 } from '../src/index.js';
+import {
+  authenticatedSocketOptions,
+  initializeTestWebSocket,
+} from './authenticated-socket-fixture.js';
 
 interface ServerEvents {
   'session:requested': (payload: SessionRequestedPayload) => void;
@@ -62,7 +65,7 @@ test('entrega aceite, recusa e timeout em tempo real', async () => {
     idFactory: () => `session-${++sessionSequence}`,
   });
   const messages: string[] = [];
-  const gateway = initializeWebSocket(
+  const gateway = initializeTestWebSocket(
     httpServer,
     {
       info(message): void {
@@ -72,20 +75,25 @@ test('entrega aceite, recusa e timeout em tempo real', async () => {
         throw new Error(message, { cause: error });
       },
     },
-    60_000,
-    { intervalMs: 30_000, timeoutMs: 90_000, reconnectWindowMs: 90_000 },
-    professors,
-    students,
-    sessionRequests,
-    activeSessions,
+    {
+      requestTimeout: 60_000,
+      heartbeat: { intervalMs: 30_000, timeoutMs: 90_000, reconnectWindowMs: 90_000 },
+      professors,
+      students,
+      requests: sessionRequests,
+      sessions: activeSessions,
+    },
   );
 
   await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve));
   const address = httpServer.address();
   assert(address !== null && typeof address === 'object');
   const url = `http://127.0.0.1:${address.port}`;
-  const teacher: TestClient = io(url, { transports: ['websocket'] });
-  const student: TestClient = io(url, { transports: ['websocket'] });
+  const teacher: TestClient = io(
+    url,
+    authenticatedSocketOptions('TEACHER', 'teacher-id', 'Carlos'),
+  );
+  const student: TestClient = io(url, authenticatedSocketOptions('STUDENT', 'student-id', 'Ana'));
 
   try {
     await Promise.all([waitForConnect(teacher), waitForConnect(student)]);
