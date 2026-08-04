@@ -2,6 +2,26 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 
 import type { AuthServiceContract, RequestMetadata } from '../auth/auth.types.js';
+import { securePasswordSchema } from '../auth/password-policy.js';
+
+const registerSchema = z
+  .object({
+    name: z.string().trim().min(3).max(120),
+    email: z.string().trim().email().max(254),
+    password: securePasswordSchema,
+    confirmPassword: z.string().max(128),
+    role: z.enum(['TEACHER', 'STUDENT', 'PROFESSOR', 'ALUNO']),
+  })
+  .strict()
+  .superRefine((input, context) => {
+    if (input.password !== input.confirmPassword) {
+      context.addIssue({
+        code: 'custom',
+        path: ['confirmPassword'],
+        message: 'A confirmação da senha não confere',
+      });
+    }
+  });
 
 const loginSchema = z
   .object({
@@ -20,19 +40,26 @@ const refreshSchema = z.object({ refreshToken: z.string().min(20).max(8192) }).s
 const passwordSchema = z
   .object({
     currentPassword: z.string().min(1).max(1024),
-    newPassword: z
-      .string()
-      .min(12)
-      .max(128)
-      .regex(/[a-z]/, 'A nova senha deve conter letra minúscula')
-      .regex(/[A-Z]/, 'A nova senha deve conter letra maiúscula')
-      .regex(/[0-9]/, 'A nova senha deve conter número')
-      .regex(/[^A-Za-z0-9]/, 'A nova senha deve conter símbolo'),
+    newPassword: securePasswordSchema,
   })
   .strict();
 
 export function createAuthController(authService: AuthServiceContract) {
   return {
+    register: async (request: Request, response: Response): Promise<void> => {
+      const input = registerSchema.parse(request.body);
+      response.status(201).json(
+        await authService.register(
+          {
+            name: input.name,
+            email: input.email,
+            password: input.password,
+            role: input.role === 'TEACHER' || input.role === 'PROFESSOR' ? 'TEACHER' : 'STUDENT',
+          },
+          metadata(request),
+        ),
+      );
+    },
     login: async (request: Request, response: Response): Promise<void> => {
       const input = loginSchema.parse(request.body);
       const result = await authService.login(

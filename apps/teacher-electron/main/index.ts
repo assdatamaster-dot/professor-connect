@@ -80,8 +80,11 @@ async function createMainWindow(): Promise<void> {
     mainWindow.webContents,
     {
       login: 'teacher:auth:login',
+      register: 'teacher:auth:register',
       logout: 'teacher:auth:logout',
       getIdentity: 'teacher:auth:get-identity',
+      getProfile: 'teacher:auth:get-profile',
+      updateProfile: 'teacher:auth:update-profile',
     },
     {
       requiredRole: 'TEACHER',

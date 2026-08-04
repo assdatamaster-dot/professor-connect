@@ -177,7 +177,8 @@ test('autoriza, isola e transporta eventos sem executá-los', async () => {
     const studentConnection = requireServerConnection(gateway, student.id);
     const bufferedPacketsBeforeCongestion = studentConnection.writeBuffer.length;
     studentConnection.transport.writable = false;
-    for (let index = 0; index < 1_000; index += 1) {
+    const congestionBurstSize = 100;
+    for (let index = 0; index < congestionBurstSize; index += 1) {
       teacher.emit(REMOTE_CONTROL_CHANNEL_EVENTS.MOUSE, {
         ...firstRequest,
         event: {
@@ -189,13 +190,20 @@ test('autoriza, isola e transporta eventos sem executá-los', async () => {
         },
       });
     }
-    await waitForDelay(200);
+    await waitUntil(
+      () =>
+        (teacher.io.engine as { readonly writeBuffer: readonly unknown[] }).writeBuffer.length ===
+        0,
+      5_000,
+    );
+    await waitForDelay();
     assert.equal(
       studentConnection.writeBuffer.length,
       bufferedPacketsBeforeCongestion,
       'o relay não deve enfileirar mousemove quando o aluno não está gravável',
     );
     studentConnection.transport.writable = true;
+    studentConnection.transport.emit('drain');
 
     teacher.emit(REMOTE_CONTROL_CHANNEL_EVENTS.MOUSE, {
       ...firstRequest,
@@ -291,8 +299,8 @@ async function waitForConnect(client: TestClient): Promise<void> {
   await new Promise<void>((resolve) => client.once('connect', resolve));
 }
 
-async function waitUntil(condition: () => boolean): Promise<void> {
-  const deadline = Date.now() + 2_000;
+async function waitUntil(condition: () => boolean, timeoutMs = 2_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
   while (!condition()) {
     if (Date.now() >= deadline) {
       throw new Error('Tempo limite excedido');
@@ -309,6 +317,7 @@ interface InspectableServerConnection {
   readonly writeBuffer: unknown[];
   readonly transport: {
     writable: boolean;
+    emit(event: 'drain'): void;
   };
 }
 

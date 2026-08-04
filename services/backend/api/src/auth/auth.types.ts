@@ -24,7 +24,34 @@ export interface RequestMetadata {
   readonly userAgent?: string;
 }
 
+export interface RegisterInput {
+  readonly name: string;
+  readonly email: string;
+  readonly password: string;
+  readonly role: 'TEACHER' | 'STUDENT';
+}
+
+export interface UserProfile {
+  readonly name: string;
+  readonly email: string;
+  readonly role: 'TEACHER' | 'STUDENT' | 'ADMIN';
+  readonly avatar: string | null;
+  readonly status: 'INVITED' | 'ACTIVE' | 'SUSPENDED';
+  readonly lastLogin: Date | null;
+}
+
+export interface UpdateProfileInput {
+  readonly name?: string;
+  readonly avatar?: string | null;
+  readonly currentPassword?: string;
+  readonly password?: string;
+}
+
 export interface AuthServiceContract {
+  register(
+    input: RegisterInput,
+    metadata: RequestMetadata,
+  ): Promise<{ identity: AuthenticatedIdentity; tokens: TokenPair }>;
   login(
     email: string,
     password: string,
@@ -45,6 +72,8 @@ export interface AuthServiceContract {
     currentPassword: string,
     newPassword: string,
   ): Promise<void>;
+  getProfile(identity: AuthenticatedIdentity): Promise<UserProfile>;
+  updateProfile(identity: AuthenticatedIdentity, input: UpdateProfileInput): Promise<UserProfile>;
 }
 
 export class AuthError extends Error {

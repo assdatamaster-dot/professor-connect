@@ -20,6 +20,7 @@ import { createProfessorsRouter } from './routes/professors-router.js';
 import { createStudentsRouter } from './routes/students-router.js';
 import { createSessionsRouter } from './routes/sessions-router.js';
 import { createAuthRouter } from './routes/auth-router.js';
+import { createUsersRouter } from './routes/users-router.js';
 
 export function createApp(
   professorPresenceManager = new PresenceManager(),
@@ -42,7 +43,7 @@ export function createApp(
         if (origin === undefined || environment.corsOrigins.includes(origin)) callback(null, true);
         else callback(new HttpError('Origem CORS não autorizada', 403, 'cors_forbidden'));
       },
-      methods: ['GET', 'POST', 'DELETE'],
+      methods: ['GET', 'POST', 'PUT', 'DELETE'],
       allowedHeaders: ['Authorization', 'Content-Type'],
       maxAge: 600,
     }),
@@ -52,7 +53,10 @@ export function createApp(
     rateLimit({ windowMs: 60_000, limit: 300, standardHeaders: 'draft-8', legacyHeaders: false }),
   );
   app.use('/health', healthRouter);
-  app.use('/api/auth', createAuthRouter(authService));
+  const authRouter = createAuthRouter(authService);
+  const usersRouter = createUsersRouter(authService);
+  app.use(['/api/auth', '/auth'], authRouter);
+  app.use(['/api/users', '/users'], usersRouter);
   app.use(
     '/api/professors',
     authenticate(authService),

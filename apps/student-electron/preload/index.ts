@@ -177,6 +177,9 @@ contextBridge.exposeInMainWorld('professorConnectWebRtc', webRtcApi);
 contextBridge.exposeInMainWorld('professorConnectFileTransfer', fileTransferApi);
 contextBridge.exposeInMainWorld('professorConnectAuth', {
   login: (credentials) => ipcRenderer.invoke('student:auth:login', credentials),
+  register: (registration) => ipcRenderer.invoke('student:auth:register', registration),
   logout: () => ipcRenderer.invoke('student:auth:logout'),
   getIdentity: () => ipcRenderer.invoke('student:auth:get-identity'),
+  getProfile: () => ipcRenderer.invoke('student:auth:get-profile'),
+  updateProfile: (update) => ipcRenderer.invoke('student:auth:update-profile', update),
 } satisfies DesktopAuthApi);

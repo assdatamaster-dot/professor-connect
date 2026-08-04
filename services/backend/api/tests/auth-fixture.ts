@@ -1,6 +1,7 @@
 import type {
   AuthenticatedIdentity,
   AuthServiceContract,
+  UserProfile,
   TokenPair,
 } from '../src/auth/auth.types.js';
 
@@ -23,6 +24,9 @@ export const TEST_TOKENS: TokenPair = {
 };
 
 export class TestAuthService implements AuthServiceContract {
+  public register(): Promise<{ identity: AuthenticatedIdentity; tokens: TokenPair }> {
+    return Promise.resolve({ identity: TEST_IDENTITY, tokens: TEST_TOKENS });
+  }
   public login(): Promise<{ identity: AuthenticatedIdentity; tokens: TokenPair }> {
     return Promise.resolve({ identity: TEST_IDENTITY, tokens: TEST_TOKENS });
   }
@@ -48,6 +52,19 @@ export class TestAuthService implements AuthServiceContract {
   }
   public changePassword(): Promise<void> {
     return Promise.resolve();
+  }
+  public getProfile(): Promise<UserProfile> {
+    return Promise.resolve({
+      name: TEST_IDENTITY.displayName,
+      email: TEST_IDENTITY.email,
+      role: 'STUDENT',
+      avatar: null,
+      status: 'ACTIVE',
+      lastLogin: null,
+    });
+  }
+  public updateProfile(): Promise<UserProfile> {
+    return this.getProfile();
   }
 }
 export const AUTHORIZATION_HEADERS = {

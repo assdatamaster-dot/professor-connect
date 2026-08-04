@@ -19,15 +19,38 @@ const onlineView = requireElement<HTMLElement>('online-view');
 const loginForm = requireElement<HTMLFormElement>('login-form');
 const emailInput = requireElement<HTMLInputElement>('login-email');
 const passwordInput = requireElement<HTMLInputElement>('login-password');
-const organizationInput = requireElement<HTMLInputElement>('login-organization');
 const loginButton = requireElement<HTMLButtonElement>('login-button');
 const loginError = requireElement<HTMLElement>('login-error');
+const authTitle = requireElement<HTMLElement>('auth-title');
+const authIntro = requireElement<HTMLElement>('auth-intro');
+const showRegisterButton = requireElement<HTMLButtonElement>('show-register');
+const showLoginButton = requireElement<HTMLButtonElement>('show-login');
+const registerForm = requireElement<HTMLFormElement>('register-form');
+const registerName = requireElement<HTMLInputElement>('register-name');
+const registerEmail = requireElement<HTMLInputElement>('register-email');
+const registerPassword = requireElement<HTMLInputElement>('register-password');
+const registerConfirmPassword = requireElement<HTMLInputElement>('register-confirm-password');
+const passwordFeedback = requireElement<HTMLElement>('password-feedback');
+const confirmFeedback = requireElement<HTMLElement>('confirm-feedback');
+const registerError = requireElement<HTMLElement>('register-error');
+const registerButton = requireElement<HTMLButtonElement>('register-button');
 const professorDisplayName = requireElement<HTMLElement>('professor-display-name');
 const presencePill = requireElement<HTMLElement>('presence-pill');
 const presenceStatus = requireElement<HTMLElement>('presence-status');
 const serverStatus = requireElement<HTMLElement>('server-status');
 const sessionNotice = requireElement<HTMLElement>('session-notice');
 const logoutButton = requireElement<HTMLButtonElement>('logout-button');
+const profileButton = requireElement<HTMLButtonElement>('profile-button');
+const profileDialog = requireElement<HTMLDialogElement>('profile-dialog');
+const profileForm = requireElement<HTMLFormElement>('profile-form');
+const profileName = requireElement<HTMLInputElement>('profile-name');
+const profileAvatar = requireElement<HTMLInputElement>('profile-avatar');
+const profileCurrentPassword = requireElement<HTMLInputElement>('profile-current-password');
+const profilePassword = requireElement<HTMLInputElement>('profile-password');
+const profileConfirmPassword = requireElement<HTMLInputElement>('profile-confirm-password');
+const profileError = requireElement<HTMLElement>('profile-error');
+const profileSave = requireElement<HTMLButtonElement>('profile-save');
+const profileCancel = requireElement<HTMLButtonElement>('profile-cancel');
 const activeAttendance = requireElement<HTMLElement>('active-attendance');
 const activeStudentName = requireElement<HTMLElement>('active-student-name');
 const endSessionButton = requireElement<HTMLButtonElement>('end-session');
@@ -263,9 +286,6 @@ loginForm.addEventListener('submit', (event) => {
     .login({
       email: emailInput.value,
       password: passwordInput.value,
-      ...(organizationInput.value.trim().length === 0
-        ? {}
-        : { organizationSlug: organizationInput.value.trim() }),
     })
     .then(() => {
       passwordInput.value = '';
@@ -275,6 +295,132 @@ loginForm.addEventListener('submit', (event) => {
       loginError.textContent =
         error instanceof Error ? error.message : 'Não foi possível conectar.';
       loginError.hidden = false;
+    });
+});
+
+function showRegistration(show: boolean): void {
+  loginForm.hidden = show;
+  registerForm.hidden = !show;
+  authTitle.textContent = show ? 'Crie sua conta' : 'Bem-vindo de volta';
+  authIntro.textContent = show
+    ? 'Leva menos de um minuto. Você entrará como professor.'
+    : 'Entre para ficar disponível aos alunos.';
+  loginError.hidden = true;
+  registerError.hidden = true;
+  (show ? registerName : emailInput).focus();
+}
+
+function validateRegistrationPassword(): void {
+  const value = registerPassword.value;
+  const valid =
+    value.length >= 12 &&
+    /[a-z]/.test(value) &&
+    /[A-Z]/.test(value) &&
+    /[0-9]/.test(value) &&
+    /[^A-Za-z0-9]/.test(value);
+  passwordFeedback.dataset.valid = String(valid);
+  passwordFeedback.textContent = valid
+    ? 'Senha forte.'
+    : 'Use 12 caracteres, maiúscula, minúscula, número e símbolo.';
+  const matches = value.length > 0 && value === registerConfirmPassword.value;
+  confirmFeedback.dataset.valid = String(matches);
+  confirmFeedback.textContent =
+    registerConfirmPassword.value.length === 0
+      ? ''
+      : matches
+        ? 'As senhas conferem.'
+        : 'As senhas não conferem.';
+  registerButton.disabled = !valid || !matches;
+}
+
+showRegisterButton.addEventListener('click', () => showRegistration(true));
+showLoginButton.addEventListener('click', () => showRegistration(false));
+registerPassword.addEventListener('input', validateRegistrationPassword);
+registerConfirmPassword.addEventListener('input', validateRegistrationPassword);
+registerForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  validateRegistrationPassword();
+  if (registerButton.disabled || !registerForm.checkValidity()) return;
+  registerButton.disabled = true;
+  registerError.hidden = true;
+  void window.professorConnectAuth
+    .register({
+      name: registerName.value,
+      email: registerEmail.value,
+      password: registerPassword.value,
+      confirmPassword: registerConfirmPassword.value,
+      role: 'TEACHER',
+    })
+    .then(() => {
+      registerForm.reset();
+      validateRegistrationPassword();
+    })
+    .catch((error: unknown) => {
+      registerError.textContent =
+        error instanceof Error ? error.message : 'Não foi possível criar sua conta.';
+      registerError.hidden = false;
+      registerButton.disabled = false;
+    });
+});
+
+profileButton.addEventListener('click', () => {
+  profileButton.disabled = true;
+  profileError.hidden = true;
+  void window.professorConnectAuth
+    .getProfile()
+    .then((profile) => {
+      profileName.value = profile.name;
+      profileAvatar.value = profile.avatar ?? '';
+      profileCurrentPassword.value = '';
+      profilePassword.value = '';
+      profileConfirmPassword.value = '';
+      profileDialog.showModal();
+    })
+    .catch((error: unknown) => {
+      sessionNotice.textContent =
+        error instanceof Error ? error.message : 'Não foi possível carregar o perfil.';
+      sessionNotice.hidden = false;
+    })
+    .finally(() => {
+      profileButton.disabled = false;
+    });
+});
+
+profileCancel.addEventListener('click', () => profileDialog.close());
+profileForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  profileError.hidden = true;
+  const changingPassword = profilePassword.value.length > 0;
+  if (changingPassword && profilePassword.value !== profileConfirmPassword.value) {
+    profileError.textContent = 'As novas senhas não conferem.';
+    profileError.hidden = false;
+    return;
+  }
+  profileSave.disabled = true;
+  void window.professorConnectAuth
+    .updateProfile({
+      name: profileName.value,
+      avatar: profileAvatar.value.trim().length === 0 ? null : profileAvatar.value.trim(),
+      ...(changingPassword
+        ? {
+            currentPassword: profileCurrentPassword.value,
+            password: profilePassword.value,
+            confirmPassword: profileConfirmPassword.value,
+          }
+        : {}),
+    })
+    .then((profile) => {
+      professorDisplayName.textContent = profile.name;
+      profileDialog.close();
+      if (changingPassword) showRegistration(false);
+    })
+    .catch((error: unknown) => {
+      profileError.textContent =
+        error instanceof Error ? error.message : 'Não foi possível atualizar o perfil.';
+      profileError.hidden = false;
+    })
+    .finally(() => {
+      profileSave.disabled = false;
     });
 });
 

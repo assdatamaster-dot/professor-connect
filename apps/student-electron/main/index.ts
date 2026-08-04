@@ -116,8 +116,11 @@ async function createMainWindow(): Promise<void> {
     mainWindow.webContents,
     {
       login: 'student:auth:login',
+      register: 'student:auth:register',
       logout: 'student:auth:logout',
       getIdentity: 'student:auth:get-identity',
+      getProfile: 'student:auth:get-profile',
+      updateProfile: 'student:auth:update-profile',
     },
     {
       requiredRole: 'STUDENT',

@@ -61,8 +61,11 @@ const workflowApi: TeacherWorkflowApi = {
 
 const authApi: DesktopAuthApi = {
   login: (credentials) => ipcRenderer.invoke('teacher:auth:login', credentials),
+  register: (registration) => ipcRenderer.invoke('teacher:auth:register', registration),
   logout: () => ipcRenderer.invoke('teacher:auth:logout'),
   getIdentity: () => ipcRenderer.invoke('teacher:auth:get-identity'),
+  getProfile: () => ipcRenderer.invoke('teacher:auth:get-profile'),
+  updateProfile: (update) => ipcRenderer.invoke('teacher:auth:update-profile', update),
 };
 
 const presenceChannels = {

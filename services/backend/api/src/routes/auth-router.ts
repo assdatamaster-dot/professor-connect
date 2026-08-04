@@ -25,8 +25,19 @@ export function createAuthRouter(authService: AuthServiceContract): Router {
     standardHeaders: 'draft-8',
     legacyHeaders: false,
   });
+  const registerLimiter = rateLimit({
+    windowMs: 60 * 60_000,
+    limit: 5,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    message: {
+      code: 'too_many_registrations',
+      message: 'Muitos cadastros. Tente novamente mais tarde.',
+    },
+  });
 
   router.get('/providers', controller.providers);
+  router.post('/register', registerLimiter, controller.register);
   router.post('/login', loginLimiter, controller.login);
   router.post('/refresh', refreshLimiter, controller.refresh);
   router.use(authenticate(authService));

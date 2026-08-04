@@ -237,6 +237,69 @@ button svg,
   line-height: 1.6;
 }
 
+#login-form,
+#register-form {
+  animation: auth-panel-in 180ms ease-out;
+}
+
+#login-form input,
+#register-form input {
+  margin-bottom: 16px;
+}
+
+.field-feedback {
+  display: block;
+  margin: -9px 0 16px;
+  color: var(--ink-tertiary);
+  font-size: 0.7rem;
+  line-height: 1.45;
+}
+
+.field-feedback[data-valid='true'] {
+  color: var(--success);
+}
+
+.field-feedback[data-valid='false'] {
+  color: var(--danger-strong);
+}
+
+@keyframes auth-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.permission-dialog.profile-dialog form {
+  text-align: left;
+}
+
+.profile-dialog input {
+  margin-bottom: 14px;
+}
+
+.password-section {
+  display: grid;
+  gap: 10px;
+  margin-top: 4px;
+  padding: 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+}
+
+.password-section > span {
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.password-section input {
+  margin: 0;
+}
+
 label {
   display: inline-block;
   margin-bottom: 8px;

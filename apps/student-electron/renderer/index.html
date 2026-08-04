@@ -24,6 +24,9 @@
           <span class="connection-dot" aria-hidden="true"></span>
           <span id="connection-text">Conectando...</span>
         </div>
+        <button id="student-profile" class="button button--secondary" type="button" hidden>
+          Perfil
+        </button>
         <button id="student-logout" class="button button--secondary" type="button" hidden>
           Sair
         </button>
@@ -480,10 +483,11 @@
       </form>
     </dialog>
 
-    <dialog id="authentication-dialog" class="permission-dialog">
+    <dialog id="authentication-dialog" class="permission-dialog auth-dialog">
       <form id="authentication-form">
         <span class="overline">Área do aluno</span>
         <h2>Entre para solicitar atendimento</h2>
+        <p class="auth-intro">Acesse sua sala com segurança.</p>
         <label for="authentication-email">E-mail</label>
         <input id="authentication-email" type="email" autocomplete="username" required />
         <label for="authentication-password">Senha</label>
@@ -493,16 +497,104 @@
           autocomplete="current-password"
           required
         />
-        <label for="authentication-organization">Instituição <small>(opcional)</small></label>
-        <input
-          id="authentication-organization"
-          autocomplete="organization"
-          placeholder="minha-escola"
-        />
         <p id="authentication-error" class="error-message" role="alert" hidden></p>
         <button id="authentication-submit" class="button button--primary" type="submit">
           Entrar
         </button>
+        <button id="show-student-register" class="button button--secondary" type="button">
+          Criar conta
+        </button>
+      </form>
+      <form id="student-register-form" hidden>
+        <span class="overline">Nova conta</span>
+        <h2>Comece no Professor Connect</h2>
+        <p class="auth-intro">Seu perfil será criado como aluno.</p>
+        <label for="student-register-name">Nome completo</label>
+        <input
+          id="student-register-name"
+          autocomplete="name"
+          minlength="3"
+          maxlength="120"
+          required
+        />
+        <label for="student-register-email">E-mail</label>
+        <input
+          id="student-register-email"
+          type="email"
+          autocomplete="email"
+          maxlength="254"
+          required
+        />
+        <label for="student-register-password">Senha</label>
+        <input
+          id="student-register-password"
+          type="password"
+          autocomplete="new-password"
+          minlength="12"
+          maxlength="128"
+          required
+        />
+        <small id="student-password-feedback" class="field-feedback"
+          >Use 12 caracteres, maiúscula, minúscula, número e símbolo.</small
+        >
+        <label for="student-register-confirm">Confirmar senha</label>
+        <input id="student-register-confirm" type="password" autocomplete="new-password" required />
+        <small id="student-confirm-feedback" class="field-feedback" aria-live="polite"></small>
+        <p id="student-register-error" class="error-message" role="alert" hidden></p>
+        <button id="student-register-submit" class="button button--primary" type="submit" disabled>
+          Criar conta
+        </button>
+        <button id="show-student-login" class="button button--secondary" type="button">
+          Já tenho conta
+        </button>
+      </form>
+    </dialog>
+
+    <dialog id="student-profile-dialog" class="permission-dialog auth-dialog">
+      <form id="student-profile-form">
+        <span class="overline">Minha conta</span>
+        <h2>Editar perfil</h2>
+        <label for="student-profile-name">Nome</label>
+        <input
+          id="student-profile-name"
+          autocomplete="name"
+          minlength="3"
+          maxlength="120"
+          required
+        />
+        <label for="student-profile-avatar">URL da foto <small>(opcional, HTTPS)</small></label>
+        <input id="student-profile-avatar" type="url" placeholder="https://..." />
+        <div class="password-section">
+          <strong>Alterar senha <small>(opcional)</small></strong>
+          <input
+            id="student-current-password"
+            type="password"
+            autocomplete="current-password"
+            placeholder="Senha atual"
+          />
+          <input
+            id="student-new-password"
+            type="password"
+            autocomplete="new-password"
+            placeholder="Nova senha"
+            minlength="12"
+          />
+          <input
+            id="student-confirm-password"
+            type="password"
+            autocomplete="new-password"
+            placeholder="Confirmar nova senha"
+          />
+        </div>
+        <p id="student-profile-error" class="error-message" role="alert" hidden></p>
+        <div class="confirmation-dialog__actions">
+          <button id="student-profile-save" class="button button--primary" type="submit">
+            Salvar
+          </button>
+          <button id="student-profile-cancel" class="button button--secondary" type="button">
+            Cancelar
+          </button>
+        </div>
       </form>
     </dialog>
 

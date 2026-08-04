@@ -11,10 +11,16 @@ import {
   AuthError,
   type AuthenticatedIdentity,
   type AuthServiceContract,
+  type RegisterInput,
   type RequestMetadata,
   type TokenPair,
+  type UpdateProfileInput,
+  type UserProfile,
   type UserRole,
 } from './auth.types.js';
+
+const PUBLIC_ORGANIZATION_SLUG = 'professor-connect';
+const DUMMY_PASSWORD_HASH = '$2b$12$19xZvnvv/1M6atEpXU5NqelfSx3qxJVcG8q9iJtbPO3JpDa5x9mTK';
 
 const USER_INCLUDE = {
   organization: true,
@@ -30,6 +36,67 @@ async function findUserById(userId: string) {
 }
 
 export class AuthService implements AuthServiceContract {
+  public async register(
+    input: RegisterInput,
+    metadata: RequestMetadata,
+  ): Promise<{ identity: AuthenticatedIdentity; tokens: TokenPair }> {
+    const email = input.email.trim().toLowerCase();
+    const name = input.name.trim().replace(/\s+/g, ' ');
+    const passwordHash = await bcrypt.hash(input.password, environment.bcryptRounds);
+
+    try {
+      const createdUserId = await prismaClient.$transaction(async (transaction) => {
+        const [organization, role] = await Promise.all([
+          transaction.organization.findUnique({ where: { slug: PUBLIC_ORGANIZATION_SLUG } }),
+          transaction.role.findUnique({ where: { name: input.role } }),
+        ]);
+        if (organization === null || role === null) {
+          throw new AuthError(
+            'Configuração de acesso indisponível',
+            503,
+            'registration_unavailable',
+          );
+        }
+        const user = await transaction.user.create({
+          data: {
+            organizationId: organization.id,
+            email,
+            displayName: name,
+            passwordHash,
+            passwordChangedAt: new Date(),
+            lastLoginAt: new Date(),
+            status: 'ACTIVE',
+            roles: { create: { roleId: role.id } },
+          },
+          select: { id: true },
+        });
+        const profile = {
+          id: randomUUID(),
+          organizationId: organization.id,
+          userId: user.id,
+          name,
+        };
+        if (input.role === 'TEACHER') await transaction.professor.create({ data: profile });
+        else await transaction.student.create({ data: profile });
+        return user.id;
+      });
+      const user = await findUserById(createdUserId);
+      if (user === null) throw new AuthError('Cadastro não concluído', 500, 'registration_failed');
+      const identity = this.toIdentity(user, randomUUID());
+      const tokens = await this.issueTokenPair(user, identity.sessionFamilyId, metadata);
+      await this.audit('user.registered', user.id, user.organizationId, {
+        role: input.role,
+        ...metadata,
+      });
+      return { identity, tokens };
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw new AuthError('Este e-mail já está cadastrado', 409, 'email_already_registered');
+      }
+      throw error;
+    }
+  }
+
   public async login(
     emailInput: string,
     password: string,
@@ -46,12 +113,17 @@ export class AuthService implements AuthServiceContract {
       },
       include: USER_INCLUDE,
     });
-    const passwordMatches =
-      user?.passwordHash !== null &&
-      user?.passwordHash !== undefined &&
-      (await bcrypt.compare(password, user.passwordHash));
+    const passwordMatches = await bcrypt.compare(
+      password,
+      user?.passwordHash ?? DUMMY_PASSWORD_HASH,
+    );
 
-    if (user === null || !passwordMatches || user.status !== 'ACTIVE') {
+    if (
+      user === null ||
+      user.passwordHash === null ||
+      !passwordMatches ||
+      user.status !== 'ACTIVE'
+    ) {
       await this.audit('auth.login.failed', undefined, undefined, {
         email,
         organizationSlug,
@@ -60,6 +132,10 @@ export class AuthService implements AuthServiceContract {
       throw new AuthError('Credenciais inválidas');
     }
     const identity = this.toIdentity(user, randomUUID());
+    await prismaClient.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() },
+    });
     const tokens = await this.issueTokenPair(user, identity.sessionFamilyId, metadata);
     await this.audit('auth.login.succeeded', user.id, user.organizationId ?? undefined, metadata);
     return { identity, tokens };
@@ -227,6 +303,78 @@ export class AuthService implements AuthServiceContract {
     await this.audit('auth.password.changed', identity.userId, identity.organizationId);
   }
 
+  public async getProfile(identity: AuthenticatedIdentity): Promise<UserProfile> {
+    const user = await findUserById(identity.userId);
+    if (user === null) throw new AuthError('Usuário não encontrado', 404, 'user_not_found');
+    return this.toProfile(user);
+  }
+
+  public async updateProfile(
+    identity: AuthenticatedIdentity,
+    input: UpdateProfileInput,
+  ): Promise<UserProfile> {
+    const user = await prismaClient.user.findUnique({ where: { id: identity.userId } });
+    if (user === null) throw new AuthError('Usuário não encontrado', 404, 'user_not_found');
+
+    let passwordHash: string | undefined;
+    if (input.password !== undefined) {
+      if (
+        input.currentPassword === undefined ||
+        user.passwordHash === null ||
+        !(await bcrypt.compare(input.currentPassword, user.passwordHash))
+      ) {
+        await this.audit(
+          'auth.password.change-failed',
+          identity.userId,
+          identity.organizationId,
+          undefined,
+          'WARNING',
+        );
+        throw new AuthError('Senha atual inválida');
+      }
+      passwordHash = await bcrypt.hash(input.password, environment.bcryptRounds);
+    }
+
+    const normalizedName = input.name?.trim().replace(/\s+/g, ' ');
+    await prismaClient.$transaction(async (transaction) => {
+      await transaction.user.update({
+        where: { id: identity.userId },
+        data: {
+          ...(normalizedName === undefined ? {} : { displayName: normalizedName }),
+          ...(input.avatar === undefined ? {} : { avatarUrl: input.avatar }),
+          ...(passwordHash === undefined ? {} : { passwordHash, passwordChangedAt: new Date() }),
+        },
+      });
+      if (normalizedName !== undefined) {
+        if (identity.roles.includes('TEACHER')) {
+          await transaction.professor.updateMany({
+            where: { userId: identity.userId },
+            data: { name: normalizedName },
+          });
+        } else if (identity.roles.includes('STUDENT')) {
+          await transaction.student.updateMany({
+            where: { userId: identity.userId },
+            data: { name: normalizedName },
+          });
+        }
+      }
+      if (passwordHash !== undefined) {
+        await transaction.authToken.updateMany({
+          where: { userId: identity.userId, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+      }
+    });
+    await this.audit('user.profile.updated', identity.userId, identity.organizationId, {
+      nameChanged: normalizedName !== undefined,
+      avatarChanged: input.avatar !== undefined,
+    });
+    if (passwordHash !== undefined) {
+      await this.audit('auth.password.changed', identity.userId, identity.organizationId);
+    }
+    return this.getProfile(identity);
+  }
+
   private async issueTokenPair(
     user: UserWithAccess,
     familyId: string,
@@ -305,6 +453,21 @@ export class AuthService implements AuthServiceContract {
     };
   }
 
+  private toProfile(user: UserWithAccess): UserProfile {
+    const role = (['ADMIN', 'TEACHER', 'STUDENT'] as const).find((candidate) =>
+      user.roles.some(({ role: assignedRole }) => assignedRole.name === candidate),
+    );
+    if (role === undefined) throw new AuthError('Usuário sem perfil', 403, 'role_required');
+    return {
+      name: user.displayName,
+      email: user.email,
+      role,
+      avatar: user.avatarUrl,
+      status: user.status,
+      lastLogin: user.lastLoginAt,
+    };
+  }
+
   private verifyJwt(token: string, secret: string, expectedType: 'access' | 'refresh'): JwtPayload {
     try {
       const payload = jwt.verify(token, secret, {
@@ -359,4 +522,13 @@ export class AuthService implements AuthServiceContract {
       })
       .catch(() => undefined);
   }
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === 'P2002'
+  );
 }

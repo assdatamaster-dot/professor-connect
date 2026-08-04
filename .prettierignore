@@ -4,3 +4,6 @@ dist
 node_modules
 target
 package-lock.json
+auditorias/beta-6c-baseline.json
+auditorias/beta-6c-window-lifecycle.json
+auditorias/session-accept-smoke.json

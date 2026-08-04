@@ -38,8 +38,8 @@
         <div class="login-panel">
           <div class="login-panel__content">
             <span class="overline">Área do professor</span>
-            <h2>Bem-vindo de volta</h2>
-            <p class="login-intro">Entre com sua identidade institucional.</p>
+            <h2 id="auth-title">Bem-vindo de volta</h2>
+            <p id="auth-intro" class="login-intro">Entre para ficar disponível aos alunos.</p>
             <form id="login-form">
               <label for="login-email">E-mail</label>
               <input
@@ -58,19 +58,69 @@
                 autocomplete="current-password"
                 required
               />
-              <label for="login-organization">Instituição <small>(opcional)</small></label>
-              <input
-                id="login-organization"
-                name="organization"
-                autocomplete="organization"
-                placeholder="minha-escola"
-              />
               <p id="login-error" class="error-message" role="alert" hidden></p>
               <button id="login-button" class="button button--primary button--large" type="submit">
                 Entrar e ficar disponível
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="m9 18 6-6-6-6" />
                 </svg>
+              </button>
+              <button
+                id="show-register"
+                class="button button--secondary button--large"
+                type="button"
+              >
+                Criar conta de professor
+              </button>
+            </form>
+            <form id="register-form" hidden>
+              <label for="register-name">Nome completo</label>
+              <input
+                id="register-name"
+                autocomplete="name"
+                minlength="3"
+                maxlength="120"
+                required
+              />
+              <label for="register-email">E-mail</label>
+              <input
+                id="register-email"
+                type="email"
+                autocomplete="email"
+                maxlength="254"
+                required
+              />
+              <label for="register-password">Senha</label>
+              <input
+                id="register-password"
+                type="password"
+                autocomplete="new-password"
+                minlength="12"
+                maxlength="128"
+                required
+              />
+              <small id="password-feedback" class="field-feedback"
+                >Use 12 caracteres, maiúscula, minúscula, número e símbolo.</small
+              >
+              <label for="register-confirm-password">Confirmar senha</label>
+              <input
+                id="register-confirm-password"
+                type="password"
+                autocomplete="new-password"
+                required
+              />
+              <small id="confirm-feedback" class="field-feedback" aria-live="polite"></small>
+              <p id="register-error" class="error-message" role="alert" hidden></p>
+              <button
+                id="register-button"
+                class="button button--primary button--large"
+                type="submit"
+                disabled
+              >
+                Criar conta
+              </button>
+              <button id="show-login" class="button button--secondary button--large" type="button">
+                Já tenho uma conta
               </button>
             </form>
           </div>
@@ -106,6 +156,12 @@
               </span>
               <span id="professor-display-name" class="profile__name"></span>
             </div>
+            <button id="profile-button" class="icon-button" type="button" title="Editar perfil">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z" />
+              </svg>
+              <span class="sr-only">Editar perfil</span>
+            </button>
             <button id="logout-button" class="icon-button" type="button" title="Sair da conta">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M10 17l5-5-5-5M15 12H3M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5" />
@@ -536,6 +592,45 @@
           </button>
           <button id="reject-session" class="button button--secondary" type="button">
             Agora não
+          </button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="profile-dialog" class="permission-dialog profile-dialog">
+      <form id="profile-form">
+        <span class="overline">Minha conta</span>
+        <h2>Editar perfil</h2>
+        <label for="profile-name">Nome</label>
+        <input id="profile-name" autocomplete="name" minlength="3" maxlength="120" required />
+        <label for="profile-avatar">URL da foto <small>(opcional, HTTPS)</small></label>
+        <input id="profile-avatar" type="url" placeholder="https://..." />
+        <div class="password-section">
+          <span>Alterar senha <small>(opcional)</small></span>
+          <input
+            id="profile-current-password"
+            type="password"
+            autocomplete="current-password"
+            placeholder="Senha atual"
+          />
+          <input
+            id="profile-password"
+            type="password"
+            autocomplete="new-password"
+            placeholder="Nova senha"
+            minlength="12"
+          />
+          <input
+            id="profile-confirm-password"
+            type="password"
+            autocomplete="new-password"
+            placeholder="Confirmar nova senha"
+          />
+        </div>
+        <p id="profile-error" class="error-message" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button id="profile-save" class="button button--primary" type="submit">Salvar</button>
+          <button id="profile-cancel" class="button button--secondary" type="button">
+            Cancelar
           </button>
         </div>
       </form>
