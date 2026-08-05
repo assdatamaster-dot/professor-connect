@@ -4,7 +4,7 @@ import { test } from 'node:test';
 
 import type { PrismaClient } from '@prisma/client';
 
-import { assertMigrationsApplied } from '../src/migration-readiness.js';
+import { assertMigrationsApplied, describeDatabaseTarget } from '../src/migration-readiness.js';
 
 const MIGRATIONS = [
   '20260731090000_identity_and_access',
@@ -17,28 +17,78 @@ const MIGRATIONS = [
   '20260805150000_intelligent_attendance_flow',
   '20260805180000_bootstrap_first_run',
 ] as const;
+const TABLES = [
+  'organizations',
+  'users',
+  'system_settings',
+  'bootstrap_state',
+  'user_avatars',
+  'roles',
+  'permissions',
+  'user_roles',
+  'role_permissions',
+  'auth_tokens',
+  'external_identities',
+  'professors',
+  'students',
+  'presence_connections',
+  'session_requests',
+  'session_request_recipients',
+  'attendance_sessions',
+  'workflow_sessions',
+  'workflow_session_participants',
+  'support_calls',
+  'file_transfers',
+  'domain_events',
+  'audit_logs',
+  'application_logs',
+] as const;
+const IDENTITY = [{ databaseName: 'professorconnect', schemaName: 'public' }] as const;
+
+test('describes the configured database without exposing credentials', () => {
+  assert.deepEqual(
+    describeDatabaseTarget(
+      'postgresql://professor_connect:super-secret@postgres.internal:5433/professorconnect?schema=tenant',
+    ),
+    {
+      host: 'postgres.internal',
+      port: '5433',
+      databaseName: 'professorconnect',
+      schemaName: 'tenant',
+    },
+  );
+  assert.throws(() => describeDatabaseTarget(''), /DATABASE_URL é obrigatória/);
+});
 
 test('accepts startup only after every bundled migration is complete', async () => {
   const prisma = createPrismaStub([
+    IDENTITY,
     [{ exists: true }],
     MIGRATIONS.map((migrationName) => ({
       migrationName,
       finishedAt: new Date(),
       rolledBackAt: null,
     })),
+    TABLES.map((tableName) => ({ tableName })),
   ]);
 
-  await assert.doesNotReject(assertMigrationsApplied(prisma));
+  assert.deepEqual(await assertMigrationsApplied(prisma), {
+    databaseName: 'professorconnect',
+    schemaName: 'public',
+    migrationCount: MIGRATIONS.length,
+    tableCount: TABLES.length,
+  });
 });
 
 test('rejects startup when the Prisma migration table does not exist', async () => {
-  const prisma = createPrismaStub([[{ exists: false }]]);
+  const prisma = createPrismaStub([IDENTITY, [{ exists: false }]]);
 
   await assert.rejects(assertMigrationsApplied(prisma), /a tabela _prisma_migrations não existe/);
 });
 
 test('rejects startup when a bundled migration is pending', async () => {
   const prisma = createPrismaStub([
+    IDENTITY,
     [{ exists: true }],
     MIGRATIONS.slice(0, -1).map((migrationName) => ({
       migrationName,
@@ -48,6 +98,21 @@ test('rejects startup when a bundled migration is pending', async () => {
   ]);
 
   await assert.rejects(assertMigrationsApplied(prisma), /20260805180000_bootstrap_first_run/);
+});
+
+test('rejects startup when migrations are recorded but a domain table is absent', async () => {
+  const prisma = createPrismaStub([
+    IDENTITY,
+    [{ exists: true }],
+    MIGRATIONS.map((migrationName) => ({
+      migrationName,
+      finishedAt: new Date(),
+      rolledBackAt: null,
+    })),
+    TABLES.filter((tableName) => tableName !== 'users').map((tableName) => ({ tableName })),
+  ]);
+
+  await assert.rejects(assertMigrationsApplied(prisma), /tabelas ausentes: users/);
 });
 
 test('migration do fluxo inteligente persiste disponibilidade do professor', async () => {
@@ -119,6 +184,31 @@ test('seed sincroniza somente referências e preserva o estado de primeiro acess
   assert.match(seed, /transaction\.permission\.upsert/);
   assert.doesNotMatch(seed, /transaction\.organization\.(?:create|upsert)/);
   assert.doesNotMatch(seed, /transaction\.user\.(?:create|upsert)/);
+});
+
+test('imagem Docker prepara e valida o banco pelo entrypoint antes do servidor', async () => {
+  const [dockerfile, entrypoint, rootPackage] = await Promise.all([
+    readFile(new URL('../../Dockerfile', import.meta.url), 'utf8'),
+    readFile(new URL('../../docker-entrypoint.sh', import.meta.url), 'utf8'),
+    readFile(new URL('../../../../package.json', import.meta.url), 'utf8'),
+  ]);
+
+  assert.match(dockerfile, /ENTRYPOINT \["\/usr\/local\/bin\/professor-connect-entrypoint"\]/);
+  assert.match(dockerfile, /CMD \["node", "services\/backend\/api\/dist\/server\.js"\]/);
+  assert.match(entrypoint, /npm run backend:prepare/);
+  assert.match(entrypoint, /exec "\$@"/);
+  assert.doesNotMatch(entrypoint, /username|password/);
+  assert.match(rootPackage, /prisma:generate.*prisma:deploy.*prisma:status/);
+});
+
+test('preview administrativo é explicitamente bloqueado em produção', async () => {
+  const preview = await readFile(
+    new URL('../../api/tests/admin-preview.ts', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(preview, /process\.env\.NODE_ENV === 'production'/);
+  assert.match(preview, /servidor de preview administrativo é proibido em produção/);
 });
 
 function createPrismaStub(queryResults: unknown[]): PrismaClient {

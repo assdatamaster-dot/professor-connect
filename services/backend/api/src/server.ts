@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 
 import { environment } from '@professor-connect/config';
-import { DatabasePersistence } from '@professor-connect/database';
+import { DatabasePersistence, describeDatabaseTarget } from '@professor-connect/database';
 import {
   initializeWebSocket,
   PresenceManager,
@@ -20,10 +20,11 @@ const persistence = new DatabasePersistence(undefined, (error) => {
   console.error('Falha na fila de persistência', error);
 });
 const logger = createLogger(persistence.audit);
+createLogger().info('Destino PostgreSQL configurado', { ...describeDatabaseTarget() });
 const authService = new AuthService();
 const bootstrapService = new BootstrapService(authService);
 
-await persistence.assertMigrationsApplied();
+const databaseReadiness = await persistence.assertMigrationsApplied();
 const bootstrapStatus = await bootstrapService.initialize();
 await persistence.recovery.recoverAfterRestart();
 const [requestHistory, sessionHistory] = await Promise.all([
@@ -100,6 +101,7 @@ httpServer.on('error', (error) => {
 });
 
 httpServer.listen(environment.port, environment.host, () => {
+  logger.info('Banco de dados validado', { ...databaseReadiness });
   logger.info('Servidor iniciado', {
     host: environment.host,
     port: environment.port,

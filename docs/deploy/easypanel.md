@@ -27,11 +27,12 @@ O estágio final do Dockerfile é `production`, portanto não é necessário inf
 EasyPanel. Consulte o [App Service oficial](https://easypanel.io/docs/services/app) para as opções
 de fonte, Dockerfile, ambiente, domínio e proxy.
 
-O `CMD` executa `npm run backend:prepare`, que regenera o Prisma Client e aplica
-`prisma migrate deploy`. A API só é importada depois que os dois comandos terminam com sucesso.
-Não configure `node services/backend/api/dist/server.js` como comando personalizado, pois isso
-contornaria o fluxo de preparação. Se o serviço for criado com Nixpacks em vez do Dockerfile, o
-`nixpacks.toml` também usa `npm run start` e preserva a mesma sequência.
+O `ENTRYPOINT` executa `npm run backend:prepare`, que regenera o Prisma Client, aplica
+`prisma migrate deploy` e confirma `prisma migrate status`. A API só é iniciada depois que os três
+comandos terminam com sucesso. O entrypoint continua ativo mesmo quando o campo **Command** do
+EasyPanel substitui o `CMD`; ainda assim, prefira deixar **Command** e **Arguments** vazios. Se o
+serviço for criado com Nixpacks em vez do Dockerfile, o `nixpacks.toml` usa `npm run start` e
+preserva a mesma sequência pelo `prestart`.
 
 ## 3. Configurar as variáveis
 
@@ -45,7 +46,7 @@ REQUEST_TIMEOUT_MS=60000
 HEARTBEAT_INTERVAL_MS=30000
 HEARTBEAT_TIMEOUT_MS=90000
 RECONNECT_WINDOW_MS=90000
-DATABASE_URL=postgresql://USER:SENHA@HOST:5432/professor_connect
+DATABASE_URL=postgresql://USER:SENHA@HOST:5432/NOME_EXATO_DO_BANCO
 JWT_ACCESS_SECRET=<segredo-aleatorio-exclusivo-com-32-ou-mais-caracteres>
 JWT_REFRESH_SECRET=<outro-segredo-aleatorio-com-32-ou-mais-caracteres>
 JWT_ISSUER=professor-connect
@@ -56,6 +57,13 @@ BCRYPT_ROUNDS=12
 TRUST_PROXY=true
 CORS_ORIGINS=
 ```
+
+Copie host, porta, usuário e **nome do banco** da seção **Credentials** do PostgreSQL no EasyPanel.
+Não digite o nome por aproximação: `professorconnect` e `professor_connect` são bancos distintos.
+No primeiro log do backend, o evento `Destino PostgreSQL configurado` mostra host, porta, banco e
+schema efetivos sem revelar usuário ou senha. O evento `Banco de dados validado`, emitido antes de
+`Servidor iniciado`, confirma o nome retornado pelo próprio PostgreSQL, as 9 migrations e as 24
+tabelas esperadas.
 
 `REQUEST_TIMEOUT_MS` limita somente solicitações de atendimento ainda não respondidas. Ele não
 define duração para uma sessão nem para o controle remoto já autorizado.
@@ -88,14 +96,35 @@ própria origem e mantém bloqueadas somente origens externas que não estejam e
 ## 5. Publicar e validar
 
 Clique em **Deploy** e acompanhe os logs. Em um banco novo, antes de `Servidor iniciado`, devem
-aparecer a geração do Prisma Client e a aplicação das cinco migrations. Em deploys seguintes,
+aparecer a geração do Prisma Client e a aplicação das 9 migrations. Em deploys seguintes,
 `prisma migrate deploy` informa que não há migrations pendentes. Somente então abra:
 
 ```text
 https://api.professor-connect.example/health
 ```
 
-Resposta esperada:
+Antes de abrir o painel, use o **Console** do serviço backend para uma auditoria somente leitura:
+
+```bash
+npm run prisma:status
+npm run prisma:pull:print
+```
+
+O primeiro comando deve informar que 9 migrations foram encontradas e que o banco está atualizado.
+O segundo imprime o schema introspectado sem sobrescrever `prisma/schema.prisma`. Somente então
+consulte a saúde da aplicação. Resposta esperada:
+
+As migrations embarcadas, na ordem, são:
+
+1. `20260731090000_identity_and_access`;
+2. `20260731091000_support_workflow`;
+3. `20260731091500_protocol_workflow`;
+4. `20260731092000_events_audit_and_transfers`;
+5. `20260803090000_authentication_security`;
+6. `20260804090000_user_registration_and_profiles`;
+7. `20260805090000_administrative_panel`;
+8. `20260805150000_intelligent_attendance_flow`;
+9. `20260805180000_bootstrap_first_run`.
 
 ```json
 {
@@ -133,7 +162,8 @@ manutenção.
 - DNS resolvendo para a VPS;
 - Dockerfile localizado a partir da raiz do repositório;
 - banco persistente e variáveis de autenticação configurados;
-- logs mostram `prisma generate` e `prisma migrate deploy` antes de `Servidor iniciado`;
+- logs mostram o destino PostgreSQL sanitizado, `prisma generate`, `prisma migrate deploy`,
+  `prisma migrate status` e a validação de 24 tabelas antes de `Servidor iniciado`;
 - nenhum comando de start personalizado contorna o `CMD` da imagem;
 - proxy apontando para a porta `3000`;
 - HTTPS válido;

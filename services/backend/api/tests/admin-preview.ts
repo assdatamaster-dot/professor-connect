@@ -11,6 +11,12 @@ import { createApp } from '../src/app.js';
 import { TestAdminService } from './admin-fixture.js';
 import { TEST_IDENTITY, TEST_TOKENS, TestAuthService } from './auth-fixture.js';
 
+if (process.env.NODE_ENV === 'production') {
+  throw new Error(
+    'O servidor de preview administrativo é proibido em produção. Inicie services/backend/api/dist/server.js.',
+  );
+}
+
 const host = '127.0.0.1';
 const port = Number(process.env.ADMIN_PREVIEW_PORT ?? '4300');
 const email = 'admin@professor-connect.test';

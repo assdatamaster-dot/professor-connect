@@ -38,9 +38,10 @@ PostgreSQL persistente e acessível durante toda a inicialização.
 
 1. `prisma generate` usando `services/backend/database/prisma/schema.prisma`;
 2. `prisma migrate deploy` usando `services/backend/database/prisma/migrations`;
-3. validação defensiva de que todas as migrations embarcadas foram concluídas;
-4. `RecoveryRepository.recoverAfterRestart()`;
-5. abertura das portas HTTP e Socket.IO.
+3. `prisma migrate status` no mesmo `DATABASE_URL`;
+4. validação defensiva de que as 9 migrations e as 24 tabelas do schema existem;
+5. `RecoveryRepository.recoverAfterRestart()`;
+6. abertura das portas HTTP e Socket.IO.
 
 Uma falha em qualquer etapa encerra o processo sem abrir a API. `migrate deploy` é idempotente e,
 em um banco vazio, cria `_prisma_migrations` e todas as tabelas da aplicação.
@@ -76,7 +77,9 @@ docker build \
 ```
 
 O estágio de prune seleciona apenas o grafo da API. O runtime final contém dependências de
-produção, schema e migrations, roda sem privilégios como `node` e possui `HEALTHCHECK` próprio.
+produção, schema e migrations, roda sem privilégios como `node` e possui `HEALTHCHECK` próprio. A
+preparação fica no `ENTRYPOINT`, portanto continua obrigatória mesmo quando um orquestrador troca o
+comando (`CMD`) do contêiner.
 No Compose, somente `/app/node_modules/.prisma` e `/tmp` são graváveis; isso permite regenerar o
 client mantendo o restante do filesystem somente leitura.
 

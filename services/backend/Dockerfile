@@ -72,6 +72,9 @@ COPY --chown=node:node --from=build /app/services/backend/services/dist ./servic
 COPY --chown=node:node --from=build /app/services/backend/websocket/package.json ./services/backend/websocket/package.json
 COPY --chown=node:node --from=build /app/services/backend/websocket/dist ./services/backend/websocket/dist
 COPY --chown=node:node --from=build /app/apps/admin-web/dist ./apps/admin-web/dist
+COPY services/backend/docker-entrypoint.sh /usr/local/bin/professor-connect-entrypoint
+
+RUN chmod 0555 /usr/local/bin/professor-connect-entrypoint
 
 USER node
 
@@ -82,4 +85,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 
 STOPSIGNAL SIGTERM
 
-CMD ["sh", "-c", "npm run backend:prepare && exec node services/backend/api/dist/server.js"]
+ENTRYPOINT ["/usr/local/bin/professor-connect-entrypoint"]
+CMD ["node", "services/backend/api/dist/server.js"]
