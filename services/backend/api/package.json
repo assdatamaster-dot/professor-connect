@@ -16,7 +16,7 @@
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "dev": "tsx watch src/server.ts",
     "lint": "eslint src tests --max-warnings=0",
-    "pretest": "npm run build --workspace=@professor-connect/websocket",
+    "pretest": "npm run build --workspace=@professor-connect/websocket && npm run build --workspace=@professor-connect/admin-web",
     "predev": "npm run backend:prepare --prefix ../../.. && npm run build --workspace=@professor-connect/protocol --workspace=@professor-connect/services --workspace=@professor-connect/config --workspace=@professor-connect/websocket",
     "prestart": "npm run backend:prepare --prefix ../../..",
     "preview:admin": "npm run build-admin --prefix ../../.. && tsx tests/admin-preview.ts",

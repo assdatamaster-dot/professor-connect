@@ -42,7 +42,8 @@
     "request:client": "npm run request:client --workspace=@professor-connect/websocket",
     "start": "npm run start --workspace=@professor-connect/api",
     "test": "turbo run test",
-    "typecheck": "turbo run typecheck"
+    "typecheck": "turbo run typecheck",
+    "verify-admin-publication": "node scripts/verify-admin-publication.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

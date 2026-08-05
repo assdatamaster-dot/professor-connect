@@ -83,6 +83,10 @@ endpoint.
 O mesmo endpoint HTTPS atende Express e o upgrade WebSocket do Socket.IO. A URL usada pelos
 clientes deve ser o domínio HTTPS, nunca o IP/porta interna do contêiner.
 
+O proxy deve preservar `Host`/`X-Forwarded-Host` e `X-Forwarded-Proto`, como ocorre na configuração
+padrão do EasyPanel. Com `TRUST_PROXY=true`, o backend reconhece a origem HTTPS pública como a
+própria origem e mantém bloqueadas somente origens externas que não estejam em `CORS_ORIGINS`.
+
 ## 5. Publicar e validar
 
 Clique em **Deploy** e acompanhe os logs. Em um banco novo, antes de `Servidor iniciado`, devem
@@ -103,6 +107,16 @@ Resposta esperada:
 
 Mantenha **1 réplica**. Identidade, refresh tokens, auditoria e histórico são persistidos, mas a
 coordenação de sockets ativos ainda exige uma única réplica até a adoção de um adapter distribuído.
+
+Valide também o HTML, os assets versionados, os MIME types e o comportamento CORS da publicação:
+
+```bash
+npm run verify-admin-publication -- https://api.professor-connect.example
+```
+
+O comando deve listar cada arquivo em `/admin/assets/` com HTTP 200 e terminar com a confirmação
+de que o painel foi publicado corretamente. Um asset inexistente deve responder 404, nunca receber
+o fallback HTML da SPA.
 
 ## 6. Atualizar
 
@@ -127,4 +141,6 @@ manutenção.
 - HTTPS válido;
 - exatamente uma réplica;
 - `/health` retornando HTTP 200;
+- `/admin` e todos os `/admin/assets/*.js|css` retornando HTTP 200 com MIME correto;
+- `npm run verify-admin-publication -- https://<domínio>` aprovado;
 - logs sem segredos ou erros de configuração.

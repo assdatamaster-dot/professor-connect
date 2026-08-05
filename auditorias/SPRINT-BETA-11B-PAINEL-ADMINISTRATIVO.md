@@ -18,6 +18,21 @@ carregar na pré-visualização HTTP local. As consultas e indicadores agora exc
 qualquer ADMIN, o bundle de produção não contém `.map` nem comentário `sourceMappingURL` e a CSP
 preserva o reforço de HTTPS em produção sem quebrar o fluxo local/Electron.
 
+### Correção da publicação no EasyPanel
+
+A verificação HTTP do domínio de produção reproduziu o erro reportado: os bundles retornavam
+`200` sem `Origin`, mas `403 application/json` quando requisitados com a origem HTTPS pública. O
+problema não estava no Vite, no Docker nem no `express.static()`: o middleware CORS global rejeitava
+a própria origem porque `CORS_ORIGINS` estava vazio. Os atributos `crossorigin` gerados pelo Vite
+faziam o navegador enviar esse cabeçalho também para JavaScript e CSS.
+
+A correção reconhece a mesma origem por protocolo e host já normalizados pelo `TRUST_PROXY`,
+incluindo `X-Forwarded-Proto` e `X-Forwarded-Host` do EasyPanel, sem liberar origens externas. O
+Vite agora declara explicitamente `base: '/admin/'`, `outDir: 'dist'` e `assetsDir: 'assets'`. Assets
+versionados recebem cache imutável em produção, enquanto um asset ausente retorna `404` em vez de
+receber o fallback HTML da SPA. Um verificador reutilizável exercita HTML, caminhos, status, MIME,
+CORS, cache e o 404 diretamente contra qualquer domínio publicado.
+
 ## Arquitetura revisada
 
 - `apps/admin-web`: SPA React/Vite isolada, servida em `/admin` pelo backend e com proxy local no

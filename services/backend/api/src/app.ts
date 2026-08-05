@@ -65,14 +65,21 @@ export function createApp(
     }),
   );
   app.use(
-    cors({
-      origin(origin, callback) {
-        if (origin === undefined || environment.corsOrigins.includes(origin)) callback(null, true);
-        else callback(new HttpError('Origem CORS não autorizada', 403, 'cors_forbidden'));
-      },
-      methods: ['GET', 'POST', 'PUT', 'DELETE'],
-      allowedHeaders: ['Authorization', 'Content-Type'],
-      maxAge: 600,
+    cors((request, callback) => {
+      const origin = request.header('Origin');
+      const sameOrigin = origin === `${request.protocol}://${request.host}`;
+
+      if (origin !== undefined && !sameOrigin && !environment.corsOrigins.includes(origin)) {
+        callback(new HttpError('Origem CORS não autorizada', 403, 'cors_forbidden'));
+        return;
+      }
+
+      callback(null, {
+        origin: origin === undefined ? false : origin,
+        methods: ['GET', 'POST', 'PUT', 'DELETE'],
+        allowedHeaders: ['Authorization', 'Content-Type'],
+        maxAge: 600,
+      });
     }),
   );
   app.use(express.json({ limit: '64kb', strict: true }));
@@ -105,8 +112,17 @@ export function createApp(
   );
   const adminIndex = resolve(adminWebDirectory, 'index.html');
   if (existsSync(adminIndex)) {
-    app.use('/admin', express.static(adminWebDirectory, { index: false, maxAge: '1h' }));
-    app.get(/^\/admin(?:\/.*)?$/, (_request, response) => response.sendFile(adminIndex));
+    app.use(
+      '/admin',
+      express.static(adminWebDirectory, {
+        immutable: environment.nodeEnv === 'production',
+        index: false,
+        maxAge: environment.nodeEnv === 'production' ? '1y' : 0,
+      }),
+    );
+    app.get(/^\/admin(?:\/(?!assets(?:\/|$)).*)?$/, (_request, response) =>
+      response.sendFile(adminIndex),
+    );
   }
   app.use((_request, response) =>
     response.status(404).json({ code: 'not_found', message: 'Recurso não encontrado' }),
