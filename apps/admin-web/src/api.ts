@@ -57,10 +57,9 @@ export class AdminApi {
   }
 
   public recoverBootstrapSession(input: BootstrapSetupInput): Promise<AuthResponse> {
-    return this.login(
+    return this.initialAdministratorSession(
       input.administrator.email,
       input.administrator.password,
-      input.organization.slug,
     );
   }
 
@@ -69,13 +68,18 @@ export class AdminApi {
     password: string,
     organizationSlug: string,
   ): Promise<AuthResponse> {
-    const result = await this.publicRequest<AuthResponse>('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, organizationSlug }),
-    });
-    this.acceptSession(result, organizationSlug);
-    return result;
+    try {
+      const result = await this.publicRequest<AuthResponse>('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, organizationSlug }),
+      });
+      this.acceptSession(result, organizationSlug);
+      return result;
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.code !== 'authentication_failed') throw error;
+      return this.initialAdministratorSession(email, password);
+    }
   }
 
   public async restore(): Promise<AuthResponse | null> {
@@ -214,6 +218,19 @@ export class AdminApi {
     const response = await fetch(path, init);
     if (!response.ok) throw await this.toError(response);
     return (await response.json()) as T;
+  }
+
+  private async initialAdministratorSession(
+    email: string,
+    password: string,
+  ): Promise<BootstrapSetupResult> {
+    const result = await this.publicRequest<BootstrapSetupResult>('/api/bootstrap/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    this.acceptSession(result, result.organization.slug);
+    return result;
   }
 
   private acceptSession(result: AuthResponse, organizationSlug: string): void {

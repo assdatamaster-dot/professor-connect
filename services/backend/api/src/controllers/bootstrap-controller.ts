@@ -73,6 +73,12 @@ const setupSchema = z
       });
     }
   });
+const sessionSchema = z
+  .object({
+    email: z.string().trim().email().max(254),
+    password: z.string().min(1).max(1024),
+  })
+  .strict();
 
 export function createBootstrapController(service: BootstrapServiceContract) {
   return {
@@ -127,6 +133,13 @@ export function createBootstrapController(service: BootstrapServiceContract) {
             metadata(request),
           ),
         );
+    },
+    session: async (request: Request, response: Response): Promise<void> => {
+      const input = sessionSchema.parse(request.body);
+      response
+        .set('Cache-Control', 'no-store')
+        .status(200)
+        .json(await service.recoverSession(input.email, input.password, metadata(request)));
     },
   };
 }

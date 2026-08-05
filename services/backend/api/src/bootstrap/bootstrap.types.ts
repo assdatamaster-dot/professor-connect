@@ -54,6 +54,11 @@ export interface BootstrapSetupResult {
 export interface BootstrapServiceContract {
   initialize(): Promise<BootstrapStatus>;
   setup(input: BootstrapSetupInput, metadata: RequestMetadata): Promise<BootstrapSetupResult>;
+  recoverSession(
+    email: string,
+    password: string,
+    metadata: RequestMetadata,
+  ): Promise<BootstrapSetupResult>;
 }
 
 export class BootstrapError extends Error {

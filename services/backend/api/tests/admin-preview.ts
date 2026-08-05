@@ -53,6 +53,10 @@ class PreviewAuthService extends TestAuthService {
 
 class PreviewBootstrapService implements BootstrapServiceContract {
   private initialized = process.env.ADMIN_PREVIEW_FIRST_RUN !== 'true';
+  private administratorEmail = email;
+  private administratorPassword = password;
+  private organizationName = 'Professor Connect';
+  private organizationSlug = organizationSlug;
 
   public initialize(): Promise<{ initialized: boolean }> {
     return Promise.resolve({ initialized: this.initialized });
@@ -67,6 +71,10 @@ class PreviewBootstrapService implements BootstrapServiceContract {
       );
     }
     this.initialized = true;
+    this.administratorEmail = input.administrator.email.trim().toLowerCase();
+    this.administratorPassword = input.administrator.password;
+    this.organizationName = input.organization.name;
+    this.organizationSlug = input.organization.slug;
     return Promise.resolve({
       identity: {
         ...identity,
@@ -75,8 +83,30 @@ class PreviewBootstrapService implements BootstrapServiceContract {
       tokens: TEST_TOKENS,
       organization: {
         id: identity.organizationId,
-        name: input.organization.name,
-        slug: input.organization.slug,
+        name: this.organizationName,
+        slug: this.organizationSlug,
+      },
+    });
+  }
+
+  public recoverSession(
+    receivedEmail: string,
+    receivedPassword: string,
+  ): Promise<BootstrapSetupResult> {
+    if (
+      !this.initialized ||
+      receivedEmail.trim().toLowerCase() !== this.administratorEmail ||
+      receivedPassword !== this.administratorPassword
+    ) {
+      throw new BootstrapError('Credenciais inválidas', 401, 'authentication_failed');
+    }
+    return Promise.resolve({
+      identity,
+      tokens: TEST_TOKENS,
+      organization: {
+        id: identity.organizationId,
+        name: this.organizationName,
+        slug: this.organizationSlug,
       },
     });
   }

@@ -48,6 +48,7 @@ const permissionsByRole = {
     'files.transfer',
   ],
 } as const;
+const DUMMY_PASSWORD_HASH = '$2b$12$19xZvnvv/1M6atEpXU5NqelfSx3qxJVcG8q9iJtbPO3JpDa5x9mTK';
 
 export class BootstrapService implements BootstrapServiceContract {
   public constructor(
@@ -239,6 +240,64 @@ export class BootstrapService implements BootstrapServiceContract {
       }
       throw error;
     }
+  }
+
+  public async recoverSession(
+    emailInput: string,
+    password: string,
+    metadata: RequestMetadata,
+  ): Promise<BootstrapSetupResult> {
+    const state = await this.database.bootstrapState.findUnique({ where: { id: 1 } });
+    const administrator =
+      state === null || state.initializedAt === null || state.administratorId === null
+        ? null
+        : await this.database.user.findUnique({
+            where: { id: state.administratorId },
+            select: {
+              id: true,
+              organizationId: true,
+              email: true,
+              passwordHash: true,
+              status: true,
+              deletedAt: true,
+              organization: { select: { id: true, name: true, slug: true } },
+              roles: {
+                where: { role: { name: 'ADMIN' } },
+                select: { roleId: true },
+                take: 1,
+              },
+            },
+          });
+    const passwordMatches = await bcrypt.compare(
+      password,
+      administrator?.passwordHash ?? DUMMY_PASSWORD_HASH,
+    );
+    const emailMatches = administrator?.email.toLowerCase() === emailInput.trim().toLowerCase();
+
+    if (
+      administrator === null ||
+      administrator.organizationId !== state?.organizationId ||
+      administrator.deletedAt !== null ||
+      administrator.status !== 'ACTIVE' ||
+      administrator.roles.length === 0 ||
+      !emailMatches ||
+      !passwordMatches
+    ) {
+      throw new BootstrapError('Credenciais inválidas', 401, 'authentication_failed');
+    }
+
+    const session = await this.authService.createSessionForUser(administrator.id, metadata);
+    await this.database.auditLog.create({
+      data: {
+        actorType: 'user',
+        actorId: administrator.id,
+        action: 'bootstrap.session.recovered',
+        entityType: 'organization',
+        entityId: administrator.organization.id,
+        metadata: metadata as Prisma.InputJsonValue,
+      },
+    });
+    return { ...session, organization: administrator.organization };
   }
 
   private alreadyCompleted(): never {

@@ -32,6 +32,17 @@ test('endpoints detectam banco vazio, concluem setup e bloqueiam reexecução', 
       this.lastInput = input;
       return Promise.resolve(setupResult());
     }
+
+    public recoverSession(email: string, password: string): Promise<BootstrapSetupResult> {
+      if (
+        !this.initialized ||
+        email.toLowerCase() !== 'admin@colegio.test' ||
+        password !== 'Strong#Password1'
+      ) {
+        throw new BootstrapError('Credenciais inválidas', 401, 'authentication_failed');
+      }
+      return Promise.resolve(setupResult());
+    }
   }
 
   const bootstrap = new MemoryBootstrapService();
@@ -70,6 +81,16 @@ test('endpoints detectam banco vazio, concluem setup e bloqueiam reexecução', 
 
     const completedStatus = await fetch(`${baseUrl}/api/bootstrap/status`);
     assert.deepEqual(await completedStatus.json(), { initialized: true });
+    const recoveredSession = await fetch(`${baseUrl}/api/bootstrap/session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'admin@colegio.test', password: 'Strong#Password1' }),
+    });
+    assert.equal(recoveredSession.status, 200);
+    assert.equal(
+      ((await recoveredSession.json()) as BootstrapSetupResult).organization.slug,
+      'colegio-teste',
+    );
     const repeated = await fetch(`${baseUrl}/api/bootstrap/setup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -112,6 +133,16 @@ test('serviço cria organização, administrador, configurações, auditoria e s
       'bootstrap.completed',
     ],
   );
+  const recovered = await service.recoverSession(
+    serviceInput().administrator.email,
+    serviceInput().administrator.password,
+    { ipAddress: '127.0.0.1' },
+  );
+  assert.equal(recovered.identity.roles.includes('ADMIN'), true);
+  await assert.rejects(
+    () => service.recoverSession(serviceInput().administrator.email, 'Wrong#Password1', {}),
+    (error: unknown) => error instanceof BootstrapError && error.code === 'authentication_failed',
+  );
   await assert.rejects(
     () => service.setup(serviceInput(), {}),
     (error: unknown) =>
@@ -143,7 +174,14 @@ interface MemoryState {
   organizationId: string | null;
   administratorId: string | null;
   organizations: { id: string; name: string; slug: string }[];
-  users: { id: string; organizationId: string }[];
+  users: {
+    id: string;
+    organizationId: string;
+    email: string;
+    passwordHash: string;
+    status: 'ACTIVE';
+    deletedAt: null;
+  }[];
   settings: unknown[];
   audits: { action: string }[];
 }
@@ -163,13 +201,36 @@ function createMemoryDatabase(): {
   };
   const root = {
     bootstrapState: {
-      findUnique: () => Promise.resolve({ id: 1, initializedAt: state.initializedAt }),
+      findUnique: () =>
+        Promise.resolve({
+          id: 1,
+          initializedAt: state.initializedAt,
+          organizationId: state.organizationId,
+          administratorId: state.administratorId,
+        }),
     },
     organization: {
       findFirst: () => Promise.resolve(state.organizations[0] ?? null),
     },
     user: {
       findFirst: () => Promise.resolve(state.users[0] ?? null),
+      findUnique: (arguments_: { where: { id: string } }) => {
+        const user = state.users.find((candidate) => candidate.id === arguments_.where.id);
+        const organization = state.organizations.find(
+          (candidate) => candidate.id === user?.organizationId,
+        );
+        return Promise.resolve(
+          user === undefined || organization === undefined
+            ? null
+            : { ...user, organization, roles: [{ roleId: 'role-ADMIN' }] },
+        );
+      },
+    },
+    auditLog: {
+      create: (arguments_: { data: { action: string } }) => {
+        state.audits.push({ action: arguments_.data.action });
+        return Promise.resolve({});
+      },
     },
     $transaction: async (run: (transaction: unknown) => Promise<unknown>): Promise<unknown> => {
       const working = structuredClone(state);
@@ -212,10 +273,16 @@ function createMemoryDatabase(): {
         },
         user: {
           count: () => Promise.resolve(working.users.length),
-          create: (arguments_: { data: { organizationId: string } }) => {
+          create: (arguments_: {
+            data: { organizationId: string; email: string; passwordHash: string };
+          }) => {
             const user = {
               id: '50000000-0000-4000-8000-000000000003',
               organizationId: arguments_.data.organizationId,
+              email: arguments_.data.email,
+              passwordHash: arguments_.data.passwordHash,
+              status: 'ACTIVE' as const,
+              deletedAt: null,
             };
             working.users.push(user);
             return Promise.resolve(user);

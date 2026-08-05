@@ -26,8 +26,20 @@ export function createBootstrapRouter(service: BootstrapServiceContract): Router
       message: 'Muitas tentativas de configuração. Tente novamente mais tarde.',
     },
   });
+  const sessionLimiter = rateLimit({
+    windowMs: 15 * 60_000,
+    limit: 10,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    skipSuccessfulRequests: true,
+    message: {
+      code: 'too_many_attempts',
+      message: 'Muitas tentativas. Tente novamente mais tarde.',
+    },
+  });
 
   router.get('/status', controller.status);
+  router.post('/session', sessionLimiter, controller.session);
   router.post(
     '/setup',
     setupLimiter,

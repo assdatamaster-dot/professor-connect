@@ -62,6 +62,40 @@ test('login no painel rejeita professor ou aluno e remove os tokens recebidos', 
   }
 });
 
+test('login recupera o administrador inicial quando o slug informado não corresponde', async () => {
+  const storage = installMemoryStorage();
+  const originalFetch = globalThis.fetch;
+  const paths: string[] = [];
+  globalThis.fetch = (request) => {
+    const path = String(request);
+    paths.push(path);
+    if (path === '/api/auth/login') {
+      return Promise.resolve(
+        jsonResponse({ code: 'authentication_failed', message: 'Credenciais inválidas' }, 401),
+      );
+    }
+    return Promise.resolve(
+      jsonResponse({
+        ...authResponse(['ADMIN']),
+        organization: {
+          id: '10000000-0000-4000-8000-000000000001',
+          name: 'Instituição Persistida',
+          slug: 'slug-persistido',
+        },
+      }),
+    );
+  };
+  try {
+    const api = new AdminApi();
+    const result = await api.login('admin@instituicao.test', 'Strong#Password1', 'slug-incorreto');
+    assert.equal(result.identity.roles.includes('ADMIN'), true);
+    assert.deepEqual(paths, ['/api/auth/login', '/api/bootstrap/session']);
+    assert.equal(storage.getItem('professor-connect.admin.organization'), 'slug-persistido');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('bootstrap consulta status, envia o wizard e preserva a sessão automática', async () => {
   const storage = installMemoryStorage();
   const originalFetch = globalThis.fetch;
@@ -133,21 +167,32 @@ test('bootstrap concluído recupera a sessão com os dados informados no wizard'
   const storage = installMemoryStorage();
   const originalFetch = globalThis.fetch;
   let loginPayload: unknown;
-  globalThis.fetch = (_request, init) => {
+  let recoveryPath = '';
+  globalThis.fetch = (request, init) => {
+    recoveryPath = String(request);
     loginPayload = JSON.parse(String(init?.body));
-    return Promise.resolve(jsonResponse(authResponse(['ADMIN'])));
+    return Promise.resolve(
+      jsonResponse({
+        ...authResponse(['ADMIN']),
+        organization: {
+          id: '10000000-0000-4000-8000-000000000001',
+          name: 'Instituição Teste',
+          slug: 'slug-persistido',
+        },
+      }),
+    );
   };
   try {
     const api = new AdminApi();
     const result = await api.recoverBootstrapSession(bootstrapInput());
+    assert.equal(recoveryPath, '/api/bootstrap/session');
     assert.equal(result.identity.email, 'admin@instituicao.test');
     assert.deepEqual(loginPayload, {
       email: 'admin@instituicao.test',
       password: 'Strong#Password1',
-      organizationSlug: 'instituicao-teste',
     });
     assert.equal(storage.getItem(refreshTokenKey), 'refresh-token');
-    assert.equal(storage.getItem('professor-connect.admin.organization'), 'instituicao-teste');
+    assert.equal(storage.getItem('professor-connect.admin.organization'), 'slug-persistido');
   } finally {
     globalThis.fetch = originalFetch;
   }
