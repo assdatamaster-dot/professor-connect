@@ -129,6 +129,30 @@ test('bootstrap preserva o campo e a mensagem detalhada da validação da API', 
   }
 });
 
+test('bootstrap concluído recupera a sessão com os dados informados no wizard', async () => {
+  const storage = installMemoryStorage();
+  const originalFetch = globalThis.fetch;
+  let loginPayload: unknown;
+  globalThis.fetch = (_request, init) => {
+    loginPayload = JSON.parse(String(init?.body));
+    return Promise.resolve(jsonResponse(authResponse(['ADMIN'])));
+  };
+  try {
+    const api = new AdminApi();
+    const result = await api.recoverBootstrapSession(bootstrapInput());
+    assert.equal(result.identity.email, 'admin@instituicao.test');
+    assert.deepEqual(loginPayload, {
+      email: 'admin@instituicao.test',
+      password: 'Strong#Password1',
+      organizationSlug: 'instituicao-teste',
+    });
+    assert.equal(storage.getItem(refreshTokenKey), 'refresh-token');
+    assert.equal(storage.getItem('professor-connect.admin.organization'), 'instituicao-teste');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 function authResponse(roles: readonly string[]): AuthResponse {
   return {
     identity: {

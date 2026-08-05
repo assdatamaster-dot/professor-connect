@@ -66,9 +66,14 @@ const initialInput: BootstrapSetupInput = {
 
 export function BootstrapWizard({
   api,
+  onAlreadyConfigured,
   onCompleted,
 }: {
   readonly api: AdminApi;
+  readonly onAlreadyConfigured: (input: {
+    readonly email: string;
+    readonly organizationSlug: string;
+  }) => void;
   readonly onCompleted: (identity: Identity, theme: 'light' | 'dark' | 'system') => void;
 }): React.JSX.Element {
   const [step, setStep] = useState(0);
@@ -129,6 +134,18 @@ export function BootstrapWizard({
       onCompleted(result.identity, input.settings.theme);
     } catch (caught) {
       if (caught instanceof ApiError) {
+        if (caught.code === 'bootstrap_already_completed') {
+          try {
+            const recovered = await api.recoverBootstrapSession(input);
+            onCompleted(recovered.identity, input.settings.theme);
+          } catch {
+            onAlreadyConfigured({
+              email: input.administrator.email.trim(),
+              organizationSlug: input.organization.slug.trim().toLowerCase(),
+            });
+          }
+          return;
+        }
         const issue = caught.issues[0];
         if (issue !== undefined) {
           setStep(stepForIssue(issue.path));

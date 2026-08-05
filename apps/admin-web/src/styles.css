@@ -317,6 +317,14 @@ h3 {
 .inline-alert {
   margin-bottom: 16px;
 }
+.form-notice {
+  padding: 11px 13px;
+  border: 1px solid color-mix(in srgb, var(--success) 24%, transparent);
+  border-radius: 9px;
+  background: var(--success-soft);
+  color: var(--success);
+  font-size: 13px;
+}
 
 .button {
   min-height: 40px;

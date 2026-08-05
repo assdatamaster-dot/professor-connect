@@ -56,6 +56,14 @@ export class AdminApi {
     return result;
   }
 
+  public recoverBootstrapSession(input: BootstrapSetupInput): Promise<AuthResponse> {
+    return this.login(
+      input.administrator.email,
+      input.administrator.password,
+      input.organization.slug,
+    );
+  }
+
   public async login(
     email: string,
     password: string,

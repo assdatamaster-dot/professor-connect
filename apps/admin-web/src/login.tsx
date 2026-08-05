@@ -7,14 +7,20 @@ import { isValidEmail } from './validation';
 
 export function Login({
   api,
+  initialEmail = '',
+  initialOrganization,
+  notice,
   onAuthenticated,
 }: {
   readonly api: AdminApi;
+  readonly initialEmail?: string;
+  readonly initialOrganization?: string;
+  readonly notice?: string;
   readonly onAuthenticated: (identity: Identity) => void;
 }): React.JSX.Element {
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState('');
-  const [organization, setOrganization] = useState(api.organizationSlug());
+  const [organization, setOrganization] = useState(initialOrganization ?? api.organizationSlug());
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const emailError = email.length > 0 && !isValidEmail(email) ? 'Informe um e-mail válido' : null;
@@ -71,6 +77,11 @@ export function Login({
             <h2>Bem-vindo de volta</h2>
             <p>Use sua conta institucional para continuar.</p>
           </div>
+          {notice === undefined ? null : (
+            <div className="form-notice" role="status">
+              {notice}
+            </div>
+          )}
           <label className="field">
             <span>Instituição</span>
             <input

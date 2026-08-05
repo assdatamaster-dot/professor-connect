@@ -10,12 +10,17 @@ import type { Identity, ManagedRole } from './types';
 import { UsersPage } from './users-page';
 
 type View = 'dashboard' | 'teachers' | 'students';
+interface LoginHandoff {
+  readonly email: string;
+  readonly organizationSlug: string;
+}
 const api = new AdminApi();
 
 export function App(): React.JSX.Element {
   const [identity, setIdentity] = useState<Identity | null>(null);
   const [restoring, setRestoring] = useState(true);
   const [bootstrapRequired, setBootstrapRequired] = useState(false);
+  const [loginHandoff, setLoginHandoff] = useState<LoginHandoff | null>(null);
   const [startupError, setStartupError] = useState<string | null>(null);
   const [view, setView] = useState<View>(() => viewFromHash());
   const [theme, setTheme] = useState<'light' | 'dark'>(() =>
@@ -97,6 +102,11 @@ export function App(): React.JSX.Element {
     return (
       <BootstrapWizard
         api={api}
+        onAlreadyConfigured={(handoff) => {
+          setLoginHandoff(handoff);
+          setBootstrapRequired(false);
+          setIdentity(null);
+        }}
         onCompleted={(authenticatedIdentity, selectedTheme) => {
           const resolvedTheme =
             selectedTheme === 'system'
@@ -112,7 +122,21 @@ export function App(): React.JSX.Element {
       />
     );
   }
-  if (identity === null) return <Login api={api} onAuthenticated={setIdentity} />;
+  if (identity === null) {
+    return (
+      <Login
+        api={api}
+        {...(loginHandoff === null
+          ? {}
+          : {
+              initialEmail: loginHandoff.email,
+              initialOrganization: loginHandoff.organizationSlug,
+              notice: 'Este ambiente já foi configurado. Entre com a conta administrativa criada.',
+            })}
+        onAuthenticated={setIdentity}
+      />
+    );
+  }
 
   return (
     <div className="app-shell">

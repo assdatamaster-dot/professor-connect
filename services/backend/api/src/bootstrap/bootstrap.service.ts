@@ -242,7 +242,11 @@ export class BootstrapService implements BootstrapServiceContract {
   }
 
   private alreadyCompleted(): never {
-    throw new BootstrapError('Bootstrap already completed.', 403, 'bootstrap_already_completed');
+    throw new BootstrapError(
+      'A configuração inicial já foi concluída.',
+      403,
+      'bootstrap_already_completed',
+    );
   }
 
   private async ensureAccessReferenceData(

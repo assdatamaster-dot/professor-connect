@@ -23,7 +23,7 @@ test('endpoints detectam banco vazio, concluem setup e bloqueiam reexecução', 
     public setup(input: BootstrapSetupInput): Promise<BootstrapSetupResult> {
       if (this.initialized) {
         throw new BootstrapError(
-          'Bootstrap already completed.',
+          'A configuração inicial já foi concluída.',
           403,
           'bootstrap_already_completed',
         );

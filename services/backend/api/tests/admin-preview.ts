@@ -60,7 +60,11 @@ class PreviewBootstrapService implements BootstrapServiceContract {
 
   public setup(input: BootstrapSetupInput): Promise<BootstrapSetupResult> {
     if (this.initialized) {
-      throw new BootstrapError('Bootstrap already completed.', 403, 'bootstrap_already_completed');
+      throw new BootstrapError(
+        'A configuração inicial já foi concluída.',
+        403,
+        'bootstrap_already_completed',
+      );
     }
     this.initialized = true;
     return Promise.resolve({
