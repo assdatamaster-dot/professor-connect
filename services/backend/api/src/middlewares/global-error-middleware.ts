@@ -2,6 +2,8 @@ import type { ErrorRequestHandler } from 'express';
 import { ZodError } from 'zod';
 
 import { AuthError } from '../auth/auth.types.js';
+import { AdminError } from '../admin/admin.types.js';
+import multer from 'multer';
 import { logger } from '../utils/logger.js';
 
 export class HttpError extends Error {
@@ -18,6 +20,20 @@ export const globalErrorMiddleware: ErrorRequestHandler = (error, _request, resp
   void next;
   if (error instanceof AuthError) {
     response.status(error.statusCode).json({ code: error.code, message: error.message });
+    return;
+  }
+  if (error instanceof AdminError) {
+    response.status(error.statusCode).json({ code: error.code, message: error.message });
+    return;
+  }
+  if (error instanceof multer.MulterError) {
+    response.status(400).json({
+      code: 'invalid_upload',
+      message:
+        error.code === 'LIMIT_FILE_SIZE'
+          ? 'A imagem deve possuir no máximo 2 MB'
+          : 'Não foi possível enviar a imagem',
+    });
     return;
   }
   if (error instanceof ZodError) {

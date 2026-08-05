@@ -34,6 +34,7 @@ export interface Environment {
   readonly accessTokenTtlSeconds: number;
   readonly refreshTokenTtlSeconds: number;
   readonly bcryptRounds: number;
+  readonly adminOnboardingKey: string | undefined;
   readonly trustProxy: boolean;
 }
 
@@ -161,5 +162,12 @@ export const environment: Environment = Object.freeze({
     'REFRESH_TOKEN_TTL_SECONDS',
   ),
   bcryptRounds: parsePositiveInteger(process.env.BCRYPT_ROUNDS, 12, 'BCRYPT_ROUNDS'),
+  adminOnboardingKey: parseOptionalSecret(process.env.ADMIN_ONBOARDING_KEY, 'ADMIN_ONBOARDING_KEY'),
   trustProxy: parseBoolean(process.env.TRUST_PROXY, false),
 });
+
+function parseOptionalSecret(value: string | undefined, name: string): string | undefined {
+  if (value === undefined || value.trim().length === 0) return undefined;
+  if (value.length < 32) throw new Error(`${name} deve possuir ao menos 32 caracteres`);
+  return value;
+}

@@ -12,6 +12,7 @@ import {
 
 import { createApp } from './app.js';
 import { AuthService } from './auth/auth.service.js';
+import { AdminService } from './admin/admin.service.js';
 import { createLogger } from './utils/logger.js';
 
 const persistence = new DatabasePersistence(undefined, (error) => {
@@ -44,6 +45,15 @@ const activeSessionManager = new SessionManager(professorPresenceManager, studen
   audit: persistence.audit,
   initialHistory: sessionHistory,
 });
+const realtimeUserRevoker: { disconnect(userId: string): void } = {
+  disconnect(): void {},
+};
+const adminService = new AdminService(
+  professorPresenceManager,
+  studentPresenceManager,
+  activeSessionManager,
+  (userId) => realtimeUserRevoker.disconnect(userId),
+);
 const httpServer = createServer(
   createApp(
     professorPresenceManager,
@@ -51,6 +61,7 @@ const httpServer = createServer(
     sessionRequestManager,
     activeSessionManager,
     authService,
+    adminService,
   ),
 );
 const communicationGateway = initializeWebSocket(
@@ -76,6 +87,9 @@ const communicationGateway = initializeWebSocket(
   persistence.fileTransfer,
   { authenticate: (accessToken) => authService.verifyAccessToken(accessToken) },
 );
+realtimeUserRevoker.disconnect = (userId) => {
+  communicationGateway.disconnectUser(userId);
+};
 
 httpServer.on('error', (error) => {
   logger.error('Não foi possível iniciar o servidor', error);

@@ -13,6 +13,7 @@ const MIGRATIONS = [
   '20260731092000_events_audit_and_transfers',
   '20260803090000_authentication_security',
   '20260804090000_user_registration_and_profiles',
+  '20260805090000_administrative_panel',
 ] as const;
 
 test('accepts startup only after every bundled migration is complete', async () => {
@@ -44,10 +45,23 @@ test('rejects startup when a bundled migration is pending', async () => {
     })),
   ]);
 
-  await assert.rejects(
-    assertMigrationsApplied(prisma),
-    /20260804090000_user_registration_and_profiles/,
+  await assert.rejects(assertMigrationsApplied(prisma), /20260805090000_administrative_panel/);
+});
+
+test('migration administrativa preserva histórico e prepara isolamento por instituição', async () => {
+  const sql = await readFile(
+    new URL(
+      '../prisma/migrations/20260805090000_administrative_panel/migration.sql',
+      import.meta.url,
+    ),
+    'utf8',
   );
+
+  assert.match(sql, /'ACTIVE', 'INACTIVE', 'BLOCKED'/);
+  assert.match(sql, /ADD COLUMN "deleted_at"/);
+  assert.match(sql, /users_organization_email_lower_key/);
+  assert.match(sql, /CREATE TABLE "user_avatars"/);
+  assert.doesNotMatch(sql, /INSERT INTO "users"/i);
 });
 
 test('migration de cadastro prepara perfis sem criar usuários artificiais', async () => {

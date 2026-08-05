@@ -1,4 +1,7 @@
 import express, { type Express } from 'express';
+import { existsSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
@@ -13,6 +16,8 @@ import { environment } from '@professor-connect/config';
 
 import { AuthService } from './auth/auth.service.js';
 import type { AuthServiceContract } from './auth/auth.types.js';
+import { AdminService } from './admin/admin.service.js';
+import type { AdminServiceContract } from './admin/admin.types.js';
 import { authenticate, requirePermission } from './middlewares/auth-middleware.js';
 import { globalErrorMiddleware, HttpError } from './middlewares/global-error-middleware.js';
 import { healthRouter } from './routes/health-router.js';
@@ -21,6 +26,12 @@ import { createStudentsRouter } from './routes/students-router.js';
 import { createSessionsRouter } from './routes/sessions-router.js';
 import { createAuthRouter } from './routes/auth-router.js';
 import { createUsersRouter } from './routes/users-router.js';
+import { createAdminRouter } from './routes/admin-router.js';
+
+const adminWebDirectory = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '../../../../apps/admin-web/dist',
+);
 
 export function createApp(
   professorPresenceManager = new PresenceManager(),
@@ -31,6 +42,11 @@ export function createApp(
   ),
   activeSessionManager = new SessionManager(professorPresenceManager, studentPresenceManager),
   authService: AuthServiceContract = new AuthService(),
+  adminService: AdminServiceContract = new AdminService(
+    professorPresenceManager,
+    studentPresenceManager,
+    activeSessionManager,
+  ),
 ): Express {
   const app = express();
 
@@ -57,6 +73,7 @@ export function createApp(
   const usersRouter = createUsersRouter(authService);
   app.use(['/api/auth', '/auth'], authRouter);
   app.use(['/api/users', '/users'], usersRouter);
+  app.use('/api/admin', createAdminRouter(authService, adminService));
   app.use(
     '/api/professors',
     authenticate(authService),
@@ -75,6 +92,11 @@ export function createApp(
     requirePermission('sessions.read'),
     createSessionsRouter(sessionRequestManager, activeSessionManager),
   );
+  const adminIndex = resolve(adminWebDirectory, 'index.html');
+  if (existsSync(adminIndex)) {
+    app.use('/admin', express.static(adminWebDirectory, { index: false, maxAge: '1h' }));
+    app.get(/^\/admin(?:\/.*)?$/, (_request, response) => response.sendFile(adminIndex));
+  }
   app.use((_request, response) =>
     response.status(404).json({ code: 'not_found', message: 'Recurso não encontrado' }),
   );

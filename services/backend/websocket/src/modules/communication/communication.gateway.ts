@@ -75,6 +75,17 @@ export class CommunicationGateway {
     this.server.close(callback);
   }
 
+  public disconnectUser(userId: string): number {
+    let disconnected = 0;
+    for (const socket of this.server.sockets.sockets.values()) {
+      if (socket.data.identity?.userId === userId) {
+        socket.disconnect(true);
+        disconnected += 1;
+      }
+    }
+    return disconnected;
+  }
+
   private handleConnection(socket: CommunicationSocket): void {
     this.connectionService.registerClient(socket.id);
     if (socket.data.identity?.organizationId !== undefined) {

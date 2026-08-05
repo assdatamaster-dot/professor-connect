@@ -36,6 +36,31 @@ const loginSchema = z
       .optional(),
   })
   .strict();
+const onboardingSchema = z
+  .object({
+    organizationName: z.string().trim().min(2).max(120),
+    organizationSlug: z
+      .string()
+      .trim()
+      .min(2)
+      .max(100)
+      .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Identificador da instituição inválido'),
+    name: z.string().trim().min(3).max(120),
+    email: z.string().trim().email().max(254),
+    password: securePasswordSchema,
+    confirmPassword: z.string().max(128),
+    setupKey: z.string().min(32).max(1024),
+  })
+  .strict()
+  .superRefine((input, context) => {
+    if (input.password !== input.confirmPassword) {
+      context.addIssue({
+        code: 'custom',
+        path: ['confirmPassword'],
+        message: 'A confirmação da senha não confere',
+      });
+    }
+  });
 const refreshSchema = z.object({ refreshToken: z.string().min(20).max(8192) }).strict();
 const passwordSchema = z
   .object({
@@ -55,6 +80,22 @@ export function createAuthController(authService: AuthServiceContract) {
             email: input.email,
             password: input.password,
             role: input.role === 'TEACHER' || input.role === 'PROFESSOR' ? 'TEACHER' : 'STUDENT',
+          },
+          metadata(request),
+        ),
+      );
+    },
+    onboardOrganization: async (request: Request, response: Response): Promise<void> => {
+      const input = onboardingSchema.parse(request.body);
+      response.status(201).json(
+        await authService.onboardOrganization(
+          {
+            organizationName: input.organizationName,
+            organizationSlug: input.organizationSlug,
+            name: input.name,
+            email: input.email,
+            password: input.password,
+            setupKey: input.setupKey,
           },
           metadata(request),
         ),

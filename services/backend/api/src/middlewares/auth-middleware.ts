@@ -1,6 +1,7 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 
 import type { AuthServiceContract } from '../auth/auth.types.js';
+import type { UserRole } from '../auth/auth.types.js';
 
 export function authenticate(authService: AuthServiceContract): RequestHandler {
   return async (request: Request, response: Response, next: NextFunction): Promise<void> => {
@@ -26,6 +27,16 @@ export function requirePermission(permission: string): RequestHandler {
       request.auth?.permissions.includes(permission) !== true &&
       request.auth?.roles.includes('ADMIN') !== true
     ) {
+      response.status(403).json({ code: 'permission_denied', message: 'Permissão insuficiente' });
+      return;
+    }
+    next();
+  };
+}
+
+export function requireRole(role: UserRole): RequestHandler {
+  return (request, response, next): void => {
+    if (request.auth?.roles.includes(role) !== true) {
       response.status(403).json({ code: 'permission_denied', message: 'Permissão insuficiente' });
       return;
     }

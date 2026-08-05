@@ -23,7 +23,7 @@ RUN npm install --global turbo@2.10.5
 
 COPY . .
 
-RUN turbo prune @professor-connect/api --docker
+RUN turbo prune @professor-connect/api @professor-connect/admin-web --docker
 
 FROM base AS build
 
@@ -36,7 +36,7 @@ COPY --from=pruner /app/out/full/ ./
 COPY --from=pruner /app/tsconfig.base.json ./tsconfig.base.json
 
 RUN npm run prisma:generate
-RUN npx turbo run build --filter=@professor-connect/api...
+RUN npx turbo run build --filter=@professor-connect/api... --filter=@professor-connect/admin-web...
 
 FROM base AS production-dependencies
 
@@ -71,6 +71,7 @@ COPY --chown=node:node --from=build /app/services/backend/services/package.json 
 COPY --chown=node:node --from=build /app/services/backend/services/dist ./services/backend/services/dist
 COPY --chown=node:node --from=build /app/services/backend/websocket/package.json ./services/backend/websocket/package.json
 COPY --chown=node:node --from=build /app/services/backend/websocket/dist ./services/backend/websocket/dist
+COPY --chown=node:node --from=build /app/apps/admin-web/dist ./apps/admin-web/dist
 
 USER node
 

@@ -8,9 +8,9 @@ datasource db {
 }
 
 enum UserStatus {
-  INVITED
   ACTIVE
-  SUSPENDED
+  INACTIVE
+  BLOCKED
 }
 
 enum UserRoleName {
@@ -96,7 +96,8 @@ model User {
   passwordChangedAt  DateTime?          @map("password_changed_at") @db.Timestamptz(3)
   avatarUrl          String?            @map("avatar_url")
   lastLoginAt        DateTime?          @map("last_login_at") @db.Timestamptz(3)
-  status             UserStatus         @default(INVITED)
+  status             UserStatus         @default(ACTIVE)
+  deletedAt          DateTime?          @map("deleted_at") @db.Timestamptz(3)
   createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt          DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
   organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
@@ -105,9 +106,21 @@ model User {
   professor          Professor?
   student            Student?
   externalIdentities ExternalIdentity[]
+  avatar             UserAvatar?
 
-  @@index([organizationId])
+  @@index([organizationId, status, createdAt])
+  @@index([organizationId, deletedAt])
   @@map("users")
+}
+
+model UserAvatar {
+  userId    String   @id @map("user_id") @db.Uuid
+  mimeType  String   @map("mime_type")
+  bytes     Bytes
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_avatars")
 }
 
 model Role {

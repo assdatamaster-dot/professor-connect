@@ -38,6 +38,7 @@ export function createAuthRouter(authService: AuthServiceContract): Router {
 
   router.get('/providers', controller.providers);
   router.post('/register', registerLimiter, controller.register);
+  router.post('/onboard-organization', registerLimiter, controller.onboardOrganization);
   router.post('/login', loginLimiter, controller.login);
   router.post('/refresh', refreshLimiter, controller.refresh);
   router.use(authenticate(authService));

@@ -33,8 +33,5 @@
     "@types/bcrypt": "^6.0.0",
     "@types/node": "24.13.3",
     "tsx": "4.23.1"
-  },
-  "prisma": {
-    "seed": "tsx prisma/seed.ts"
   }
 }

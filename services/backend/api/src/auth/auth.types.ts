@@ -31,12 +31,21 @@ export interface RegisterInput {
   readonly role: 'TEACHER' | 'STUDENT';
 }
 
+export interface OnboardOrganizationInput {
+  readonly organizationName: string;
+  readonly organizationSlug: string;
+  readonly name: string;
+  readonly email: string;
+  readonly password: string;
+  readonly setupKey: string;
+}
+
 export interface UserProfile {
   readonly name: string;
   readonly email: string;
   readonly role: 'TEACHER' | 'STUDENT' | 'ADMIN';
   readonly avatar: string | null;
-  readonly status: 'INVITED' | 'ACTIVE' | 'SUSPENDED';
+  readonly status: 'ACTIVE' | 'INACTIVE' | 'BLOCKED';
   readonly lastLogin: Date | null;
 }
 
@@ -50,6 +59,10 @@ export interface UpdateProfileInput {
 export interface AuthServiceContract {
   register(
     input: RegisterInput,
+    metadata: RequestMetadata,
+  ): Promise<{ identity: AuthenticatedIdentity; tokens: TokenPair }>;
+  onboardOrganization(
+    input: OnboardOrganizationInput,
     metadata: RequestMetadata,
   ): Promise<{ identity: AuthenticatedIdentity; tokens: TokenPair }>;
   login(

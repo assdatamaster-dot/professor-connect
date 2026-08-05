@@ -32,7 +32,7 @@ export interface DesktopUserProfile {
   readonly email: string;
   readonly role: 'TEACHER' | 'STUDENT' | 'ADMIN';
   readonly avatar: string | null;
-  readonly status: 'INVITED' | 'ACTIVE' | 'SUSPENDED';
+  readonly status: 'ACTIVE' | 'INACTIVE' | 'BLOCKED';
   readonly lastLogin: string | null;
 }
 
@@ -77,6 +77,7 @@ export class DesktopAuthClient {
     private readonly serverUrl: string,
     private readonly store: AuthTokenStore,
     private readonly clock: () => number = Date.now,
+    private readonly defaultOrganizationSlug = 'professor-connect',
   ) {}
 
   public async login(
@@ -84,12 +85,13 @@ export class DesktopAuthClient {
     password: string,
     organizationSlug?: string,
   ): Promise<StoredAuthSession['identity']> {
+    const resolvedOrganizationSlug = organizationSlug ?? this.defaultOrganizationSlug;
     const result = await this.requestToken('/api/auth/login', {
       email,
       password,
-      ...(organizationSlug === undefined || organizationSlug.trim().length === 0
+      ...(resolvedOrganizationSlug.trim().length === 0
         ? {}
-        : { organizationSlug: organizationSlug.trim() }),
+        : { organizationSlug: resolvedOrganizationSlug.trim() }),
     });
     const session = this.toStoredSession(result);
     await this.store.save(session);

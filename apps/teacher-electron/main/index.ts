@@ -33,10 +33,14 @@ async function createMainWindow(): Promise<void> {
   const configPath = path.join(currentDirectory, '..', 'config.json');
   const iconPath = path.join(currentDirectory, '..', 'assets', 'logo.png');
   const manager = createTeacherWorkflowManager();
-  const { serverUrl } = JSON.parse(await readFile(configPath, 'utf8')) as { serverUrl: string };
+  const { serverUrl, organizationSlug = 'professor-connect' } = JSON.parse(
+    await readFile(configPath, 'utf8'),
+  ) as { serverUrl: string; organizationSlug?: string };
   const authClient = new DesktopAuthClient(
     serverUrl,
     new ElectronSecureTokenStore(app.getPath('userData')),
+    Date.now,
+    organizationSlug,
   );
 
   workflowController = new TeacherWorkflowController(manager);

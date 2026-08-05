@@ -137,3 +137,10 @@ ativos; planeje uma janela de manutenção.
 - permita as portas 80/443 no proxy e mantenha `3000` restrita quando possível;
 - monitore o health check e os logs do processo;
 - mantenha o PostgreSQL em volume ou serviço persistente e faça backups regulares.
+
+## Painel administrativo
+
+`npm run build-backend`, a imagem Docker e o Nixpacks compilam também `apps/admin-web`. O backend
+serve o painel em `/admin`, na mesma origem da API. Configure `ADMIN_ONBOARDING_KEY` com ao menos 32
+caracteres para habilitar o onboarding protegido da instituição e de seu primeiro ADMIN; sem essa
+variável, o endpoint permanece desativado. Nenhuma conta é criada por seed ou migration.

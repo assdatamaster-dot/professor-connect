@@ -27,6 +27,9 @@ export class TestAuthService implements AuthServiceContract {
   public register(): Promise<{ identity: AuthenticatedIdentity; tokens: TokenPair }> {
     return Promise.resolve({ identity: TEST_IDENTITY, tokens: TEST_TOKENS });
   }
+  public onboardOrganization(): Promise<{ identity: AuthenticatedIdentity; tokens: TokenPair }> {
+    return Promise.resolve({ identity: TEST_IDENTITY, tokens: TEST_TOKENS });
+  }
   public login(): Promise<{ identity: AuthenticatedIdentity; tokens: TokenPair }> {
     return Promise.resolve({ identity: TEST_IDENTITY, tokens: TEST_TOKENS });
   }

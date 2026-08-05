@@ -17,7 +17,8 @@
   "scripts": {
     "build": "turbo run build",
     "build-all": "npm run build-student && npm run build-teacher",
-    "build-backend": "turbo run build --filter=@professor-connect/api...",
+    "build-admin": "npm run build --workspace=@professor-connect/admin-web",
+    "build-backend": "turbo run build --filter=@professor-connect/api... --filter=@professor-connect/admin-web",
     "build-student": "npm run dist:win --workspace=@professor-connect/student-electron",
     "build-teacher": "npm run dist:win --workspace=@professor-connect/teacher-electron",
     "check": "npm run lint && npm run typecheck && npm run test && npm run format:check",
@@ -27,6 +28,7 @@
     "dev": "npm run dev --workspace=@professor-connect/api",
     "desktop:student": "npm run dev --workspace=@professor-connect/student-electron",
     "desktop:teacher": "npm run dev --workspace=@professor-connect/teacher-electron",
+    "dev:admin": "npm run dev --workspace=@professor-connect/admin-web",
     "deploy-production": "node scripts/deploy-production.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

@@ -1,5 +1,7 @@
 # Professor Connect
 
+> O painel React, a gestão multi-instituição e a API administrativa estão documentados em [Sprint BETA-11B](docs/sprints/SPR-BETA-11B.md).
+
 > A arquitetura de identidade, JWT, RBAC, Socket.IO autenticado e armazenamento seguro do Electron está documentada em [Sprint BETA-9C](docs/sprints/SPR-BETA-9C.md).
 
 O Professor Connect é uma plataforma planejada para aproximar alunos e professores em

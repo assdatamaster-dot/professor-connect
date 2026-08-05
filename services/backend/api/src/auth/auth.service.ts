@@ -11,6 +11,7 @@ import {
   AuthError,
   type AuthenticatedIdentity,
   type AuthServiceContract,
+  type OnboardOrganizationInput,
   type RegisterInput,
   type RequestMetadata,
   type TokenPair,
@@ -32,7 +33,10 @@ const USER_INCLUDE = {
 type UserWithAccess = NonNullable<Awaited<ReturnType<typeof findUserById>>>;
 
 async function findUserById(userId: string) {
-  return prismaClient.user.findUnique({ where: { id: userId }, include: USER_INCLUDE });
+  return prismaClient.user.findFirst({
+    where: { id: userId, deletedAt: null },
+    include: USER_INCLUDE,
+  });
 }
 
 export class AuthService implements AuthServiceContract {
@@ -97,6 +101,90 @@ export class AuthService implements AuthServiceContract {
     }
   }
 
+  public async onboardOrganization(
+    input: OnboardOrganizationInput,
+    metadata: RequestMetadata,
+  ): Promise<{ identity: AuthenticatedIdentity; tokens: TokenPair }> {
+    this.assertOnboardingKey(input.setupKey);
+    const email = input.email.trim().toLowerCase();
+    const name = input.name.trim().replace(/\s+/g, ' ');
+    const organizationName = input.organizationName.trim().replace(/\s+/g, ' ');
+    const organizationSlug = input.organizationSlug.trim().toLowerCase();
+    const passwordHash = await bcrypt.hash(input.password, environment.bcryptRounds);
+
+    try {
+      const createdUserId = await prismaClient.$transaction(async (transaction) => {
+        const role = await transaction.role.findUnique({ where: { name: 'ADMIN' } });
+        if (role === null) {
+          throw new AuthError('Configuração de acesso indisponível', 503, 'onboarding_unavailable');
+        }
+        const existingOrganization = await transaction.organization.findUnique({
+          where: { slug: organizationSlug },
+          select: {
+            id: true,
+            users: {
+              where: { deletedAt: null, roles: { some: { role: { name: 'ADMIN' } } } },
+              select: { id: true },
+              take: 1,
+            },
+          },
+        });
+        if (existingOrganization?.users.length === 1) {
+          throw new AuthError(
+            'A instituição já possui administrador',
+            409,
+            'organization_already_onboarded',
+          );
+        }
+        const organization =
+          existingOrganization ??
+          (await transaction.organization.create({
+            data: { name: organizationName, slug: organizationSlug },
+            select: { id: true, users: { select: { id: true }, take: 1 } },
+          }));
+        const duplicate = await transaction.user.findFirst({
+          where: {
+            organizationId: organization.id,
+            email: { equals: email, mode: 'insensitive' },
+            deletedAt: null,
+          },
+          select: { id: true },
+        });
+        if (duplicate !== null) {
+          throw new AuthError('Este e-mail já está cadastrado', 409, 'email_already_registered');
+        }
+        const user = await transaction.user.create({
+          data: {
+            organizationId: organization.id,
+            email,
+            displayName: name,
+            passwordHash,
+            passwordChangedAt: new Date(),
+            lastLoginAt: new Date(),
+            status: 'ACTIVE',
+            roles: { create: { roleId: role.id } },
+          },
+          select: { id: true },
+        });
+        return user.id;
+      });
+      const user = await findUserById(createdUserId);
+      if (user === null) throw new AuthError('Cadastro não concluído', 500, 'onboarding_failed');
+      const identity = this.toIdentity(user, randomUUID());
+      const tokens = await this.issueTokenPair(user, identity.sessionFamilyId, metadata);
+      await this.audit('organization.onboarded', user.id, user.organizationId, {
+        organizationSlug,
+        ...metadata,
+      });
+      return { identity, tokens };
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw new AuthError('Instituição ou e-mail já cadastrado', 409, 'onboarding_conflict');
+      }
+      throw error;
+    }
+  }
+
   public async login(
     emailInput: string,
     password: string,
@@ -104,12 +192,13 @@ export class AuthService implements AuthServiceContract {
     metadata: RequestMetadata,
   ): Promise<{ identity: AuthenticatedIdentity; tokens: TokenPair }> {
     const email = emailInput.trim().toLowerCase();
+    const resolvedOrganizationSlug =
+      organizationSlug?.trim().toLowerCase() ?? PUBLIC_ORGANIZATION_SLUG;
     const user = await prismaClient.user.findFirst({
       where: {
         email: { equals: email, mode: 'insensitive' },
-        ...(organizationSlug === undefined
-          ? {}
-          : { organization: { slug: organizationSlug.trim().toLowerCase() } }),
+        deletedAt: null,
+        organization: { slug: resolvedOrganizationSlug },
       },
       include: USER_INCLUDE,
     });
@@ -126,7 +215,7 @@ export class AuthService implements AuthServiceContract {
     ) {
       await this.audit('auth.login.failed', undefined, undefined, {
         email,
-        organizationSlug,
+        organizationSlug: resolvedOrganizationSlug,
         ...metadata,
       });
       throw new AuthError('Credenciais inválidas');
@@ -498,6 +587,21 @@ export class AuthService implements AuthServiceContract {
     return (
       actualBuffer.length === expectedBuffer.length && timingSafeEqual(actualBuffer, expectedBuffer)
     );
+  }
+
+  private assertOnboardingKey(candidate: string): void {
+    const expected = environment.adminOnboardingKey;
+    if (expected === undefined) {
+      throw new AuthError('Onboarding administrativo indisponível', 503, 'onboarding_unavailable');
+    }
+    const candidateBuffer = Buffer.from(candidate);
+    const expectedBuffer = Buffer.from(expected);
+    if (
+      candidateBuffer.length !== expectedBuffer.length ||
+      !timingSafeEqual(candidateBuffer, expectedBuffer)
+    ) {
+      throw new AuthError('Chave de onboarding inválida', 403, 'onboarding_denied');
+    }
   }
 
   private async audit(

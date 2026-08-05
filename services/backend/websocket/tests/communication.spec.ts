@@ -102,6 +102,29 @@ test('rejeita handshake Socket.IO sem access token', async () => {
   }
 });
 
+test('desconecta imediatamente todas as conexões de um usuário revogado', async () => {
+  const httpServer = createServer();
+  const gateway = initializeTestWebSocket(httpServer, { info(): void {}, error(): void {} });
+  await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve));
+  const address = httpServer.address();
+  assert(address !== null && typeof address === 'object');
+  const client = io(
+    `http://127.0.0.1:${address.port}`,
+    authenticatedSocketOptions('STUDENT', 'blocked-client'),
+  );
+  try {
+    await new Promise<void>((resolve) => client.once('connect', resolve));
+    const disconnected = new Promise<void>((resolve) => client.once('disconnect', () => resolve()));
+    assert.equal(gateway.disconnectUser('user-blocked-client'), 1);
+    await disconnected;
+    assert.equal(client.connected, false);
+    assert.equal(gateway.disconnectUser('user-unknown'), 0);
+  } finally {
+    client.close();
+    await new Promise<void>((resolve) => gateway.close(resolve));
+  }
+});
+
 async function receivePong(
   client: Socket<ServerToClientEvents, ClientToServerEvents>,
 ): Promise<PongResponse> {
