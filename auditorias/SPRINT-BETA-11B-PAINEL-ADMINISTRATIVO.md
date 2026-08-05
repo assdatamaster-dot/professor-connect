@@ -1,5 +1,9 @@
 # Auditoria — Sprint Beta-11B
 
+> Atualização Beta-11D: o onboarding manual descrito abaixo foi substituído pelo Assistente de
+> Configuração em `/admin`. O endpoint legado não cria dados e a chave operacional deixou de ser
+> necessária para instalações novas.
+
 Data original: 2026-08-04
 
 Reauditoria e conclusão: 2026-08-05

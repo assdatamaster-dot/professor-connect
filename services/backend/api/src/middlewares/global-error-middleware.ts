@@ -3,6 +3,7 @@ import { ZodError } from 'zod';
 
 import { AuthError } from '../auth/auth.types.js';
 import { AdminError } from '../admin/admin.types.js';
+import { BootstrapError } from '../bootstrap/bootstrap.types.js';
 import multer from 'multer';
 import { logger } from '../utils/logger.js';
 
@@ -23,6 +24,10 @@ export const globalErrorMiddleware: ErrorRequestHandler = (error, _request, resp
     return;
   }
   if (error instanceof AdminError) {
+    response.status(error.statusCode).json({ code: error.code, message: error.message });
+    return;
+  }
+  if (error instanceof BootstrapError) {
     response.status(error.statusCode).json({ code: error.code, message: error.message });
     return;
   }

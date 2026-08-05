@@ -39,11 +39,6 @@ const permissionsByRole: Readonly<Record<UserRoleName, readonly string[]>> = {
 
 async function seedReferenceData(): Promise<void> {
   await prisma.$transaction(async (transaction) => {
-    await transaction.organization.upsert({
-      where: { slug: 'professor-connect' },
-      create: { name: 'Professor Connect', slug: 'professor-connect' },
-      update: { name: 'Professor Connect' },
-    });
     for (const role of Object.values(UserRoleName)) {
       await transaction.role.upsert({
         where: { name: role },

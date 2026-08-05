@@ -1,5 +1,8 @@
 import type {
   AuthResponse,
+  BootstrapSetupInput,
+  BootstrapSetupResult,
+  BootstrapStatus,
   DashboardMetrics,
   ManagedRole,
   ManagedUser,
@@ -25,6 +28,27 @@ export class ApiError extends Error {
 export class AdminApi {
   private accessToken: string | null = null;
   private refreshPromise: Promise<AuthResponse> | null = null;
+
+  public bootstrapStatus(): Promise<BootstrapStatus> {
+    return this.publicRequest('/api/bootstrap/status');
+  }
+
+  public async bootstrapSetup(
+    input: BootstrapSetupInput,
+    adminAvatar: File | null,
+    logo: File | null,
+  ): Promise<BootstrapSetupResult> {
+    const body = new FormData();
+    body.append('payload', JSON.stringify(input));
+    if (adminAvatar !== null) body.append('adminAvatar', adminAvatar);
+    if (logo !== null) body.append('logo', logo);
+    const result = await this.publicRequest<BootstrapSetupResult>('/api/bootstrap/setup', {
+      method: 'POST',
+      body,
+    });
+    this.acceptSession(result, result.organization.slug);
+    return result;
+  }
 
   public async login(
     email: string,
@@ -172,7 +196,7 @@ export class AdminApi {
     return this.refreshPromise;
   }
 
-  private async publicRequest<T>(path: string, init: RequestInit): Promise<T> {
+  private async publicRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
     const response = await fetch(path, init);
     if (!response.ok) throw await this.toError(response);
     return (await response.json()) as T;

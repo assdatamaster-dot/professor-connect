@@ -3,6 +3,7 @@ import { test } from 'node:test';
 
 import { AdminApi, ApiError } from '../src/api.js';
 import type { AuthResponse, DashboardMetrics } from '../src/types.js';
+import type { BootstrapSetupInput, BootstrapSetupResult } from '../src/types.js';
 
 const refreshTokenKey = 'professor-connect.admin.refresh-token';
 
@@ -61,6 +62,40 @@ test('login no painel rejeita professor ou aluno e remove os tokens recebidos', 
   }
 });
 
+test('bootstrap consulta status, envia o wizard e preserva a sessão automática', async () => {
+  const storage = installMemoryStorage();
+  const originalFetch = globalThis.fetch;
+  const requests: { readonly path: string; readonly init: RequestInit | undefined }[] = [];
+  const setupResult: BootstrapSetupResult = {
+    ...authResponse(['ADMIN']),
+    organization: {
+      id: '10000000-0000-4000-8000-000000000001',
+      name: 'Instituição Teste',
+      slug: 'instituicao-teste',
+    },
+  };
+  globalThis.fetch = (request, init) => {
+    const path = String(request);
+    requests.push({ path, init });
+    return Promise.resolve(
+      path === '/api/bootstrap/status'
+        ? jsonResponse({ initialized: false })
+        : jsonResponse(setupResult, 201),
+    );
+  };
+  try {
+    const api = new AdminApi();
+    assert.deepEqual(await api.bootstrapStatus(), { initialized: false });
+    const result = await api.bootstrapSetup(bootstrapInput(), null, null);
+    assert.equal(result.organization.slug, 'instituicao-teste');
+    assert.equal(storage.getItem(refreshTokenKey), 'refresh-token');
+    assert.equal(storage.getItem('professor-connect.admin.organization'), 'instituicao-teste');
+    assert(requests[1]?.init?.body instanceof FormData);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 function authResponse(roles: readonly string[]): AuthResponse {
   return {
     identity: {
@@ -74,11 +109,41 @@ function authResponse(roles: readonly string[]): AuthResponse {
   };
 }
 
-function jsonResponse(body: unknown): Response {
+function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
-    status: 200,
+    status,
     headers: { 'Content-Type': 'application/json' },
   });
+}
+
+function bootstrapInput(): BootstrapSetupInput {
+  return {
+    organization: {
+      name: 'Instituição Teste',
+      tradeName: '',
+      taxId: '',
+      slug: 'instituicao-teste',
+      city: 'São Paulo',
+      state: 'SP',
+      country: 'BR',
+      timezone: 'America/Sao_Paulo',
+      language: 'pt-BR',
+    },
+    administrator: {
+      firstName: 'Admin',
+      lastName: 'Teste',
+      email: 'admin@instituicao.test',
+      password: 'Strong#Password1',
+      confirmPassword: 'Strong#Password1',
+      phone: '',
+    },
+    settings: {
+      systemName: 'Professor Connect',
+      theme: 'system',
+      language: 'pt-BR',
+      defaults: { sessionDurationMinutes: 60, allowSelfRegistration: false },
+    },
+  };
 }
 
 function installMemoryStorage(): Storage {

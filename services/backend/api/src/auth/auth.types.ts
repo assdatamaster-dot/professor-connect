@@ -25,13 +25,7 @@ export interface RequestMetadata {
   readonly userAgent?: string;
 }
 
-export interface RegisterInput {
-  readonly name: string;
-  readonly email: string;
-  readonly password: string;
-  readonly role: 'TEACHER' | 'STUDENT';
-}
-
+/** @deprecated O primeiro acesso público ocorre exclusivamente por /api/bootstrap/setup. */
 export interface OnboardOrganizationInput {
   readonly organizationName: string;
   readonly organizationSlug: string;
@@ -39,6 +33,13 @@ export interface OnboardOrganizationInput {
   readonly email: string;
   readonly password: string;
   readonly setupKey: string;
+}
+
+export interface RegisterInput {
+  readonly name: string;
+  readonly email: string;
+  readonly password: string;
+  readonly role: 'TEACHER' | 'STUDENT';
 }
 
 export interface UserProfile {
@@ -62,6 +63,7 @@ export interface AuthServiceContract {
     input: RegisterInput,
     metadata: RequestMetadata,
   ): Promise<{ identity: AuthenticatedIdentity; tokens: TokenPair }>;
+  /** @deprecated Disponível apenas para compatibilidade interna; não é exposto por rota HTTP. */
   onboardOrganization(
     input: OnboardOrganizationInput,
     metadata: RequestMetadata,

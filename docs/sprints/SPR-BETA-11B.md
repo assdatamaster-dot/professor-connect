@@ -13,27 +13,10 @@ outras instituições devem receber o slug correspondente.
 
 ## Primeiro administrador
 
-Nenhum usuário é criado por migration ou seed. O fluxo definitivo de onboarding cria a instituição
-e seu primeiro administrador mediante a chave operacional `ADMIN_ONBOARDING_KEY`. Sem essa variável,
-o endpoint fica desativado.
-
-```http
-POST /api/auth/onboard-organization
-Content-Type: application/json
-
-{
-  "organizationName": "Instituição Exemplo",
-  "organizationSlug": "instituicao-exemplo",
-  "name": "Administrador Geral",
-  "email": "admin@instituicao.edu.br",
-  "password": "uma-senha-forte",
-  "confirmPassword": "uma-senha-forte",
-  "setupKey": "valor-configurado-em-ADMIN_ONBOARDING_KEY"
-}
-```
-
-O endpoint possui rate limit, valida senha, usa bcrypt e recusa criar um segundo ADMIN para uma
-instituição já provisionada. Depois do onboarding, professores e alunos são cadastrados no painel.
+Nenhum usuário é criado por migration ou seed. Desde a Sprint Beta-11D, um banco vazio abre
+automaticamente o Assistente de Configuração em `/admin`. O wizard cria a instituição, o primeiro
+administrador e as preferências em uma única transação e autentica a nova conta sem exigir novo
+login. O antigo endpoint manual não é exposto.
 
 ## API administrativa
 
@@ -91,6 +74,5 @@ O painel fica em `http://127.0.0.1:4300/admin/`, usando a instituição `profess
 servidor de pré-visualização em memória: ela nunca é gravada por migration, seed ou pelo build de
 produção.
 
-Em um ambiente real, o primeiro administrador continua sendo criado exclusivamente por
-`POST /api/auth/onboard-organization` com `ADMIN_ONBOARDING_KEY`; depois do onboarding, desative a
-chave no serviço.
+Em um ambiente real, abra `/admin` e conclua o Assistente de Configuração. Após a primeira execução,
+o backend bloqueia novas tentativas e passa a exibir a tela normal de login.

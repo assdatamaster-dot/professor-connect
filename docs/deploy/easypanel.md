@@ -53,7 +53,6 @@ JWT_AUDIENCE=professor-connect-clients
 ACCESS_TOKEN_TTL_SECONDS=900
 REFRESH_TOKEN_TTL_SECONDS=2592000
 BCRYPT_ROUNDS=12
-ADMIN_ONBOARDING_KEY=<segredo-aleatorio-exclusivo-com-32-ou-mais-caracteres>
 TRUST_PROXY=true
 CORS_ORIGINS=
 ```
@@ -67,10 +66,9 @@ dois segredos JWT separadamente e nunca os registre no repositório ou nos logs.
 pode ficar vazio para clientes Electron; inclua origens HTTPS separadas por vírgula ao publicar
 um cliente web.
 
-`ADMIN_ONBOARDING_KEY` habilita exclusivamente a criação da instituição e de seu primeiro
-administrador por `POST /api/auth/onboard-organization`. Após provisionar todas as instituições
-iniciais, remova a variável do serviço ou deixe-a vazia e faça um novo deploy para desativar o
-endpoint.
+No primeiro acesso a `/admin`, o painel detecta automaticamente o banco vazio e abre o Assistente
+de Configuração. Organização, administrador e preferências são criados pela interface; não há chave
+de onboarding nem chamada manual de API.
 
 ## 4. Configurar domínio e proxy
 

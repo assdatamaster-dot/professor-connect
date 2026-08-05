@@ -1,6 +1,12 @@
 import { createServer } from 'node:http';
 
 import { AuthError, type AuthenticatedIdentity, type TokenPair } from '../src/auth/auth.types.js';
+import {
+  BootstrapError,
+  type BootstrapServiceContract,
+  type BootstrapSetupInput,
+  type BootstrapSetupResult,
+} from '../src/bootstrap/bootstrap.types.js';
 import { createApp } from '../src/app.js';
 import { TestAdminService } from './admin-fixture.js';
 import { TEST_IDENTITY, TEST_TOKENS, TestAuthService } from './auth-fixture.js';
@@ -45,6 +51,33 @@ class PreviewAuthService extends TestAuthService {
   }
 }
 
+class PreviewBootstrapService implements BootstrapServiceContract {
+  private initialized = process.env.ADMIN_PREVIEW_FIRST_RUN !== 'true';
+
+  public initialize(): Promise<{ initialized: boolean }> {
+    return Promise.resolve({ initialized: this.initialized });
+  }
+
+  public setup(input: BootstrapSetupInput): Promise<BootstrapSetupResult> {
+    if (this.initialized) {
+      throw new BootstrapError('Bootstrap already completed.', 403, 'bootstrap_already_completed');
+    }
+    this.initialized = true;
+    return Promise.resolve({
+      identity: {
+        ...identity,
+        displayName: `${input.administrator.firstName} ${input.administrator.lastName}`,
+      },
+      tokens: TEST_TOKENS,
+      organization: {
+        id: identity.organizationId,
+        name: input.organization.name,
+        slug: input.organization.slug,
+      },
+    });
+  }
+}
+
 const server = createServer(
   createApp(
     undefined,
@@ -53,6 +86,7 @@ const server = createServer(
     undefined,
     new PreviewAuthService(),
     new TestAdminService(),
+    new PreviewBootstrapService(),
   ),
 );
 
@@ -61,6 +95,7 @@ server.listen(port, host, () => {
   console.info(`Instituição: ${organizationSlug}`);
   console.info(`Usuário: ${email}`);
   console.info(`Senha: ${password}`);
+  console.info('Use ADMIN_PREVIEW_FIRST_RUN=true para abrir o Assistente de Configuração.');
 });
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {

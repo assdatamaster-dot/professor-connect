@@ -15,6 +15,7 @@ const MIGRATIONS = [
   '20260804090000_user_registration_and_profiles',
   '20260805090000_administrative_panel',
   '20260805150000_intelligent_attendance_flow',
+  '20260805180000_bootstrap_first_run',
 ] as const;
 
 test('accepts startup only after every bundled migration is complete', async () => {
@@ -46,10 +47,7 @@ test('rejects startup when a bundled migration is pending', async () => {
     })),
   ]);
 
-  await assert.rejects(
-    assertMigrationsApplied(prisma),
-    /20260805150000_intelligent_attendance_flow/,
-  );
+  await assert.rejects(assertMigrationsApplied(prisma), /20260805180000_bootstrap_first_run/);
 });
 
 test('migration do fluxo inteligente persiste disponibilidade do professor', async () => {
@@ -96,6 +94,31 @@ test('migration de cadastro prepara perfis sem criar usuários artificiais', asy
   assert.match(sql, /ADD COLUMN "last_login_at"/);
   assert.match(sql, /CREATE UNIQUE INDEX "users_email_lower_key"/);
   assert.doesNotMatch(sql, /INSERT INTO "users"/i);
+});
+
+test('migration de bootstrap cria trava transacional e configurações iniciais', async () => {
+  const sql = await readFile(
+    new URL(
+      '../prisma/migrations/20260805180000_bootstrap_first_run/migration.sql',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+
+  assert.match(sql, /CREATE TABLE "bootstrap_state"/);
+  assert.match(sql, /CREATE TABLE "system_settings"/);
+  assert.match(sql, /INSERT INTO "bootstrap_state"/);
+  assert.doesNotMatch(sql, /INSERT INTO "users"/i);
+  assert.doesNotMatch(sql, /INSERT INTO "organizations"/i);
+});
+
+test('seed sincroniza somente referências e preserva o estado de primeiro acesso', async () => {
+  const seed = await readFile(new URL('../prisma/seed.ts', import.meta.url), 'utf8');
+
+  assert.match(seed, /transaction\.role\.upsert/);
+  assert.match(seed, /transaction\.permission\.upsert/);
+  assert.doesNotMatch(seed, /transaction\.organization\.(?:create|upsert)/);
+  assert.doesNotMatch(seed, /transaction\.user\.(?:create|upsert)/);
 });
 
 function createPrismaStub(queryResults: unknown[]): PrismaClient {

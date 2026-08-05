@@ -31,15 +31,30 @@ const USER_INCLUDE = {
 } as const;
 
 type UserWithAccess = NonNullable<Awaited<ReturnType<typeof findUserById>>>;
+type AuthDatabase = Pick<Prisma.TransactionClient, 'authToken' | 'user'>;
 
-async function findUserById(userId: string) {
-  return prismaClient.user.findFirst({
+async function findUserById(userId: string, database: AuthDatabase = prismaClient) {
+  return database.user.findFirst({
     where: { id: userId, deletedAt: null },
     include: USER_INCLUDE,
   });
 }
 
 export class AuthService implements AuthServiceContract {
+  public async createSessionForUser(
+    userId: string,
+    metadata: RequestMetadata,
+    database: AuthDatabase = prismaClient,
+  ): Promise<{ identity: AuthenticatedIdentity; tokens: TokenPair }> {
+    const user = await findUserById(userId, database);
+    if (user === null || user.status !== 'ACTIVE') {
+      throw new AuthError('Administrador inicial indisponível', 500, 'bootstrap_session_failed');
+    }
+    const identity = this.toIdentity(user, randomUUID());
+    const tokens = await this.issueTokenPair(user, identity.sessionFamilyId, metadata, database);
+    return { identity, tokens };
+  }
+
   public async register(
     input: RegisterInput,
     metadata: RequestMetadata,
@@ -468,6 +483,7 @@ export class AuthService implements AuthServiceContract {
     user: UserWithAccess,
     familyId: string,
     metadata: RequestMetadata,
+    database: AuthDatabase = prismaClient,
   ): Promise<TokenPair> {
     if (user.organizationId === null)
       throw new AuthError('Usuário sem instituição', 403, 'organization_required');
@@ -500,7 +516,7 @@ export class AuthService implements AuthServiceContract {
       expiresIn: environment.refreshTokenTtlSeconds,
       jwtid: tokenId,
     });
-    await prismaClient.authToken.create({
+    await database.authToken.create({
       data: {
         id: tokenId,
         userId: user.id,

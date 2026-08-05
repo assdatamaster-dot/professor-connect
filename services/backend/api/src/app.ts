@@ -18,6 +18,8 @@ import { AuthService } from './auth/auth.service.js';
 import type { AuthServiceContract } from './auth/auth.types.js';
 import { AdminService } from './admin/admin.service.js';
 import type { AdminServiceContract } from './admin/admin.types.js';
+import { BootstrapService } from './bootstrap/bootstrap.service.js';
+import type { BootstrapServiceContract } from './bootstrap/bootstrap.types.js';
 import { authenticate, requirePermission } from './middlewares/auth-middleware.js';
 import { globalErrorMiddleware, HttpError } from './middlewares/global-error-middleware.js';
 import { healthRouter } from './routes/health-router.js';
@@ -27,6 +29,7 @@ import { createSessionsRouter } from './routes/sessions-router.js';
 import { createAuthRouter } from './routes/auth-router.js';
 import { createUsersRouter } from './routes/users-router.js';
 import { createAdminRouter } from './routes/admin-router.js';
+import { createBootstrapRouter } from './routes/bootstrap-router.js';
 
 const adminWebDirectory = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -49,6 +52,7 @@ export function createApp(
     studentPresenceManager,
     activeSessionManager,
   ),
+  bootstrapService: BootstrapServiceContract = new BootstrapService(),
 ): Express {
   const app = express();
 
@@ -119,6 +123,7 @@ export function createApp(
     rateLimit({ windowMs: 60_000, limit: 300, standardHeaders: 'draft-8', legacyHeaders: false }),
   );
   app.use('/health', healthRouter);
+  app.use('/api/bootstrap', createBootstrapRouter(bootstrapService));
   const authRouter = createAuthRouter(authService);
   const usersRouter = createUsersRouter(authService);
   app.use(['/api/auth', '/auth'], authRouter);

@@ -81,14 +81,22 @@ enum AuditSeverity {
 }
 
 model Organization {
-  id         String      @id @default(uuid()) @db.Uuid
-  name       String
-  slug       String      @unique
-  createdAt  DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt  DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
-  users      User[]
-  professors Professor[]
-  students   Student[]
+  id           String          @id @default(uuid()) @db.Uuid
+  name         String
+  tradeName    String?         @map("trade_name")
+  taxId        String?         @unique @map("tax_id")
+  slug         String          @unique
+  city         String?
+  state        String?
+  country      String          @default("BR")
+  timezone     String          @default("America/Sao_Paulo")
+  language     String          @default("pt-BR")
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  users        User[]
+  professors   Professor[]
+  students     Student[]
+  systemConfig SystemSettings?
 
   @@map("organizations")
 }
@@ -96,8 +104,11 @@ model Organization {
 model User {
   id                 String             @id @default(uuid()) @db.Uuid
   organizationId     String             @map("organization_id") @db.Uuid
-  email              String             @unique
+  email              String
   displayName        String             @map("display_name")
+  firstName          String?            @map("first_name")
+  lastName           String?            @map("last_name")
+  phone              String?
   passwordHash       String?            @map("password_hash")
   passwordChangedAt  DateTime?          @map("password_changed_at") @db.Timestamptz(3)
   avatarUrl          String?            @map("avatar_url")
@@ -117,6 +128,32 @@ model User {
   @@index([organizationId, status, createdAt])
   @@index([organizationId, deletedAt])
   @@map("users")
+}
+
+model SystemSettings {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @unique @map("organization_id") @db.Uuid
+  systemName     String       @map("system_name")
+  logoMimeType   String?      @map("logo_mime_type")
+  logoBytes      Bytes?       @map("logo_bytes")
+  theme          String       @default("system")
+  language       String       @default("pt-BR")
+  defaults       Json         @default("{}")
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("system_settings")
+}
+
+model BootstrapState {
+  id              Int       @id
+  initializedAt   DateTime? @map("initialized_at") @db.Timestamptz(3)
+  organizationId  String?   @map("organization_id") @db.Uuid
+  administratorId String?   @map("administrator_id") @db.Uuid
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("bootstrap_state")
 }
 
 model UserAvatar {

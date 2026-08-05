@@ -141,6 +141,7 @@ ativos; planeje uma janela de manutenção.
 ## Painel administrativo
 
 `npm run build-backend`, a imagem Docker e o Nixpacks compilam também `apps/admin-web`. O backend
-serve o painel em `/admin`, na mesma origem da API. Configure `ADMIN_ONBOARDING_KEY` com ao menos 32
-caracteres para habilitar o onboarding protegido da instituição e de seu primeiro ADMIN; sem essa
-variável, o endpoint permanece desativado. Nenhuma conta é criada por seed ou migration.
+serve o painel em `/admin`, na mesma origem da API. Em um banco vazio, o próprio painel abre o
+Assistente de Configuração e cria, em uma única transação, a instituição, o primeiro ADMIN e as
+preferências. Nenhuma conta é criada por seed ou migration e nenhuma chamada manual de API é
+necessária.

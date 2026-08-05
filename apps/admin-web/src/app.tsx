@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { AdminApi } from './api';
+import { BootstrapWizard } from './bootstrap-wizard';
 import { Dashboard } from './dashboard';
 import { Avatar } from './components';
 import { GraduationIcon, GridIcon, LogoutIcon, MoonIcon, SunIcon, UsersIcon } from './icons';
@@ -14,6 +15,8 @@ const api = new AdminApi();
 export function App(): React.JSX.Element {
   const [identity, setIdentity] = useState<Identity | null>(null);
   const [restoring, setRestoring] = useState(true);
+  const [bootstrapRequired, setBootstrapRequired] = useState(false);
+  const [startupError, setStartupError] = useState<string | null>(null);
   const [view, setView] = useState<View>(() => viewFromHash());
   const [theme, setTheme] = useState<'light' | 'dark'>(() =>
     localStorage.getItem('professor-connect.admin.theme') === 'dark' ? 'dark' : 'light',
@@ -29,10 +32,18 @@ export function App(): React.JSX.Element {
   }, [theme]);
 
   useEffect(() => {
-    void api.restore().then((result) => {
-      setIdentity(result?.identity ?? null);
-      setRestoring(false);
-    });
+    void api
+      .bootstrapStatus()
+      .then(async (status) => {
+        if (!status.initialized) {
+          setBootstrapRequired(true);
+          return;
+        }
+        const result = await api.restore();
+        setIdentity(result?.identity ?? null);
+      })
+      .catch(() => setStartupError('Não foi possível verificar a configuração do servidor.'))
+      .finally(() => setRestoring(false));
   }, []);
 
   useEffect(() => {
@@ -62,6 +73,43 @@ export function App(): React.JSX.Element {
         </div>
         <span>Preparando seu painel...</span>
       </div>
+    );
+  }
+  if (startupError !== null) {
+    return (
+      <div className="app-loading app-loading--error" role="alert">
+        <div className="brand-mark">
+          <span>PC</span>
+        </div>
+        <strong>Não foi possível iniciar o painel</strong>
+        <span>{startupError}</span>
+        <button
+          className="button button--primary"
+          type="button"
+          onClick={() => window.location.reload()}
+        >
+          Tentar novamente
+        </button>
+      </div>
+    );
+  }
+  if (bootstrapRequired) {
+    return (
+      <BootstrapWizard
+        api={api}
+        onCompleted={(authenticatedIdentity, selectedTheme) => {
+          const resolvedTheme =
+            selectedTheme === 'system'
+              ? window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light'
+              : selectedTheme;
+          setTheme(resolvedTheme);
+          setBootstrapRequired(false);
+          setIdentity(authenticatedIdentity);
+          window.location.hash = 'dashboard';
+        }}
+      />
     );
   }
   if (identity === null) return <Login api={api} onAuthenticated={setIdentity} />;

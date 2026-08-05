@@ -17,6 +17,49 @@ export interface AuthResponse {
   };
 }
 
+export interface BootstrapStatus {
+  readonly initialized: boolean;
+}
+
+export interface BootstrapSetupInput {
+  readonly organization: {
+    readonly name: string;
+    readonly tradeName: string;
+    readonly taxId: string;
+    readonly slug: string;
+    readonly city: string;
+    readonly state: string;
+    readonly country: string;
+    readonly timezone: string;
+    readonly language: string;
+  };
+  readonly administrator: {
+    readonly firstName: string;
+    readonly lastName: string;
+    readonly email: string;
+    readonly password: string;
+    readonly confirmPassword: string;
+    readonly phone: string;
+  };
+  readonly settings: {
+    readonly systemName: string;
+    readonly theme: 'light' | 'dark' | 'system';
+    readonly language: string;
+    readonly defaults: {
+      readonly sessionDurationMinutes: number;
+      readonly allowSelfRegistration: boolean;
+    };
+  };
+}
+
+export interface BootstrapSetupResult extends AuthResponse {
+  readonly organization: {
+    readonly id: string;
+    readonly name: string;
+    readonly slug: string;
+  };
+}
+
 export interface DashboardMetrics {
   readonly teachers: number;
   readonly students: number;

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { initials, isValidEmail, validatePassword } from '../src/validation.js';
+import { createSlug, initials, isValidEmail, validatePassword } from '../src/validation.js';
 
 test('validação de senha exige todos os grupos de segurança', () => {
   assert.equal(validatePassword('curta').valid, false);
@@ -19,4 +19,8 @@ test('avatar de iniciais usa no máximo dois nomes', () => {
 test('validação de e-mail rejeita valores incompletos', () => {
   assert.equal(isValidEmail('admin@instituicao.edu.br'), true);
   assert.equal(isValidEmail('admin@'), false);
+});
+
+test('slug do bootstrap é gerado sem acentos ou separadores inválidos', () => {
+  assert.equal(createSlug('  Colégio São José / Unidade 1  '), 'colegio-sao-jose-unidade-1');
 });

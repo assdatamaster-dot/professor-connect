@@ -13,6 +13,7 @@ import {
 import { createApp } from './app.js';
 import { AuthService } from './auth/auth.service.js';
 import { AdminService } from './admin/admin.service.js';
+import { BootstrapService } from './bootstrap/bootstrap.service.js';
 import { createLogger } from './utils/logger.js';
 
 const persistence = new DatabasePersistence(undefined, (error) => {
@@ -20,8 +21,10 @@ const persistence = new DatabasePersistence(undefined, (error) => {
 });
 const logger = createLogger(persistence.audit);
 const authService = new AuthService();
+const bootstrapService = new BootstrapService(authService);
 
 await persistence.assertMigrationsApplied();
+const bootstrapStatus = await bootstrapService.initialize();
 await persistence.recovery.recoverAfterRestart();
 const [requestHistory, sessionHistory] = await Promise.all([
   persistence.sessionRequest.listHistory(),
@@ -62,6 +65,7 @@ const httpServer = createServer(
     activeSessionManager,
     authService,
     adminService,
+    bootstrapService,
   ),
 );
 const communicationGateway = initializeWebSocket(
@@ -100,6 +104,11 @@ httpServer.listen(environment.port, environment.host, () => {
     host: environment.host,
     port: environment.port,
   });
+  logger.info(
+    bootstrapStatus.initialized
+      ? 'Configuração inicial detectada'
+      : 'Aguardando configuração inicial pelo painel administrativo',
+  );
   logger.info('Socket.IO inicializado e aguardando conexões');
 });
 
