@@ -11,10 +11,12 @@ alunos, onboarding seguro do primeiro administrador, dashboard, avatares, status
 desconexão imediata de usuários revogados. A implementação mantém os contratos de autenticação,
 Electron, presença, WebRTC, controle remoto e transferência de arquivos existentes.
 
-Na reauditoria integral foram encontradas e corrigidas duas lacunas: contas que acumulassem a role
-`ADMIN` com `TEACHER` ou `STUDENT` ainda apareciam nas listagens gerenciáveis, e o build Vite
-publicava source maps. As consultas e indicadores agora excluem explicitamente qualquer ADMIN e o
-bundle de produção não contém `.map` nem comentário `sourceMappingURL`.
+Na reauditoria integral foram encontradas e corrigidas três lacunas: contas que acumulassem a role
+`ADMIN` com `TEACHER` ou `STUDENT` ainda apareciam nas listagens gerenciáveis, o build Vite
+publicava source maps e a diretiva CSP `upgrade-insecure-requests` impedia os assets do painel de
+carregar na pré-visualização HTTP local. As consultas e indicadores agora excluem explicitamente
+qualquer ADMIN, o bundle de produção não contém `.map` nem comentário `sourceMappingURL` e a CSP
+preserva o reforço de HTTPS em produção sem quebrar o fluxo local/Electron.
 
 ## Arquitetura revisada
 
@@ -79,6 +81,8 @@ continuam sem contas bootstrap.
 - O login sem slug continua limitado à organização pública, eliminando ambiguidade entre tenants.
 - O painel usa a mesma origem HTTP da API, compatível com proxy reverso, EasyPanel e container
   read-only.
+- Em desenvolvimento, a CSP não força assets HTTP para HTTPS; em produção, o reforço
+  `upgrade-insecure-requests` permanece ativo.
 - Avatares persistem no PostgreSQL e não dependem do filesystem efêmero.
 - A configuração Prisma foi migrada para `prisma.config.ts`, removendo o aviso de configuração
   descontinuada.

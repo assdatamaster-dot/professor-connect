@@ -18,6 +18,10 @@ test('GET /health responde com o estado da aplicação', async () => {
     const response = await fetch(`http://127.0.0.1:${address.port}/health`);
 
     assert.equal(response.status, 200);
+    assert.doesNotMatch(
+      response.headers.get('content-security-policy') ?? '',
+      /(?:^|;)upgrade-insecure-requests(?:;|$)/,
+    );
     assert.deepEqual(await response.json(), { status: 'ok' });
   } finally {
     await new Promise<void>((resolve, reject) => {

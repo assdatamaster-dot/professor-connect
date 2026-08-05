@@ -52,7 +52,18 @@ export function createApp(
 
   app.disable('x-powered-by');
   if (environment.trustProxy) app.set('trust proxy', 1);
-  app.use(helmet({ crossOriginResourcePolicy: { policy: 'same-site' } }));
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          // Browsers upgrade HTTP asset URLs to HTTPS when this directive is present. Keep the
+          // production hardening, but allow the local HTTP preview used by Electron/development.
+          upgradeInsecureRequests: environment.nodeEnv === 'production' ? [] : null,
+        },
+      },
+      crossOriginResourcePolicy: { policy: 'same-site' },
+    }),
+  );
   app.use(
     cors({
       origin(origin, callback) {
