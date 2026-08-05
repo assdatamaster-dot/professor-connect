@@ -32,6 +32,8 @@ const adminWebDirectory = resolve(
   dirname(fileURLToPath(import.meta.url)),
   '../../../../apps/admin-web/dist',
 );
+const adminAssetsDirectory = resolve(adminWebDirectory, 'assets');
+const adminIndex = resolve(adminWebDirectory, 'index.html');
 
 export function createApp(
   professorPresenceManager = new PresenceManager(),
@@ -52,6 +54,36 @@ export function createApp(
 
   app.disable('x-powered-by');
   if (environment.trustProxy) app.set('trust proxy', 1);
+
+  // Public files must be resolved before CORS, body parsing, rate limiting and every
+  // authentication/authorization middleware. Keep an explicit assets boundary so even a
+  // missing asset can never fall through to a protected route or to the SPA fallback.
+  app.use(
+    '/admin/assets',
+    express.static(adminAssetsDirectory, {
+      immutable: environment.nodeEnv === 'production',
+      index: false,
+      maxAge: environment.nodeEnv === 'production' ? '1y' : 0,
+      setHeaders(response, filePath) {
+        if (filePath.endsWith('.css'))
+          response.setHeader('Content-Type', 'text/css; charset=utf-8');
+        if (filePath.endsWith('.js')) {
+          response.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+        }
+      },
+    }),
+  );
+  app.use('/admin/assets', (_request, response) =>
+    response.status(404).json({ code: 'asset_not_found', message: 'Asset não encontrado' }),
+  );
+  app.use(
+    '/admin',
+    express.static(adminWebDirectory, {
+      index: false,
+      maxAge: 0,
+    }),
+  );
+
   app.use(
     helmet({
       contentSecurityPolicy: {
@@ -110,16 +142,7 @@ export function createApp(
     requirePermission('sessions.read'),
     createSessionsRouter(sessionRequestManager, activeSessionManager),
   );
-  const adminIndex = resolve(adminWebDirectory, 'index.html');
   if (existsSync(adminIndex)) {
-    app.use(
-      '/admin',
-      express.static(adminWebDirectory, {
-        immutable: environment.nodeEnv === 'production',
-        index: false,
-        maxAge: environment.nodeEnv === 'production' ? '1y' : 0,
-      }),
-    );
     app.get(/^\/admin(?:\/(?!assets(?:\/|$)).*)?$/, (_request, response) =>
       response.sendFile(adminIndex),
     );
