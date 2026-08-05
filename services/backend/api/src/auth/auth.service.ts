@@ -19,8 +19,11 @@ import {
   type UserProfile,
   type UserRole,
 } from './auth.types.js';
+import {
+  allowsSelfRegistration,
+  resolveAuthenticationOrganization,
+} from './authentication-organization.js';
 
-const PUBLIC_ORGANIZATION_SLUG = 'professor-connect';
 const DUMMY_PASSWORD_HASH = '$2b$12$19xZvnvv/1M6atEpXU5NqelfSx3qxJVcG8q9iJtbPO3JpDa5x9mTK';
 
 const USER_INCLUDE = {
@@ -66,7 +69,7 @@ export class AuthService implements AuthServiceContract {
     try {
       const createdUserId = await prismaClient.$transaction(async (transaction) => {
         const [organization, role] = await Promise.all([
-          transaction.organization.findUnique({ where: { slug: PUBLIC_ORGANIZATION_SLUG } }),
+          resolveAuthenticationOrganization(transaction),
           transaction.role.findUnique({ where: { name: input.role } }),
         ]);
         if (organization === null || role === null) {
@@ -74,6 +77,17 @@ export class AuthService implements AuthServiceContract {
             'Configuração de acesso indisponível',
             503,
             'registration_unavailable',
+          );
+        }
+        const settings = await transaction.systemSettings.findUnique({
+          where: { organizationId: organization.id },
+          select: { defaults: true },
+        });
+        if (settings === null || !allowsSelfRegistration(settings.defaults)) {
+          throw new AuthError(
+            'O autocadastro está desativado. Solicite uma conta ao administrador.',
+            403,
+            'self_registration_disabled',
           );
         }
         const user = await transaction.user.create({
@@ -207,16 +221,18 @@ export class AuthService implements AuthServiceContract {
     metadata: RequestMetadata,
   ): Promise<{ identity: AuthenticatedIdentity; tokens: TokenPair }> {
     const email = emailInput.trim().toLowerCase();
-    const resolvedOrganizationSlug =
-      organizationSlug?.trim().toLowerCase() ?? PUBLIC_ORGANIZATION_SLUG;
-    const user = await prismaClient.user.findFirst({
-      where: {
-        email: { equals: email, mode: 'insensitive' },
-        deletedAt: null,
-        organization: { slug: resolvedOrganizationSlug },
-      },
-      include: USER_INCLUDE,
-    });
+    const organization = await resolveAuthenticationOrganization(prismaClient, organizationSlug);
+    const user =
+      organization === null
+        ? null
+        : await prismaClient.user.findFirst({
+            where: {
+              email: { equals: email, mode: 'insensitive' },
+              deletedAt: null,
+              organizationId: organization.id,
+            },
+            include: USER_INCLUDE,
+          });
     const passwordMatches = await bcrypt.compare(
       password,
       user?.passwordHash ?? DUMMY_PASSWORD_HASH,
@@ -230,7 +246,7 @@ export class AuthService implements AuthServiceContract {
     ) {
       await this.audit('auth.login.failed', undefined, undefined, {
         email,
-        organizationSlug: resolvedOrganizationSlug,
+        organizationSlug: organization?.slug ?? organizationSlug?.trim().toLowerCase() ?? null,
         ...metadata,
       });
       throw new AuthError('Credenciais inválidas');

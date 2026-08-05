@@ -77,7 +77,6 @@ export class DesktopAuthClient {
     private readonly serverUrl: string,
     private readonly store: AuthTokenStore,
     private readonly clock: () => number = Date.now,
-    private readonly defaultOrganizationSlug = 'professor-connect',
   ) {}
 
   public async login(
@@ -85,13 +84,12 @@ export class DesktopAuthClient {
     password: string,
     organizationSlug?: string,
   ): Promise<StoredAuthSession['identity']> {
-    const resolvedOrganizationSlug = organizationSlug ?? this.defaultOrganizationSlug;
     const result = await this.requestToken('/api/auth/login', {
       email,
       password,
-      ...(resolvedOrganizationSlug.trim().length === 0
+      ...(organizationSlug === undefined || organizationSlug.trim().length === 0
         ? {}
-        : { organizationSlug: resolvedOrganizationSlug.trim() }),
+        : { organizationSlug: organizationSlug.trim() }),
     });
     const session = this.toStoredSession(result);
     await this.store.save(session);

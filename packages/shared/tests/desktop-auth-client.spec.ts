@@ -22,9 +22,13 @@ test('faz login, renova access token automaticamente e elimina refresh expirado'
   const originalFetch = globalThis.fetch;
   let now = 1_000_000;
   let refreshCount = 0;
+  let loginBody = '';
   globalThis.fetch = async (input, init) => {
     const url = input.toString();
-    if (url.endsWith('/api/auth/login')) return tokenResponse('access-1', 'refresh-1', 60, 120);
+    if (url.endsWith('/api/auth/login')) {
+      loginBody = String(init?.body);
+      return tokenResponse('access-1', 'refresh-1', 60, 120);
+    }
     if (url.endsWith('/api/auth/refresh')) {
       refreshCount += 1;
       assert.match(String(init?.body), /refresh-1/);
@@ -37,6 +41,7 @@ test('faz login, renova access token automaticamente e elimina refresh expirado'
     const client = new DesktopAuthClient('https://api.example.edu', store, () => now);
     const identity = await client.login('aluno@example.edu', 'Strong#Password1');
     assert.equal(identity.roles[0], 'STUDENT');
+    assert.doesNotMatch(loginBody, /organizationSlug|professor-connect/);
     assert.equal(await client.getAccessToken(), 'access-1');
     now += 31_000;
     assert.equal(await client.getAccessToken(), 'access-2');

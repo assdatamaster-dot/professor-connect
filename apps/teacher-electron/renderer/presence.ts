@@ -12,6 +12,7 @@ import {
 import type { TeacherRemoteControlSnapshot } from '../shared/remote-control-contracts.js';
 import { FILE_TRANSFER_DATA_CHANNEL_LABEL, FileTransferClient } from './file-transfer.client.js';
 import { RemoteControlClient } from './remote-control.client.js';
+import { toUserFacingErrorMessage } from './error-message.js';
 
 const MAXIMUM_PENDING_ICE_CANDIDATES = 256;
 const WEBRTC_RECOVERY_DELAY_MS = 3_000;
@@ -312,8 +313,7 @@ loginForm.addEventListener('submit', (event) => {
     })
     .catch((error: unknown) => {
       loginButton.disabled = false;
-      loginError.textContent =
-        error instanceof Error ? error.message : 'Não foi possível conectar.';
+      loginError.textContent = toUserFacingErrorMessage(error, 'Não foi possível conectar.');
       loginError.hidden = false;
     });
 });
@@ -376,8 +376,10 @@ registerForm.addEventListener('submit', (event) => {
       validateRegistrationPassword();
     })
     .catch((error: unknown) => {
-      registerError.textContent =
-        error instanceof Error ? error.message : 'Não foi possível criar sua conta.';
+      registerError.textContent = toUserFacingErrorMessage(
+        error,
+        'Não foi possível criar sua conta.',
+      );
       registerError.hidden = false;
       registerButton.disabled = false;
     });
@@ -397,8 +399,10 @@ profileButton.addEventListener('click', () => {
       profileDialog.showModal();
     })
     .catch((error: unknown) => {
-      sessionNotice.textContent =
-        error instanceof Error ? error.message : 'Não foi possível carregar o perfil.';
+      sessionNotice.textContent = toUserFacingErrorMessage(
+        error,
+        'Não foi possível carregar o perfil.',
+      );
       sessionNotice.hidden = false;
     })
     .finally(() => {
@@ -435,8 +439,10 @@ profileForm.addEventListener('submit', (event) => {
       if (changingPassword) showRegistration(false);
     })
     .catch((error: unknown) => {
-      profileError.textContent =
-        error instanceof Error ? error.message : 'Não foi possível atualizar o perfil.';
+      profileError.textContent = toUserFacingErrorMessage(
+        error,
+        'Não foi possível atualizar o perfil.',
+      );
       profileError.hidden = false;
     })
     .finally(() => {
