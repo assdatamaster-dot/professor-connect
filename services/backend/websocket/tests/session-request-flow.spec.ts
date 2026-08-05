@@ -6,6 +6,7 @@ import { io, type Socket } from 'socket.io-client';
 
 import {
   PresenceManager,
+  type AvailableProfessorPayload,
   SessionManager,
   SessionRequestManager,
   StudentPresenceManager,
@@ -22,6 +23,11 @@ import {
 } from './authenticated-socket-fixture.js';
 
 interface ServerEvents {
+  'professor:availability:changed': (payload: {
+    readonly available: boolean;
+    readonly availableSince?: string;
+  }) => void;
+  'professors:available:list': (payload: readonly AvailableProfessorPayload[]) => void;
   'session:requested': (payload: SessionRequestedPayload) => void;
   'session:accepted': (payload: SessionResponsePayload) => void;
   'session:rejected': (payload: SessionResponsePayload) => void;
@@ -37,6 +43,10 @@ interface ServerEvents {
 
 interface ClientEvents {
   'professor:online': (payload: { readonly name: string }) => void;
+  'professor:availability:set': (
+    payload: { readonly available: boolean },
+    acknowledge?: (result: { readonly ok: boolean; readonly message?: string }) => void,
+  ) => void;
   'student:register': (payload: { readonly id: string; readonly name: string }) => void;
   'request:session': (payload: { readonly teacherId: string }) => void;
   'session:accept': (payload: { readonly requestId: string }) => void;
@@ -97,17 +107,40 @@ test('entrega aceite, recusa e timeout em tempo real', async () => {
 
   try {
     await Promise.all([waitForConnect(teacher), waitForConnect(student)]);
+    const initialAvailableList = waitForAvailableProfessors(student);
     teacher.emit('professor:online', { name: 'Carlos' });
     student.emit('student:register', { id: 'student-id', name: 'Ana' });
     await waitUntil(
       () =>
         professors.getOnlineProfessors().length === 1 && students.getOnlineStudents().length === 1,
     );
+    assert.deepEqual(await initialAvailableList, [
+      {
+        id: 'teacher-id',
+        name: 'Carlos',
+        status: 'available',
+        availableSince: professors.getOnlineProfessors()[0]?.availableSince?.toISOString(),
+      },
+    ]);
+
+    const teacherUnavailable = waitForAvailabilityChanged(teacher);
+    const emptyAvailableList = waitForAvailableProfessors(student);
+    assert.deepEqual(await setTeacherAvailability(teacher, false), { ok: true });
+    assert.equal((await teacherUnavailable).available, false);
+    assert.deepEqual(await emptyAvailableList, []);
+
+    const teacherAvailable = waitForAvailabilityChanged(teacher);
+    const restoredAvailableList = waitForAvailableProfessors(student);
+    assert.deepEqual(await setTeacherAvailability(teacher, true), { ok: true });
+    assert.equal((await teacherAvailable).available, true);
+    assert.equal((await restoredAvailableList)[0]?.id, 'teacher-id');
 
     const requestedForAccept = waitForRequested(teacher);
+    const reservedAvailableList = waitForAvailableProfessors(student);
     student.emit('request:session', { teacherId: 'teacher-id' });
     const firstRequest = await requestedForAccept;
     assert.equal(firstRequest.studentName, 'Ana');
+    assert.deepEqual(await reservedAvailableList, []);
     const accepted = waitForAccepted(student);
     const teacherStarted = waitForStarted(teacher);
     const studentStarted = waitForStarted(student);
@@ -161,11 +194,13 @@ test('entrega aceite, recusa e timeout em tempo real', async () => {
 
     const teacherEnded = waitForEnded(teacher);
     const studentEnded = waitForEnded(student);
+    const availableAfterSession = waitForAvailableProfessors(student);
     teacher.emit('session:end', { sessionId: teacherSession.sessionId });
     const [endedForTeacher, endedForStudent] = await Promise.all([teacherEnded, studentEnded]);
     assert.deepEqual(endedForTeacher, endedForStudent);
     assert.deepEqual(activeSessions.listActiveSessions(), []);
     assert.equal(activeSessions.listHistory()[0]?.status, 'finished');
+    assert.equal((await availableAfterSession)[0]?.id, 'teacher-id');
 
     const requestedForReject = waitForRequested(teacher);
     student.emit('request:session', { teacherId: 'teacher-id' });
@@ -229,6 +264,27 @@ async function waitForConnect(client: TestClient): Promise<void> {
 
 function waitForRequested(client: TestClient): Promise<SessionRequestedPayload> {
   return new Promise((resolve) => client.once('session:requested', resolve));
+}
+
+function waitForAvailableProfessors(
+  client: TestClient,
+): Promise<readonly AvailableProfessorPayload[]> {
+  return new Promise((resolve) => client.once('professors:available:list', resolve));
+}
+
+function waitForAvailabilityChanged(
+  client: TestClient,
+): Promise<{ readonly available: boolean; readonly availableSince?: string }> {
+  return new Promise((resolve) => client.once('professor:availability:changed', resolve));
+}
+
+function setTeacherAvailability(
+  client: TestClient,
+  available: boolean,
+): Promise<{ readonly ok: boolean; readonly message?: string }> {
+  return new Promise((resolve) => {
+    client.emit('professor:availability:set', { available }, resolve);
+  });
 }
 
 function waitForAccepted(client: TestClient): Promise<SessionResponsePayload> {

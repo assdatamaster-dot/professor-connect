@@ -1,5 +1,8 @@
 # Professor Connect
 
+> O fluxo inteligente de disponibilidade, solicitação, atendimento em tempo real e histórico está
+> documentado em [Sprint BETA-11C](docs/sprints/SPR-BETA-11C.md).
+
 > O painel React, a gestão multi-instituição e a API administrativa estão documentados em [Sprint BETA-11B](docs/sprints/SPR-BETA-11B.md).
 
 > A arquitetura de identidade, JWT, RBAC, Socket.IO autenticado e armazenamento seguro do Electron está documentada em [Sprint BETA-9C](docs/sprints/SPR-BETA-9C.md).

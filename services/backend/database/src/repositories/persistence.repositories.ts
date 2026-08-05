@@ -4,6 +4,7 @@ import {
   FileTransferDirection,
   FileTransferStatus,
   PresenceRole,
+  ProfessorAvailability,
   type Prisma,
   type PrismaClient,
   RequestStatus,
@@ -32,6 +33,8 @@ export interface ProfessorRecord {
   readonly socketId: string;
   readonly onlineSince: Date;
   readonly lastHeartbeat: Date;
+  readonly availability: 'available' | 'unavailable' | 'busy';
+  readonly availableSince: Date | undefined;
 }
 
 export interface StudentRecord {
@@ -48,8 +51,9 @@ export interface SessionRequestRecord {
   readonly studentName: string;
   readonly teacherId: string;
   readonly teacherName: string;
-  readonly status: 'pending' | 'accepted' | 'rejected' | 'expired';
+  readonly status: 'pending' | 'accepted' | 'rejected' | 'expired' | 'cancelled';
   readonly createdAt: string;
+  readonly respondedAt?: string;
 }
 
 export interface AttendanceSessionRecord {
@@ -61,6 +65,9 @@ export interface AttendanceSessionRecord {
   readonly studentName: string;
   readonly createdAt: string;
   readonly status: 'active' | 'finished';
+  readonly endedAt?: string;
+  readonly durationSeconds?: number;
+  readonly endReason?: string;
 }
 
 export interface AuditRecord {
@@ -138,8 +145,17 @@ export class ProfessorRepository {
       this.prisma.$transaction([
         this.prisma.professor.upsert({
           where: { id: professor.id },
-          create: { id: professor.id, name: professor.name },
-          update: { name: professor.name },
+          create: {
+            id: professor.id,
+            name: professor.name,
+            availability: toProfessorAvailability(professor.availability),
+            availableSince: professor.availableSince ?? null,
+          },
+          update: {
+            name: professor.name,
+            availability: toProfessorAvailability(professor.availability),
+            availableSince: professor.availableSince ?? null,
+          },
         }),
         this.prisma.presenceConnection.create({
           data: {
@@ -154,6 +170,22 @@ export class ProfessorRepository {
     );
   }
 
+  public updateAvailability(
+    professorId: string,
+    availability: ProfessorRecord['availability'],
+    availableSince: Date | undefined,
+  ): void {
+    this.queue.enqueue(() =>
+      this.prisma.professor.updateMany({
+        where: { id: professorId },
+        data: {
+          availability: toProfessorAvailability(availability),
+          availableSince: availableSince ?? null,
+        },
+      }),
+    );
+  }
+
   public updateHeartbeat(socketId: string, at: Date): void {
     this.queue.enqueue(() =>
       this.prisma.presenceConnection.updateMany({
@@ -165,10 +197,16 @@ export class ProfessorRepository {
 
   public markOffline(socketId: string, at: Date): void {
     this.queue.enqueue(() =>
-      this.prisma.presenceConnection.updateMany({
-        where: { socketId, isOnline: true },
-        data: { isOnline: false, disconnectedAt: at },
-      }),
+      this.prisma.$transaction([
+        this.prisma.presenceConnection.updateMany({
+          where: { socketId, isOnline: true },
+          data: { isOnline: false, disconnectedAt: at },
+        }),
+        this.prisma.professor.updateMany({
+          where: { presences: { some: { socketId } } },
+          data: { availability: ProfessorAvailability.UNAVAILABLE, availableSince: null },
+        }),
+      ]),
     );
   }
 }
@@ -227,7 +265,8 @@ export class SessionRequestRepository {
 
   public saveRequest(request: SessionRequestRecord): void {
     const status = toRequestStatus(request.status);
-    const occurredAt = new Date();
+    const occurredAt =
+      request.respondedAt === undefined ? new Date() : new Date(request.respondedAt);
     this.queue.enqueue(() =>
       this.prisma.$transaction([
         this.prisma.sessionRequest.upsert({
@@ -274,6 +313,9 @@ export class SessionRequestRepository {
           teacherName: request.professor.name,
           status: fromRequestStatus(request.status),
           createdAt: request.createdAt.toISOString(),
+          ...(request.respondedAt === null
+            ? {}
+            : { respondedAt: request.respondedAt.toISOString() }),
         },
       ];
     });
@@ -290,6 +332,8 @@ export class AttendanceSessionRepository {
     const occurredAt = new Date();
     const startedAt = new Date(session.createdAt);
     const finished = session.status === 'finished';
+    const endedAt = session.endedAt === undefined ? occurredAt : new Date(session.endedAt);
+    const persistedDuration = session.durationSeconds ?? durationSeconds(startedAt, endedAt);
     this.queue.enqueue(() =>
       this.prisma.$transaction([
         this.prisma.attendanceSession.upsert({
@@ -303,18 +347,18 @@ export class AttendanceSessionRepository {
             startedAt,
             ...(finished
               ? {
-                  endedAt: occurredAt,
-                  durationSeconds: durationSeconds(startedAt, occurredAt),
-                  endReason: endReason ?? 'participant',
+                  endedAt,
+                  durationSeconds: persistedDuration,
+                  endReason: session.endReason ?? endReason ?? 'participant',
                 }
               : {}),
           },
           update: finished
             ? {
                 status: AttendanceSessionStatus.FINISHED,
-                endedAt: occurredAt,
-                durationSeconds: durationSeconds(startedAt, occurredAt),
-                endReason: endReason ?? 'participant',
+                endedAt,
+                durationSeconds: persistedDuration,
+                endReason: session.endReason ?? endReason ?? 'participant',
               }
             : { status: AttendanceSessionStatus.ACTIVE },
         }),
@@ -369,6 +413,9 @@ export class AttendanceSessionRepository {
       studentName: session.student.name,
       createdAt: session.startedAt.toISOString(),
       status: session.status === AttendanceSessionStatus.ACTIVE ? 'active' : 'finished',
+      ...(session.endedAt === null ? {} : { endedAt: session.endedAt.toISOString() }),
+      ...(session.durationSeconds === null ? {} : { durationSeconds: session.durationSeconds }),
+      ...(session.endReason === null ? {} : { endReason: session.endReason }),
     }));
   }
 }
@@ -466,6 +513,9 @@ export class RecoveryRepository {
         where: { isOnline: true },
         data: { isOnline: false, disconnectedAt: now },
       });
+      await transaction.professor.updateMany({
+        data: { availability: ProfessorAvailability.UNAVAILABLE, availableSince: null },
+      });
       await transaction.sessionRequest.updateMany({
         where: { status: RequestStatus.PENDING },
         data: { status: RequestStatus.EXPIRED, respondedAt: now },
@@ -517,10 +567,20 @@ export class WorkflowPresenceRepository {
     this.queue.enqueue(() =>
       this.prisma.$transaction(async (transaction: Prisma.TransactionClient) => {
         if (client.role === 'TEACHER') {
+          const availability = workflowProfessorAvailability(client.status);
           await transaction.professor.upsert({
             where: { id: client.clientId },
-            create: { id: client.clientId, name: client.displayName },
-            update: { name: client.displayName },
+            create: {
+              id: client.clientId,
+              name: client.displayName,
+              availability,
+              availableSince: availability === ProfessorAvailability.AVAILABLE ? lastSeen : null,
+            },
+            update: {
+              name: client.displayName,
+              availability,
+              availableSince: availability === ProfessorAvailability.AVAILABLE ? lastSeen : null,
+            },
           });
         } else {
           await transaction.student.upsert({
@@ -714,15 +774,29 @@ function toRequestStatus(status: SessionRequestRecord['status']): RequestStatus 
     accepted: RequestStatus.ACCEPTED,
     rejected: RequestStatus.REJECTED,
     expired: RequestStatus.EXPIRED,
+    cancelled: RequestStatus.CANCELLED,
   };
   return statuses[status];
 }
 
 function fromRequestStatus(status: RequestStatus): SessionRequestRecord['status'] {
-  if (status === RequestStatus.CANCELLED) {
-    return 'expired';
-  }
   return status.toLowerCase() as SessionRequestRecord['status'];
+}
+
+function toProfessorAvailability(
+  availability: ProfessorRecord['availability'],
+): ProfessorAvailability {
+  if (availability === 'available') return ProfessorAvailability.AVAILABLE;
+  if (availability === 'busy') return ProfessorAvailability.BUSY;
+  return ProfessorAvailability.UNAVAILABLE;
+}
+
+function workflowProfessorAvailability(
+  status: WorkflowPresenceRecord['status'],
+): ProfessorAvailability {
+  if (status === 'AVAILABLE') return ProfessorAvailability.AVAILABLE;
+  if (status === 'BUSY') return ProfessorAvailability.BUSY;
+  return ProfessorAvailability.UNAVAILABLE;
 }
 
 function toSeverity(severity: AuditRecord['severity']): AuditSeverity {

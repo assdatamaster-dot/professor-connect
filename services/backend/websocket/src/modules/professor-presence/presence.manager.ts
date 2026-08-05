@@ -8,13 +8,20 @@ export interface Professor {
   readonly socketId: string;
   readonly onlineSince: Date;
   readonly lastHeartbeat: Date;
+  readonly availability: ProfessorAvailability;
+  readonly availableSince: Date | undefined;
+  readonly avatarUrl?: string;
   readonly organizationId?: string;
 }
+
+export type ProfessorAvailability = 'available' | 'unavailable' | 'busy';
+export type ProfessorPresenceListener = (professors: readonly Professor[]) => void;
 
 export interface RegisterProfessorInput {
   readonly id?: string;
   readonly name: string;
   readonly socketId: string;
+  readonly avatarUrl?: string;
   readonly organizationId?: string;
 }
 
@@ -23,6 +30,7 @@ type IdFactory = () => string;
 
 export class PresenceManager {
   private readonly professorsBySocketId = new Map<string, Professor>();
+  private readonly listeners = new Set<ProfessorPresenceListener>();
 
   public constructor(
     private readonly clock: Clock = () => new Date(),
@@ -38,11 +46,15 @@ export class PresenceManager {
       socketId: input.socketId,
       onlineSince: registeredAt,
       lastHeartbeat: registeredAt,
+      availability: 'available',
+      availableSince: registeredAt,
+      ...(input.avatarUrl === undefined ? {} : { avatarUrl: input.avatarUrl }),
       ...(input.organizationId === undefined ? {} : { organizationId: input.organizationId }),
     };
 
     this.professorsBySocketId.set(input.socketId, professor);
     this.persistence?.saveProfessor(professor);
+    this.notifyListeners();
     return professor;
   }
 
@@ -52,6 +64,7 @@ export class PresenceManager {
     this.professorsBySocketId.delete(socketId);
     if (professor !== undefined) {
       this.persistence?.markOffline(socketId, this.clock());
+      this.notifyListeners();
     }
     return professor;
   }
@@ -77,6 +90,42 @@ export class PresenceManager {
     return [...this.professorsBySocketId.values()];
   }
 
+  public getAvailableProfessors(organizationId?: string): readonly Professor[] {
+    return this.getOnlineProfessors().filter(
+      (professor) =>
+        professor.availability === 'available' &&
+        (organizationId === undefined || professor.organizationId === organizationId),
+    );
+  }
+
+  public setAvailability(socketId: string, availability: ProfessorAvailability): Professor {
+    const professor = this.findProfessorBySocketId(socketId);
+    if (professor === undefined) {
+      throw new Error('Professor não está conectado');
+    }
+    const availableSince = availability === 'available' ? this.clock() : undefined;
+    const updated: Professor = { ...professor, availability, availableSince };
+    this.professorsBySocketId.set(socketId, updated);
+    this.persistence?.updateAvailability(updated.id, availability, availableSince);
+    this.notifyListeners();
+    return updated;
+  }
+
+  public setAvailabilityByProfessorId(
+    professorId: string,
+    availability: ProfessorAvailability,
+  ): Professor | undefined {
+    const professor = this.findProfessorById(professorId);
+    return professor === undefined
+      ? undefined
+      : this.setAvailability(professor.socketId, availability);
+  }
+
+  public onChanged(listener: ProfessorPresenceListener): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
   public findProfessorById(professorId: string): Professor | undefined {
     return this.getOnlineProfessors().find((professor) => professor.id === professorId);
   }
@@ -96,6 +145,13 @@ export class PresenceManager {
       this.persistence?.markOffline(professor.socketId, this.clock());
     }
 
+    if (expiredProfessors.length > 0) this.notifyListeners();
+
     return expiredProfessors;
+  }
+
+  private notifyListeners(): void {
+    const snapshot = this.getOnlineProfessors();
+    for (const listener of this.listeners) listener(snapshot);
   }
 }

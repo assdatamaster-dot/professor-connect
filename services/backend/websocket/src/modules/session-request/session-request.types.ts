@@ -1,4 +1,4 @@
-export type SessionRequestStatus = 'pending' | 'accepted' | 'rejected' | 'expired';
+export type SessionRequestStatus = 'pending' | 'accepted' | 'rejected' | 'expired' | 'cancelled';
 
 export interface SessionRequest {
   readonly requestId: string;
@@ -8,6 +8,7 @@ export interface SessionRequest {
   readonly teacherName: string;
   readonly status: SessionRequestStatus;
   readonly createdAt: string;
+  readonly respondedAt?: string;
 }
 
 export interface SessionRequestDelivery {

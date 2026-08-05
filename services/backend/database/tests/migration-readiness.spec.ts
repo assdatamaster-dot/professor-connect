@@ -14,6 +14,7 @@ const MIGRATIONS = [
   '20260803090000_authentication_security',
   '20260804090000_user_registration_and_profiles',
   '20260805090000_administrative_panel',
+  '20260805150000_intelligent_attendance_flow',
 ] as const;
 
 test('accepts startup only after every bundled migration is complete', async () => {
@@ -45,7 +46,25 @@ test('rejects startup when a bundled migration is pending', async () => {
     })),
   ]);
 
-  await assert.rejects(assertMigrationsApplied(prisma), /20260805090000_administrative_panel/);
+  await assert.rejects(
+    assertMigrationsApplied(prisma),
+    /20260805150000_intelligent_attendance_flow/,
+  );
+});
+
+test('migration do fluxo inteligente persiste disponibilidade do professor', async () => {
+  const sql = await readFile(
+    new URL(
+      '../prisma/migrations/20260805150000_intelligent_attendance_flow/migration.sql',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+
+  assert.match(sql, /CREATE TYPE "ProfessorAvailability"/);
+  assert.match(sql, /ADD COLUMN "availability"/);
+  assert.match(sql, /ADD COLUMN "available_since"/);
+  assert.match(sql, /organization_id.*availability.*available_since/);
 });
 
 test('migration administrativa preserva histórico e prepara isolamento por instituição', async () => {

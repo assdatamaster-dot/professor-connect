@@ -15,6 +15,8 @@ import { io, type Socket } from 'socket.io-client';
 import type { FileTransferAuditEntry } from '@professor-connect/engine/file-transfer-node';
 
 import type {
+  AvailableTeachersListener,
+  AttendanceHistoryItem,
   OnlineTeacher,
   StudentSessionListener,
   StudentSessionSnapshot,
@@ -47,6 +49,8 @@ interface StudentPresenceClientEvents {
   'student:heartbeat': () => void;
   'student:register': (payload: StudentIdentity) => void;
   'request:session': (payload: { readonly teacherId: string }) => void;
+  'session:cancel': (payload: { readonly requestId: string }) => void;
+  'professor:availability:get': () => void;
   'session:end': (payload: { readonly sessionId: string }) => void;
   'webrtc:answer': (payload: WebRtcDescriptionPayload) => void;
   'webrtc:offer': (payload: WebRtcDescriptionPayload) => void;
@@ -59,8 +63,11 @@ interface StudentPresenceClientEvents {
 }
 
 interface StudentPresenceServerEvents {
+  'professors:available:list': (payload: readonly OnlineTeacher[]) => void;
+  'session:pending': (payload: SessionResponsePayload) => void;
   'session:accepted': (payload: SessionResponsePayload) => void;
   'session:rejected': (payload: SessionResponsePayload) => void;
+  'session:cancelled': (payload: SessionResponsePayload) => void;
   'session:timeout': (payload: SessionResponsePayload) => void;
   'session:started': (payload: SessionLifecyclePayload) => void;
   'session:ended': (payload: SessionLifecyclePayload) => void;
@@ -100,6 +107,7 @@ export interface AuthenticatedTransport {
 
 export class StudentPresenceController {
   private readonly sessionListeners = new Set<StudentSessionListener>();
+  private readonly availableTeachersListeners = new Set<AvailableTeachersListener>();
   private readonly offerListeners = new Set<WebRtcDescriptionListener>();
   private readonly answerListeners = new Set<WebRtcDescriptionListener>();
   private readonly iceCandidateListeners = new Set<WebRtcIceCandidateListener>();
@@ -108,11 +116,13 @@ export class StudentPresenceController {
   private heartbeatTimer: NodeJS.Timeout | undefined;
   private authRefreshTimer: NodeJS.Timeout | undefined;
   private socket: StudentPresenceSocket | undefined;
+  private availableTeachers: readonly OnlineTeacher[] = [];
   private sessionState: Omit<StudentSessionSnapshot, 'remoteControl'> = {
     status: 'idle',
     message: 'Pronto para solicitar atendimento.',
     activeSessionId: undefined,
     activeTeacherName: undefined,
+    pendingRequestId: undefined,
   };
 
   public constructor(
@@ -141,8 +151,22 @@ export class StudentPresenceController {
     this.socket = socket;
     socket.on('connect', () => {
       socket.emit('student:register', this.identity);
+      socket.emit('professor:availability:get');
       this.startHeartbeat(socket);
       this.startAuthRefresh(socket);
+    });
+    socket.on('professors:available:list', (teachers) => {
+      this.availableTeachers = teachers.filter(isOnlineTeacher);
+      this.notifyAvailableTeachersListeners();
+    });
+    socket.on('session:pending', (payload) => {
+      this.updateSessionState(
+        'waiting',
+        `Solicitação enviada para ${payload.teacherName}.`,
+        undefined,
+        payload.teacherName,
+        payload.requestId,
+      );
     });
     socket.on('disconnect', () => {
       this.stopHeartbeat();
@@ -155,13 +179,34 @@ export class StudentPresenceController {
       this.remoteControlReceiver.handleTransportLoss();
     });
     socket.on('session:accepted', () => {
-      this.updateSessionState('accepted', 'Professor aceitou');
+      this.updateSessionState(
+        'accepted',
+        'Professor aceitou. Preparando áudio e vídeo…',
+        undefined,
+        this.sessionState.activeTeacherName,
+        undefined,
+      );
     });
     socket.on('session:rejected', () => {
-      this.updateSessionState('rejected', 'Professor recusou');
+      this.updateSessionState(
+        'rejected',
+        'Professor indisponível. Escolha outro professor.',
+        undefined,
+        undefined,
+        undefined,
+      );
+    });
+    socket.on('session:cancelled', () => {
+      this.updateSessionState(
+        'cancelled',
+        'Solicitação cancelada.',
+        undefined,
+        undefined,
+        undefined,
+      );
     });
     socket.on('session:timeout', () => {
-      this.updateSessionState('timeout', 'Tempo esgotado');
+      this.updateSessionState('timeout', 'Tempo esgotado', undefined, undefined, undefined);
     });
     socket.on('session:started', (session) => {
       this.remoteControlReceiver.reset();
@@ -170,12 +215,13 @@ export class StudentPresenceController {
         'Conectado ao professor',
         session.sessionId,
         session.teacherName,
+        undefined,
       );
     });
     socket.on('session:ended', (session) => {
       if (this.sessionState.activeSessionId === session.sessionId) {
         this.remoteControlReceiver.endSession(session.sessionId);
-        this.updateSessionState('ended', 'Atendimento encerrado', undefined, undefined);
+        this.updateSessionState('ended', 'Atendimento encerrado', undefined, undefined, undefined);
       }
     });
     socket.on('webrtc:offer', (payload) => {
@@ -240,6 +286,9 @@ export class StudentPresenceController {
   }
 
   public async getOnlineTeachers(): Promise<readonly OnlineTeacher[]> {
+    if (this.socket?.connected === true && this.availableTeachers.length > 0) {
+      return this.availableTeachers;
+    }
     const { serverUrl } = await this.loadConfig();
     const response =
       this.authenticatedTransport === undefined
@@ -256,7 +305,19 @@ export class StudentPresenceController {
     if (!Array.isArray(professors)) {
       throw new Error('Resposta inválida ao listar professores');
     }
-    return professors.filter(isOnlineTeacher);
+    this.availableTeachers = professors.filter(isOnlineTeacher);
+    return this.availableTeachers;
+  }
+
+  public async getHistory(): Promise<readonly AttendanceHistoryItem[]> {
+    if (this.authenticatedTransport === undefined) return [];
+    const { serverUrl } = await this.loadConfig();
+    const response = await this.authenticatedTransport.fetch(
+      new URL('/api/sessions/history', serverUrl),
+    );
+    if (!response.ok) throw new Error(`Não foi possível carregar o histórico (${response.status})`);
+    const payload: unknown = await response.json();
+    return Array.isArray(payload) ? (payload as AttendanceHistoryItem[]) : [];
   }
 
   public requestSession(teacherIdInput: string): StudentSessionSnapshot {
@@ -272,7 +333,16 @@ export class StudentPresenceController {
     }
 
     this.socket.emit('request:session', { teacherId });
-    this.updateSessionState('waiting', 'Aguardando resposta...');
+    this.updateSessionState('waiting', 'Aguardando resposta…', undefined, undefined, undefined);
+    return this.getSessionSnapshot();
+  }
+
+  public cancelRequest(): StudentSessionSnapshot {
+    const requestId = this.sessionState.pendingRequestId;
+    if (requestId === undefined || this.socket?.connected !== true) {
+      throw new Error('Não há solicitação pendente.');
+    }
+    this.socket.emit('session:cancel', { requestId });
     return this.getSessionSnapshot();
   }
 
@@ -331,6 +401,11 @@ export class StudentPresenceController {
     return () => this.sessionListeners.delete(listener);
   }
 
+  public onAvailableTeachersChanged(listener: AvailableTeachersListener): () => void {
+    this.availableTeachersListeners.add(listener);
+    return () => this.availableTeachersListeners.delete(listener);
+  }
+
   public sendWebRtcAnswer(payload: WebRtcDescriptionPayload): void {
     this.requireActiveSignalingSocket(payload.sessionId).emit('webrtc:answer', payload);
   }
@@ -374,6 +449,7 @@ export class StudentPresenceController {
   public dispose(): void {
     this.disconnectSocket();
     this.sessionListeners.clear();
+    this.availableTeachersListeners.clear();
     this.offerListeners.clear();
     this.answerListeners.clear();
     this.iceCandidateListeners.clear();
@@ -383,7 +459,7 @@ export class StudentPresenceController {
 
   public disconnect(): void {
     this.disconnectSocket();
-    this.updateSessionState('idle', 'Autenticação necessária.', undefined, undefined);
+    this.updateSessionState('idle', 'Autenticação necessária.', undefined, undefined, undefined);
   }
 
   private updateSessionState(
@@ -391,8 +467,15 @@ export class StudentPresenceController {
     message: string,
     activeSessionId = this.sessionState.activeSessionId,
     activeTeacherName = this.sessionState.activeTeacherName,
+    pendingRequestId = this.sessionState.pendingRequestId,
   ): void {
-    this.sessionState = { status, message, activeSessionId, activeTeacherName };
+    this.sessionState = {
+      status,
+      message,
+      activeSessionId,
+      activeTeacherName,
+      pendingRequestId,
+    };
     this.notifySessionListeners();
   }
 
@@ -401,6 +484,10 @@ export class StudentPresenceController {
     for (const listener of this.sessionListeners) {
       listener(snapshot);
     }
+  }
+
+  private notifyAvailableTeachersListeners(): void {
+    for (const listener of this.availableTeachersListeners) listener(this.availableTeachers);
   }
 
   private requireActiveSignalingSocket(sessionId: string): StudentPresenceSocket {
@@ -496,6 +583,10 @@ function isOnlineTeacher(value: unknown): value is OnlineTeacher {
     'id' in value &&
     typeof value.id === 'string' &&
     'name' in value &&
-    typeof value.name === 'string'
+    typeof value.name === 'string' &&
+    'status' in value &&
+    value.status === 'available' &&
+    'availableSince' in value &&
+    typeof value.availableSince === 'string'
   );
 }

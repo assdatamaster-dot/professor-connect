@@ -17,6 +17,7 @@ import type { FileTransferAuditEntry } from '@professor-connect/engine/file-tran
 
 import {
   ProfessorPresenceStatus,
+  type AttendanceHistoryItem,
   type ProfessorActiveSession,
   type ProfessorSessionRequest,
   type ProfessorPresenceSnapshot,
@@ -47,6 +48,10 @@ interface ProfessorPresenceClientEvents {
   'file-transfer:audit': (payload: FileTransferAuditEntry & { readonly sessionId: string }) => void;
   'professor:heartbeat': () => void;
   'professor:online': (payload: { readonly name: string }) => void;
+  'professor:availability:set': (
+    payload: { readonly available: boolean },
+    acknowledge?: (result: { readonly ok: boolean; readonly message?: string }) => void,
+  ) => void;
   'session:accept': (payload: { readonly requestId: string }) => void;
   'session:reject': (payload: { readonly requestId: string }) => void;
   'session:end': (payload: { readonly sessionId: string }) => void;
@@ -60,8 +65,13 @@ interface ProfessorPresenceClientEvents {
 }
 
 interface ProfessorPresenceServerEvents {
+  'professor:availability:changed': (payload: {
+    readonly available: boolean;
+    readonly availableSince?: string;
+  }) => void;
   'session:requested': (payload: ProfessorSessionRequest) => void;
   'session:timeout': (payload: SessionRequestTimeoutPayload) => void;
+  'session:cancelled': (payload: SessionRequestTimeoutPayload) => void;
   'session:started': (payload: ProfessorActiveSession) => void;
   'session:ended': (payload: ProfessorActiveSession) => void;
   'webrtc:answer': (payload: WebRtcDescriptionPayload) => void;
@@ -87,6 +97,7 @@ type PresenceSocket = Socket<ProfessorPresenceServerEvents, ProfessorPresenceCli
 
 export interface AuthenticatedTransport {
   getAccessToken(): Promise<string>;
+  fetch(input: URL | string, init?: RequestInit): Promise<Response>;
 }
 
 export class ProfessorPresenceController {
@@ -106,6 +117,8 @@ export class ProfessorPresenceController {
   private sessionNotice: string | undefined;
   private socket: PresenceSocket | undefined;
   private status = ProfessorPresenceStatus.DISCONNECTED;
+  private available = false;
+  private availableSince: string | undefined;
   private remoteControl = createInitialRemoteControlSnapshot();
 
   public constructor(
@@ -175,6 +188,11 @@ export class ProfessorPresenceController {
       this.status = ProfessorPresenceStatus.ERROR;
       this.notifyListeners();
     });
+    socket.on('professor:availability:changed', (payload) => {
+      this.available = payload.available;
+      this.availableSince = payload.availableSince;
+      this.notifyListeners();
+    });
     socket.on('session:requested', (request) => {
       if (this.sessionRequests.some((item) => item.requestId === request.requestId)) {
         return;
@@ -186,6 +204,14 @@ export class ProfessorPresenceController {
     });
     socket.on('session:timeout', (payload) => {
       this.expireSessionRequest(payload.requestId);
+    });
+    socket.on('session:cancelled', (payload) => {
+      this.clearSessionRequestExpirationTimer(payload.requestId);
+      this.sessionRequests = this.sessionRequests.filter(
+        (request) => request.requestId !== payload.requestId,
+      );
+      this.sessionNotice = 'O aluno cancelou a solicitação.';
+      this.notifyListeners();
     });
     socket.on('session:started', (session) => {
       this.clearSessionRequestExpirationTimers();
@@ -294,6 +320,8 @@ export class ProfessorPresenceController {
       professorName: this.professorName,
       status: this.status,
       serverConnected: this.status === ProfessorPresenceStatus.CONNECTED,
+      available: this.available,
+      availableSince: this.availableSince,
       sessionRequests: [...this.sessionRequests],
       activeSession: this.activeSession,
       sessionNotice: this.sessionNotice,
@@ -303,6 +331,31 @@ export class ProfessorPresenceController {
 
   public acceptSession(requestId: string): ProfessorPresenceSnapshot {
     return this.respondToSession('session:accept', requestId);
+  }
+
+  public async setAvailability(available: boolean): Promise<ProfessorPresenceSnapshot> {
+    const socket = this.socket;
+    if (socket?.connected !== true || this.activeSession !== undefined) {
+      throw new Error('Não é possível alterar a disponibilidade agora.');
+    }
+    await new Promise<void>((resolve, reject) => {
+      socket.emit('professor:availability:set', { available }, (result) => {
+        if (result.ok) resolve();
+        else reject(new Error(result.message ?? 'Não foi possível alterar a disponibilidade.'));
+      });
+    });
+    return this.getSnapshot();
+  }
+
+  public async getHistory(): Promise<readonly AttendanceHistoryItem[]> {
+    if (this.authenticatedTransport === undefined) return [];
+    const { serverUrl } = await this.loadConfig();
+    const response = await this.authenticatedTransport.fetch(
+      new URL('/api/sessions/history', serverUrl),
+    );
+    if (!response.ok) throw new Error(`Não foi possível carregar o histórico (${response.status})`);
+    const payload: unknown = await response.json();
+    return Array.isArray(payload) ? (payload as AttendanceHistoryItem[]) : [];
   }
 
   public rejectSession(requestId: string): ProfessorPresenceSnapshot {
@@ -476,6 +529,8 @@ export class ProfessorPresenceController {
     this.socket?.disconnect();
     this.socket?.removeAllListeners();
     this.socket = undefined;
+    this.available = false;
+    this.availableSince = undefined;
     this.sessionRequests = [];
     this.activeSession = undefined;
     this.sessionNotice = undefined;

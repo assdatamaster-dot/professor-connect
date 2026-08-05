@@ -2,6 +2,8 @@ export const PRESENCE_IPC_CHANNELS = {
   CONNECT: 'teacher:presence:connect',
   DISCONNECT: 'teacher:presence:disconnect',
   GET_STATE: 'teacher:presence:get-state',
+  GET_HISTORY: 'teacher:presence:get-history',
+  SET_AVAILABILITY: 'teacher:presence:set-availability',
   ACCEPT_SESSION: 'teacher:presence:accept-session',
   REJECT_SESSION: 'teacher:presence:reject-session',
   END_SESSION: 'teacher:presence:end-session',

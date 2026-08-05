@@ -5,6 +5,11 @@ import type { OnlineStudent } from '../modules/student-presence/student-presence
 
 export interface ProfessorPersistence {
   saveProfessor(professor: Professor): void;
+  updateAvailability(
+    professorId: string,
+    availability: Professor['availability'],
+    availableSince: Date | undefined,
+  ): void;
   updateHeartbeat(socketId: string, at: Date): void;
   markOffline(socketId: string, at: Date): void;
 }

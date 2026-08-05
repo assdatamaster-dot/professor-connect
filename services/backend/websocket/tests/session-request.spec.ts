@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { PresenceManager, SessionRequestManager, StudentPresenceManager } from '../src/index.js';
 
 test('cria e aceita uma solicitação direcionada ao professor online', () => {
-  const { manager } = createScenario(1_000);
+  const { manager, professors } = createScenario(1_000);
   const delivery = manager.createRequest('student-socket', 'teacher-id');
 
   assert.deepEqual(delivery.request, {
@@ -18,6 +18,7 @@ test('cria e aceita uma solicitação direcionada ao professor online', () => {
   });
   assert.equal(delivery.teacherSocketId, 'teacher-socket');
   assert.equal(manager.listPendingRequests().length, 1);
+  assert.equal(professors.findProfessorById('teacher-id')?.availability, 'busy');
 
   const accepted = manager.acceptRequest('request-1', 'teacher-socket');
 
@@ -40,6 +41,33 @@ test('recusa a solicitação e impede resposta de outro professor', () => {
   const rejected = manager.rejectRequest('request-1', 'teacher-socket');
   assert.equal(rejected.request.status, 'rejected');
   assert.equal(manager.listHistory()[0]?.status, 'rejected');
+  assert.equal(professors.findProfessorById('teacher-id')?.availability, 'available');
+  manager.close();
+});
+
+test('aceita solicitações somente quando o professor está disponível', () => {
+  const { manager, professors } = createScenario(1_000);
+  professors.setAvailability('teacher-socket', 'unavailable');
+
+  assert.throws(
+    () => manager.createRequest('student-socket', 'teacher-id'),
+    /Professor indisponível/,
+  );
+  assert.deepEqual(manager.listPendingRequests(), []);
+  manager.close();
+});
+
+test('aluno cancela a própria solicitação e o evento permanece no histórico', () => {
+  const { manager, professors } = createScenario(1_000);
+  manager.createRequest('student-socket', 'teacher-id');
+
+  const cancelled = manager.cancelRequest('request-1', 'student-socket');
+
+  assert.equal(cancelled.request.status, 'cancelled');
+  assert.equal(cancelled.request.respondedAt, '2026-07-22T12:00:00.000Z');
+  assert.deepEqual(manager.listPendingRequests(), []);
+  assert.equal(manager.listHistory()[0]?.status, 'cancelled');
+  assert.equal(professors.findProfessorById('teacher-id')?.availability, 'available');
   manager.close();
 });
 
@@ -58,7 +86,7 @@ test('não aceita a solicitação depois que o aluno fica offline', () => {
 });
 
 test('expira em 30 segundos, remove dos pendentes e preserva no histórico', async () => {
-  const { manager } = createScenario(30);
+  const { manager, professors } = createScenario(30);
   const expired = new Promise<void>((resolve) => {
     manager.onExpired((delivery) => {
       assert.equal(delivery.request.status, 'expired');
@@ -71,6 +99,7 @@ test('expira em 30 segundos, remove dos pendentes e preserva no histórico', asy
 
   assert.deepEqual(manager.listPendingRequests(), []);
   assert.equal(manager.listHistory()[0]?.status, 'expired');
+  assert.equal(professors.findProfessorById('teacher-id')?.availability, 'available');
   manager.close();
 });
 

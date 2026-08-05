@@ -15,6 +15,8 @@ export interface ProfessorPresenceSnapshot {
   readonly professorName: string | undefined;
   readonly status: ProfessorPresenceStatus;
   readonly serverConnected: boolean;
+  readonly available: boolean;
+  readonly availableSince: string | undefined;
   readonly sessionRequests: readonly ProfessorSessionRequest[];
   readonly activeSession: ProfessorActiveSession | undefined;
   readonly sessionNotice: string | undefined;
@@ -35,12 +37,26 @@ export interface ProfessorActiveSession {
   readonly studentName: string;
 }
 
+export interface AttendanceHistoryItem {
+  readonly requestId: string;
+  readonly sessionId: string | null;
+  readonly professor: { readonly id: string; readonly name: string };
+  readonly student: { readonly id: string; readonly name: string };
+  readonly requestedAt: string;
+  readonly startedAt: string | null;
+  readonly endedAt: string | null;
+  readonly durationSeconds: number | null;
+  readonly status: string;
+}
+
 export type ProfessorPresenceListener = (snapshot: ProfessorPresenceSnapshot) => void;
 
 export interface ProfessorPresenceApi {
   connect(name: string): Promise<ProfessorPresenceSnapshot>;
   disconnect(): Promise<ProfessorPresenceSnapshot>;
+  setAvailability(available: boolean): Promise<ProfessorPresenceSnapshot>;
   getState(): Promise<ProfessorPresenceSnapshot>;
+  getHistory(): Promise<readonly AttendanceHistoryItem[]>;
   acceptSession(requestId: string): Promise<ProfessorPresenceSnapshot>;
   rejectSession(requestId: string): Promise<ProfessorPresenceSnapshot>;
   endSession(): Promise<ProfessorPresenceSnapshot>;

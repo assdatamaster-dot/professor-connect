@@ -6,6 +6,7 @@ import {
 } from './media-devices/index.js';
 import {
   ProfessorPresenceStatus,
+  type AttendanceHistoryItem,
   type ProfessorPresenceSnapshot,
 } from '../shared/presence-contracts.js';
 import type { TeacherRemoteControlSnapshot } from '../shared/remote-control-contracts.js';
@@ -37,6 +38,13 @@ const registerButton = requireElement<HTMLButtonElement>('register-button');
 const professorDisplayName = requireElement<HTMLElement>('professor-display-name');
 const presencePill = requireElement<HTMLElement>('presence-pill');
 const presenceStatus = requireElement<HTMLElement>('presence-status');
+const availabilityToggle = requireElement<HTMLButtonElement>('availability-toggle');
+const availabilityToggleText = availabilityToggle.querySelector<HTMLElement>('span');
+const availabilityCopy = requireElement<HTMLElement>('availability-copy');
+const teacherHistory = requireElement<HTMLButtonElement>('teacher-history');
+const teacherHistoryDialog = requireElement<HTMLDialogElement>('teacher-history-dialog');
+const teacherHistoryList = requireElement<HTMLUListElement>('teacher-history-list');
+const teacherHistoryClose = requireElement<HTMLButtonElement>('teacher-history-close');
 const serverStatus = requireElement<HTMLElement>('server-status');
 const sessionNotice = requireElement<HTMLElement>('session-notice');
 const logoutButton = requireElement<HTMLButtonElement>('logout-button');
@@ -157,6 +165,18 @@ function render(snapshot: ProfessorPresenceSnapshot): void {
   professorDisplayName.textContent = snapshot.professorName ?? '';
   presencePill.dataset.status = snapshot.status;
   presenceStatus.textContent = getPresenceLabel(snapshot.status);
+  availabilityToggle.setAttribute('aria-pressed', String(snapshot.available));
+  if (availabilityToggleText !== null) {
+    availabilityToggleText.textContent = snapshot.available ? 'Disponível' : 'Indisponível';
+  }
+  const isReserved = snapshot.sessionRequests.length > 0;
+  availabilityCopy.textContent = isReserved
+    ? 'Solicitação aguardando sua resposta'
+    : snapshot.available
+      ? 'Você está disponível'
+      : 'Você está indisponível';
+  availabilityToggle.disabled =
+    !snapshot.serverConnected || snapshot.activeSession !== undefined || isReserved;
   serverStatus.textContent = snapshot.serverConnected ? 'Conectado' : 'Desconectado';
   sessionNotice.textContent = snapshot.sessionNotice ?? '';
   sessionNotice.hidden = snapshot.sessionNotice === undefined;
@@ -435,6 +455,92 @@ logoutButton.addEventListener('click', () => {
       render(snapshot);
     });
 });
+
+availabilityToggle.addEventListener('click', () => {
+  const nextAvailability = availabilityToggle.getAttribute('aria-pressed') !== 'true';
+  availabilityToggle.disabled = true;
+  void window.professorConnectPresence
+    .setAvailability(nextAvailability)
+    .then(render)
+    .catch((error: unknown) => {
+      sessionNotice.textContent =
+        error instanceof Error ? error.message : 'Não foi possível alterar a disponibilidade.';
+      sessionNotice.hidden = false;
+    })
+    .finally(() => {
+      availabilityToggle.disabled = false;
+    });
+});
+
+teacherHistory.addEventListener('click', () => {
+  teacherHistory.disabled = true;
+  teacherHistoryList.replaceChildren(createHistoryMessage('Carregando histórico…'));
+  teacherHistoryDialog.showModal();
+  void window.professorConnectPresence
+    .getHistory()
+    .then(renderHistory)
+    .catch(() => {
+      teacherHistoryList.replaceChildren(
+        createHistoryMessage('Não foi possível carregar o histórico.'),
+      );
+    })
+    .finally(() => {
+      teacherHistory.disabled = false;
+    });
+});
+teacherHistoryClose.addEventListener('click', () => teacherHistoryDialog.close());
+
+function renderHistory(items: readonly AttendanceHistoryItem[]): void {
+  if (items.length === 0) {
+    teacherHistoryList.replaceChildren(createHistoryMessage('Nenhum atendimento registrado.'));
+    return;
+  }
+  teacherHistoryList.replaceChildren(
+    ...items.map((item) => {
+      const element = document.createElement('li');
+      const title = document.createElement('strong');
+      const details = document.createElement('small');
+      const duration = document.createElement('small');
+      element.className = 'history-item';
+      title.textContent = `Aluno: ${item.student.name}`;
+      details.textContent = `${formatHistoryStatus(item.status)} · ${new Intl.DateTimeFormat(
+        'pt-BR',
+        {
+          dateStyle: 'short',
+          timeStyle: 'short',
+        },
+      ).format(new Date(item.startedAt ?? item.requestedAt))}`;
+      duration.textContent =
+        item.durationSeconds === null
+          ? 'Duração não disponível'
+          : `Duração: ${Math.floor(item.durationSeconds / 60)}min ${String(
+              item.durationSeconds % 60,
+            ).padStart(2, '0')}s`;
+      element.append(title, details, duration);
+      return element;
+    }),
+  );
+}
+
+function createHistoryMessage(message: string): HTMLLIElement {
+  const element = document.createElement('li');
+  element.className = 'history-item';
+  element.textContent = message;
+  return element;
+}
+
+function formatHistoryStatus(status: string): string {
+  const labels: Readonly<Record<string, string>> = {
+    PENDING: 'Pendente',
+    ACCEPTED: 'Aceita',
+    IN_PROGRESS: 'Em andamento',
+    FINALIZED: 'Finalizada',
+    CANCELLED: 'Cancelada',
+    REJECTED: 'Recusada',
+    EXPIRED: 'Expirada',
+  };
+  return labels[status] ?? status;
+}
 
 acceptSessionButton.addEventListener('click', () => {
   if (activeRequestId === undefined) {

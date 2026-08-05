@@ -1970,3 +1970,60 @@ input:focus {
     width: 112px;
   }
 }
+.availability-toggle {
+  align-items: center;
+  background: rgba(220, 252, 231, 0.9);
+  border: 1px solid #86efac;
+  border-radius: 999px;
+  color: #08724a;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 750;
+  gap: 0.45rem;
+  padding: 0.55rem 0.75rem;
+}
+
+.availability-toggle i {
+  background: #16a34a;
+  border-radius: 50%;
+  height: 0.55rem;
+  width: 0.55rem;
+}
+.availability-toggle[aria-pressed='false'] {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #64748b;
+}
+.availability-toggle[aria-pressed='false'] i {
+  background: #dc2626;
+}
+.availability-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.history-dialog {
+  width: min(92vw, 680px);
+}
+.history-list {
+  display: grid;
+  gap: 0.65rem;
+  list-style: none;
+  margin: 1rem 0;
+  max-height: 55vh;
+  overflow: auto;
+  padding: 0;
+}
+.history-item {
+  background: #f6f8fb;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.85rem;
+}
+.history-item small {
+  color: #627184;
+}

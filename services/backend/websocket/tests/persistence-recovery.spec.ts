@@ -26,6 +26,7 @@ test('persiste o fluxo e recupera históricos depois de recriar os managers', ()
 
   const professors = new PresenceManager(clock, () => 'teacher-id', {
     saveProfessor: (professor) => savedProfessors.push(professor),
+    updateAvailability: () => undefined,
     updateHeartbeat: () => undefined,
     markOffline: () => undefined,
   });

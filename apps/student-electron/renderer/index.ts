@@ -11,6 +11,7 @@ import {
   type DesktopWorkflowSnapshot,
 } from '../shared/contracts.js';
 import type { StudentRemoteControlSnapshot } from '../shared/remote-control-contracts.js';
+import type { AttendanceHistoryItem, OnlineTeacher } from '../shared/session-contracts.js';
 import { AllScreensCompositeCapture } from './all-screens-composer.js';
 import { getTranslations } from './i18n.js';
 import { approveRemoteControlWithScreen } from './remote-control-permission-flow.js';
@@ -26,6 +27,12 @@ const statusMessage = requireElement<HTMLElement>('status-message');
 const remoteControlText = requireElement<HTMLElement>('remote-control-text');
 const callButton = requireElement<HTMLButtonElement>('call-professor');
 const teacherSelect = requireElement<HTMLSelectElement>('teacher-select');
+const teacherList = requireElement<HTMLElement>('teacher-list');
+const cancelRequestButton = requireElement<HTMLButtonElement>('cancel-request');
+const requestConfirmationDialog = requireElement<HTMLDialogElement>('request-confirmation-dialog');
+const requestTeacherName = requireElement<HTMLElement>('request-teacher-name');
+const confirmRequestButton = requireElement<HTMLButtonElement>('confirm-request');
+const dismissRequestButton = requireElement<HTMLButtonElement>('dismiss-request');
 const shareButton = requireElement<HTMLButtonElement>('share-screen');
 const endButton = requireElement<HTMLButtonElement>('end-attendance');
 const mediaSection = requireElement<HTMLElement>('media-section');
@@ -82,6 +89,10 @@ const studentRegisterError = requireElement<HTMLElement>('student-register-error
 const studentRegisterSubmit = requireElement<HTMLButtonElement>('student-register-submit');
 const studentLogout = requireElement<HTMLButtonElement>('student-logout');
 const studentProfile = requireElement<HTMLButtonElement>('student-profile');
+const studentHistory = requireElement<HTMLButtonElement>('student-history');
+const studentHistoryDialog = requireElement<HTMLDialogElement>('student-history-dialog');
+const studentHistoryList = requireElement<HTMLUListElement>('student-history-list');
+const studentHistoryClose = requireElement<HTMLButtonElement>('student-history-close');
 const studentProfileDialog = requireElement<HTMLDialogElement>('student-profile-dialog');
 const studentProfileForm = requireElement<HTMLFormElement>('student-profile-form');
 const studentProfileName = requireElement<HTMLInputElement>('student-profile-name');
@@ -106,6 +117,10 @@ let remoteMediaStream = new MediaStream();
 let renegotiationQueue = Promise.resolve();
 let lastWorkflowSnapshot: DesktopWorkflowSnapshot | undefined;
 let activeTeacherName: string | undefined;
+let availableTeachers: readonly OnlineTeacher[] = [];
+const teacherAvailabilityTimer = window.setInterval(() => {
+  renderAvailableTeachers(availableTeachers);
+}, 60_000);
 let sessionClockTimer: ReturnType<typeof setInterval> | undefined;
 let sessionStartedAt: number | undefined;
 let timedSessionId: string | undefined;
@@ -257,6 +272,13 @@ function requireElement<TElement extends HTMLElement>(id: string): TElement {
 }
 
 callButton.addEventListener('click', () => {
+  const teacher = availableTeachers.find((item) => item.id === teacherSelect.value);
+  if (teacher === undefined) return;
+  requestTeacherName.textContent = teacher.name;
+  requestConfirmationDialog.showModal();
+});
+confirmRequestButton.addEventListener('click', () => {
+  requestConfirmationDialog.close();
   callButton.disabled = true;
   teacherSelect.disabled = true;
   void window.professorConnectSession
@@ -267,6 +289,15 @@ callButton.addEventListener('click', () => {
       callButton.disabled = teacherSelect.value.length === 0;
       teacherSelect.disabled = false;
     });
+});
+dismissRequestButton.addEventListener('click', () => requestConfirmationDialog.close());
+cancelRequestButton.addEventListener('click', () => {
+  cancelRequestButton.disabled = true;
+  void window.professorConnectSession.cancelRequest().catch((error: unknown) => {
+    statusMessage.textContent =
+      error instanceof Error ? error.message : 'Não foi possível cancelar a solicitação.';
+    cancelRequestButton.disabled = false;
+  });
 });
 shareButton.addEventListener('click', () => {
   if (activeWebRtcSessionId === undefined) {
@@ -414,6 +445,8 @@ const unsubscribeSession = window.professorConnectSession.onStateChanged((snapsh
     snapshot.status === 'connected';
   callButton.disabled = isSessionBusy || teacherSelect.value.length === 0;
   teacherSelect.disabled = isSessionBusy;
+  cancelRequestButton.hidden = snapshot.status !== 'waiting';
+  cancelRequestButton.disabled = snapshot.status !== 'waiting';
   if (snapshot.activeSessionId !== undefined) {
     fileTransferClient.beginSession(
       snapshot.activeSessionId,
@@ -430,6 +463,11 @@ const unsubscribeSession = window.professorConnectSession.onStateChanged((snapsh
     closeWebRtcSession();
   }
 });
+const unsubscribeTeachers = window.professorConnectSession.onAvailableTeachersChanged(
+  (teachers) => {
+    renderAvailableTeachers(teachers);
+  },
+);
 const unsubscribeOffer = window.professorConnectWebRtc.onOffer((payload) => {
   void handleWebRtcOffer(payload.sessionId, payload.description);
 });
@@ -455,6 +493,8 @@ window.addEventListener(
   () => {
     unsubscribe();
     unsubscribeSession();
+    unsubscribeTeachers();
+    window.clearInterval(teacherAvailabilityTimer);
     unsubscribeOffer();
     unsubscribeAnswer();
     unsubscribeIce();
@@ -471,30 +511,158 @@ window.addEventListener(
 async function loadOnlineTeachers(): Promise<void> {
   await window.professorConnectSession
     .getOnlineTeachers()
-    .then((teachers) => {
-      const options = teachers.map((teacher) => {
-        const option = document.createElement('option');
-
-        option.value = teacher.id;
-        option.textContent = teacher.name;
-        return option;
-      });
-      const placeholder = document.createElement('option');
-
-      placeholder.value = '';
-      placeholder.textContent =
-        teachers.length > 0 ? 'Selecione um professor' : 'Nenhum professor online';
-      teacherSelect.replaceChildren(placeholder, ...options);
-      callButton.disabled = true;
-    })
+    .then(renderAvailableTeachers)
     .catch(() => {
       const option = document.createElement('option');
 
       option.value = '';
       option.textContent = 'Não foi possível carregar professores';
       teacherSelect.replaceChildren(option);
+      teacherList.replaceChildren(
+        createEmptyTeacherMessage('Não foi possível carregar professores'),
+      );
       callButton.disabled = true;
     });
+}
+
+function renderAvailableTeachers(teachers: readonly OnlineTeacher[]): void {
+  availableTeachers = teachers;
+  const selectedId = teachers.some((teacher) => teacher.id === teacherSelect.value)
+    ? teacherSelect.value
+    : '';
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = teachers.length > 0 ? 'Selecione um professor' : 'Nenhum disponível';
+  const options = teachers.map((teacher) => {
+    const option = document.createElement('option');
+    option.value = teacher.id;
+    option.textContent = teacher.name;
+    option.selected = teacher.id === selectedId;
+    return option;
+  });
+  teacherSelect.replaceChildren(placeholder, ...options);
+
+  if (teachers.length === 0) {
+    teacherList.replaceChildren(createEmptyTeacherMessage('Nenhum professor disponível agora'));
+  } else {
+    teacherList.replaceChildren(...teachers.map(createTeacherCard));
+  }
+  callButton.disabled = selectedId.length === 0;
+}
+
+function createTeacherCard(teacher: OnlineTeacher): HTMLButtonElement {
+  const button = document.createElement('button');
+  const avatar = document.createElement('span');
+  const copy = document.createElement('span');
+  const name = document.createElement('strong');
+  const since = document.createElement('small');
+  const status = document.createElement('span');
+  button.type = 'button';
+  button.className = 'teacher-card';
+  button.dataset.teacherId = teacher.id;
+  button.setAttribute('aria-pressed', String(teacherSelect.value === teacher.id));
+  avatar.className = 'teacher-card__avatar';
+  avatar.textContent = initials(teacher.name);
+  if (teacher.avatarUrl !== undefined) {
+    const image = document.createElement('img');
+    image.src = teacher.avatarUrl;
+    image.alt = '';
+    image.addEventListener('error', () => {
+      avatar.textContent = initials(teacher.name);
+    });
+    avatar.replaceChildren(image);
+  }
+  copy.className = 'teacher-card__copy';
+  name.textContent = teacher.name;
+  since.textContent = formatAvailableSince(teacher.availableSince);
+  copy.append(name, since);
+  status.className = 'teacher-card__status';
+  status.textContent = '● Online';
+  button.append(avatar, copy, status);
+  button.addEventListener('click', () => {
+    teacherSelect.value = teacher.id;
+    for (const card of teacherList.querySelectorAll<HTMLButtonElement>('.teacher-card')) {
+      card.setAttribute('aria-pressed', String(card.dataset.teacherId === teacher.id));
+    }
+    callButton.disabled = false;
+  });
+  return button;
+}
+
+function createEmptyTeacherMessage(message: string): HTMLParagraphElement {
+  const element = document.createElement('p');
+  element.className = 'teacher-list__empty';
+  element.textContent = message;
+  return element;
+}
+
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('');
+}
+
+function formatAvailableSince(value: string): string {
+  const seconds = Math.max(0, Math.floor((Date.now() - Date.parse(value)) / 1_000));
+  if (seconds < 60) return 'Disponível agora';
+  if (seconds < 3_600) return `Disponível há ${Math.floor(seconds / 60)} min`;
+  return `Disponível há ${Math.floor(seconds / 3_600)} h`;
+}
+
+function renderHistory(items: readonly AttendanceHistoryItem[]): void {
+  if (items.length === 0) {
+    studentHistoryList.replaceChildren(createHistoryMessage('Nenhum atendimento registrado.'));
+    return;
+  }
+  studentHistoryList.replaceChildren(
+    ...items.map((item) => {
+      const element = document.createElement('li');
+      const title = document.createElement('strong');
+      const details = document.createElement('small');
+      const duration = document.createElement('small');
+      element.className = 'history-item';
+      title.textContent = `Professor: ${item.professor.name}`;
+      details.textContent = `${formatHistoryStatus(item.status)} · ${new Intl.DateTimeFormat(
+        'pt-BR',
+        {
+          dateStyle: 'short',
+          timeStyle: 'short',
+        },
+      ).format(new Date(item.startedAt ?? item.requestedAt))}`;
+      duration.textContent =
+        item.durationSeconds === null
+          ? 'Duração não disponível'
+          : `Duração: ${formatHistoryDuration(item.durationSeconds)}`;
+      element.append(title, details, duration);
+      return element;
+    }),
+  );
+}
+
+function createHistoryMessage(message: string): HTMLLIElement {
+  const element = document.createElement('li');
+  element.className = 'history-item';
+  element.textContent = message;
+  return element;
+}
+
+function formatHistoryStatus(status: string): string {
+  const labels: Readonly<Record<string, string>> = {
+    PENDING: 'Pendente',
+    ACCEPTED: 'Aceita',
+    IN_PROGRESS: 'Em andamento',
+    FINALIZED: 'Finalizada',
+    CANCELLED: 'Cancelada',
+    REJECTED: 'Recusada',
+    EXPIRED: 'Expirada',
+  };
+  return labels[status] ?? status;
+}
+
+function formatHistoryDuration(seconds: number): string {
+  return `${Math.floor(seconds / 60)}min ${String(seconds % 60).padStart(2, '0')}s`;
 }
 
 authenticationForm.addEventListener('submit', (event) => {
@@ -511,6 +679,7 @@ authenticationForm.addEventListener('submit', (event) => {
       authenticationDialog.close();
       studentLogout.hidden = false;
       studentProfile.hidden = false;
+      studentHistory.hidden = false;
       await loadOnlineTeachers();
     })
     .catch((error: unknown) => {
@@ -612,6 +781,23 @@ studentProfile.addEventListener('click', () => {
 });
 
 studentProfileCancel.addEventListener('click', () => studentProfileDialog.close());
+studentHistory.addEventListener('click', () => {
+  studentHistory.disabled = true;
+  studentHistoryList.replaceChildren(createHistoryMessage('Carregando histórico…'));
+  studentHistoryDialog.showModal();
+  void window.professorConnectSession
+    .getHistory()
+    .then(renderHistory)
+    .catch(() => {
+      studentHistoryList.replaceChildren(
+        createHistoryMessage('Não foi possível carregar o histórico.'),
+      );
+    })
+    .finally(() => {
+      studentHistory.disabled = false;
+    });
+});
+studentHistoryClose.addEventListener('click', () => studentHistoryDialog.close());
 studentProfileForm.addEventListener('submit', (event) => {
   event.preventDefault();
   studentProfileError.hidden = true;
@@ -640,6 +826,7 @@ studentProfileForm.addEventListener('submit', (event) => {
       if (changingPassword) {
         studentLogout.hidden = true;
         studentProfile.hidden = true;
+        studentHistory.hidden = true;
         showStudentRegistration(false);
         authenticationDialog.showModal();
       }
@@ -660,6 +847,7 @@ studentLogout.addEventListener('click', () => {
     studentLogout.disabled = false;
     studentLogout.hidden = true;
     studentProfile.hidden = true;
+    studentHistory.hidden = true;
     authenticationDialog.showModal();
   });
 });
@@ -671,6 +859,7 @@ void window.professorConnectAuth.getIdentity().then((identity) => {
   } else {
     studentLogout.hidden = false;
     studentProfile.hidden = false;
+    studentHistory.hidden = false;
     void loadOnlineTeachers();
   }
 });

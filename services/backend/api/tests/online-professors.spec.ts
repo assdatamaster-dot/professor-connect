@@ -7,7 +7,7 @@ import { PresenceManager } from '@professor-connect/websocket';
 import { createApp } from '../src/app.js';
 import { AUTHORIZATION_HEADERS, TEST_IDENTITY, TestAuthService } from './auth-fixture.js';
 
-test('GET /api/professors/online retorna somente id e nome dos professores', async () => {
+test('GET /api/professors/online retorna somente professores disponíveis', async () => {
   const presenceManager = new PresenceManager(
     () => new Date('2026-01-01T00:00:00.000Z'),
     () => 'professor-id',
@@ -43,8 +43,21 @@ test('GET /api/professors/online retorna somente id e nome dos professores', asy
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), {
       count: 1,
-      professors: [{ id: 'professor-id', name: 'Carlos' }],
+      professors: [
+        {
+          id: 'professor-id',
+          name: 'Carlos',
+          status: 'available',
+          availableSince: '2026-01-01T00:00:00.000Z',
+        },
+      ],
     });
+
+    presenceManager.setAvailability('socket-id', 'unavailable');
+    const unavailableResponse = await fetch(`${baseUrl}/api/professors/online`, {
+      headers: AUTHORIZATION_HEADERS,
+    });
+    assert.deepEqual(await unavailableResponse.json(), { count: 0, professors: [] });
   } finally {
     await new Promise<void>((resolve, reject) => {
       server.close((error) => (error === undefined ? resolve() : reject(error)));

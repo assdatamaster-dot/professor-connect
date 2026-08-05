@@ -11,6 +11,7 @@ import type {
 import type {
   ProfessorPresenceApi,
   ProfessorPresenceSnapshot,
+  AttendanceHistoryItem,
 } from '../shared/presence-contracts.js' with { 'resolution-mode': 'import' };
 import type {
   TeacherWebRtcApi,
@@ -72,6 +73,8 @@ const presenceChannels = {
   connect: 'teacher:presence:connect',
   disconnect: 'teacher:presence:disconnect',
   getState: 'teacher:presence:get-state',
+  getHistory: 'teacher:presence:get-history',
+  setAvailability: 'teacher:presence:set-availability',
   stateChanged: 'teacher:presence:state-changed',
   remoteControlRequest: 'teacher:remote-control:request',
   remoteControlMouse: 'teacher:remote-control:mouse',
@@ -86,6 +89,13 @@ const presenceApi: ProfessorPresenceApi = {
     ipcRenderer.invoke(presenceChannels.disconnect) as Promise<ProfessorPresenceSnapshot>,
   getState: () =>
     ipcRenderer.invoke(presenceChannels.getState) as Promise<ProfessorPresenceSnapshot>,
+  getHistory: () =>
+    ipcRenderer.invoke(presenceChannels.getHistory) as Promise<readonly AttendanceHistoryItem[]>,
+  setAvailability: (available) =>
+    ipcRenderer.invoke(
+      presenceChannels.setAvailability,
+      available,
+    ) as Promise<ProfessorPresenceSnapshot>,
   acceptSession: (requestId) =>
     ipcRenderer.invoke(
       'teacher:presence:accept-session',

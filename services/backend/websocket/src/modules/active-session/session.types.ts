@@ -9,6 +9,9 @@ export interface AttendanceSession {
   readonly studentName: string;
   readonly createdAt: string;
   readonly status: SessionStatus;
+  readonly endedAt?: string;
+  readonly durationSeconds?: number;
+  readonly endReason?: string;
 }
 
 export interface SessionDelivery {

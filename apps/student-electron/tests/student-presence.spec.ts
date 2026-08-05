@@ -70,7 +70,18 @@ test('conecta, registra, mantém heartbeat e desconecta o aluno automaticamente'
   const httpServer = createServer((request, response) => {
     if (request.url === '/api/professors/online') {
       response.setHeader('content-type', 'application/json');
-      response.end(JSON.stringify({ professors: [{ id: 'teacher-id', name: 'Carlos' }] }));
+      response.end(
+        JSON.stringify({
+          professors: [
+            {
+              id: 'teacher-id',
+              name: 'Carlos',
+              status: 'available',
+              availableSince: '2026-08-05T12:00:00.000Z',
+            },
+          ],
+        }),
+      );
     }
   });
   const socketServer = new SocketServer<PresenceEvents, SessionEvents>(httpServer, {
@@ -200,10 +211,17 @@ test('conecta, registra, mantém heartbeat e desconecta o aluno automaticamente'
     await waitUntil(() => registrations.length === 1 && heartbeatCount > 0);
 
     assert.deepEqual(registrations[0], { id: 'student-id', name: 'Ana' });
-    assert.deepEqual(await controller.getOnlineTeachers(), [{ id: 'teacher-id', name: 'Carlos' }]);
+    assert.deepEqual(await controller.getOnlineTeachers(), [
+      {
+        id: 'teacher-id',
+        name: 'Carlos',
+        status: 'available',
+        availableSince: '2026-08-05T12:00:00.000Z',
+      },
+    ]);
 
     const waiting = controller.requestSession('teacher-id');
-    assert.equal(waiting.message, 'Aguardando resposta...');
+    assert.equal(waiting.message, 'Aguardando resposta…');
     await waitUntil(() => controller.getSessionSnapshot().status === 'connected');
     assert.deepEqual(requestedTeacherIds, ['teacher-id']);
     assert.equal(controller.getSessionSnapshot().message, 'Conectado ao professor');

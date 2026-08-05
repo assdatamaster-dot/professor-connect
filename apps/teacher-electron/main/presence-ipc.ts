@@ -41,6 +41,15 @@ export function registerPresenceIpc(
     assertSender(event);
     return controller.getSnapshot();
   });
+  ipcMain.handle(PRESENCE_IPC_CHANNELS.GET_HISTORY, (event) => {
+    assertSender(event);
+    return controller.getHistory();
+  });
+  ipcMain.handle(PRESENCE_IPC_CHANNELS.SET_AVAILABILITY, (event, available: unknown) => {
+    assertSender(event);
+    if (typeof available !== 'boolean') throw new Error('Disponibilidade inválida');
+    return controller.setAvailability(available);
+  });
   ipcMain.handle(PRESENCE_IPC_CHANNELS.ACCEPT_SESSION, (event, requestId: unknown) => {
     assertSender(event);
     if (typeof requestId !== 'string') {
@@ -130,6 +139,8 @@ export function registerPresenceIpc(
       ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.CONNECT);
       ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.DISCONNECT);
       ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.GET_STATE);
+      ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.GET_HISTORY);
+      ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.SET_AVAILABILITY);
       ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.ACCEPT_SESSION);
       ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.REJECT_SESSION);
       ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.END_SESSION);

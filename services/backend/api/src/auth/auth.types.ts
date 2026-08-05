@@ -5,6 +5,7 @@ export interface AuthenticatedIdentity {
   readonly organizationId: string;
   readonly email: string;
   readonly displayName: string;
+  readonly avatarUrl?: string;
   readonly roles: readonly UserRole[];
   readonly permissions: readonly string[];
   readonly profileId: string | undefined;

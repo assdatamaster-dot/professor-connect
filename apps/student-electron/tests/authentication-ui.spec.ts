@@ -8,6 +8,9 @@ test('oferece cadastro, login e perfil próprios do aluno', async () => {
   assert.match(html, /id="authentication-form"/);
   assert.match(html, /id="student-register-form"/);
   assert.match(html, /id="student-profile-dialog"/);
+  assert.match(html, /id="teacher-list"/);
+  assert.match(html, /id="request-confirmation-dialog"/);
+  assert.match(html, /id="student-history-dialog"/);
   assert.match(html, /Seu perfil será criado como aluno/);
   assert.doesNotMatch(html, /authentication-organization/);
   assert.doesNotMatch(html, /<script(?![^>]*src=)/);

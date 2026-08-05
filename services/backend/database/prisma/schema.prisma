@@ -24,6 +24,12 @@ enum PresenceRole {
   STUDENT
 }
 
+enum ProfessorAvailability {
+  AVAILABLE
+  UNAVAILABLE
+  BUSY
+}
+
 enum RequestStatus {
   PENDING
   ACCEPTED
@@ -199,6 +205,8 @@ model Professor {
   organizationId    String?                   @map("organization_id") @db.Uuid
   userId            String?                   @unique @map("user_id") @db.Uuid
   name              String
+  availability      ProfessorAvailability     @default(UNAVAILABLE)
+  availableSince    DateTime?                 @map("available_since") @db.Timestamptz(3)
   createdAt         DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(3)
   organization      Organization?             @relation(fields: [organizationId], references: [id], onDelete: SetNull)
@@ -209,6 +217,7 @@ model Professor {
   sessions          AttendanceSession[]
 
   @@index([organizationId, name])
+  @@index([organizationId, availability, availableSince])
   @@map("professors")
 }
 

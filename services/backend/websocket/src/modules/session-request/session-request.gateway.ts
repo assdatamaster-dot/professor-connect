@@ -7,11 +7,14 @@ import type { SessionRequestManager } from './session-request.manager.js';
 
 export const SESSION_REQUEST_EVENTS = {
   REQUEST: 'request:session',
+  CREATED: 'session:pending',
   REQUESTED: 'session:requested',
   ACCEPT: 'session:accept',
   ACCEPTED: 'session:accepted',
   REJECT: 'session:reject',
   REJECTED: 'session:rejected',
+  CANCEL: 'session:cancel',
+  CANCELLED: 'session:cancelled',
   TIMEOUT: 'session:timeout',
 } as const;
 
@@ -39,12 +42,15 @@ interface SessionRequestClientEvents {
   [SESSION_REQUEST_EVENTS.REQUEST]: (payload: RequestSessionPayload) => void;
   [SESSION_REQUEST_EVENTS.ACCEPT]: (payload: SessionRequestReferencePayload) => void;
   [SESSION_REQUEST_EVENTS.REJECT]: (payload: SessionRequestReferencePayload) => void;
+  [SESSION_REQUEST_EVENTS.CANCEL]: (payload: SessionRequestReferencePayload) => void;
 }
 
 interface SessionRequestServerEvents {
   [SESSION_REQUEST_EVENTS.REQUESTED]: (payload: SessionRequestedPayload) => void;
+  [SESSION_REQUEST_EVENTS.CREATED]: (payload: SessionResponsePayload) => void;
   [SESSION_REQUEST_EVENTS.ACCEPTED]: (payload: SessionResponsePayload) => void;
   [SESSION_REQUEST_EVENTS.REJECTED]: (payload: SessionResponsePayload) => void;
+  [SESSION_REQUEST_EVENTS.CANCELLED]: (payload: SessionResponsePayload) => void;
   [SESSION_REQUEST_EVENTS.TIMEOUT]: (payload: SessionResponsePayload) => void;
 }
 
@@ -99,6 +105,11 @@ export class SessionRequestGateway {
           studentId: request.studentId,
           teacherId: request.teacherId,
         });
+        socket.emit(SESSION_REQUEST_EVENTS.CREATED, {
+          requestId: request.requestId,
+          teacherId: request.teacherId,
+          teacherName: request.teacherName,
+        });
         if (teacherSocketId === undefined) {
           throw new Error('Professor não está online');
         }
@@ -130,6 +141,25 @@ export class SessionRequestGateway {
         const delivery = this.manager.rejectRequest(requireText(payload, 'requestId'), socket.id);
         this.emitStudentResponse(SESSION_REQUEST_EVENTS.REJECTED, delivery);
         this.logger.info('Solicitação recusada', { requestId: delivery.request.requestId });
+      });
+    });
+
+    socket.on(SESSION_REQUEST_EVENTS.CANCEL, (payload) => {
+      this.handleSafely('Não foi possível cancelar a solicitação', () => {
+        requireRole(socket, 'STUDENT', 'session.request');
+        const delivery = this.manager.cancelRequest(requireText(payload, 'requestId'), socket.id);
+        const response = {
+          requestId: delivery.request.requestId,
+          teacherId: delivery.request.teacherId,
+          teacherName: delivery.request.teacherName,
+        };
+        if (delivery.teacherSocketId !== undefined) {
+          this.socketServer
+            .to(delivery.teacherSocketId)
+            .emit(SESSION_REQUEST_EVENTS.CANCELLED, response);
+        }
+        socket.emit(SESSION_REQUEST_EVENTS.CANCELLED, response);
+        this.logger.info('Solicitação cancelada', { requestId: delivery.request.requestId });
       });
     });
   }

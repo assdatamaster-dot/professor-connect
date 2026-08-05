@@ -41,11 +41,13 @@ export type {
 export {
   PROFESSOR_PRESENCE_EVENTS,
   ProfessorPresenceGateway,
+  type AvailableProfessorPayload,
   type ProfessorOnlinePayload,
 } from './modules/professor-presence/presence.gateway.js';
 export {
   PresenceManager,
   type Professor,
+  type ProfessorAvailability,
   type RegisterProfessorInput,
 } from './modules/professor-presence/presence.manager.js';
 export {

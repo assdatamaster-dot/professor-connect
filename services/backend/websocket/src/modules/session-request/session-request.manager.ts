@@ -55,11 +55,20 @@ export class SessionRequestManager {
     if (teacher === undefined) {
       throw new Error('Professor não está online');
     }
+    if (teacher.availability !== 'available') {
+      throw new Error('Professor indisponível. Escolha outro professor.');
+    }
     if (
       (student.organizationId !== undefined || teacher.organizationId !== undefined) &&
       student.organizationId !== teacher.organizationId
     ) {
       throw new Error('Professor e aluno devem pertencer à mesma instituição');
+    }
+    if ([...this.pendingById.values()].some((request) => request.studentId === student.id)) {
+      throw new Error('O aluno já possui uma solicitação pendente');
+    }
+    if ([...this.pendingById.values()].some((request) => request.teacherId === teacher.id)) {
+      throw new Error('O professor já possui uma solicitação pendente');
     }
 
     const request: SessionRequest = {
@@ -74,6 +83,7 @@ export class SessionRequestManager {
 
     this.pendingById.set(request.requestId, request);
     this.historyById.set(request.requestId, request);
+    this.professorPresenceManager.setAvailabilityByProfessorId(request.teacherId, 'busy');
     this.persistence?.saveRequest(request);
     this.audit?.record({
       action: 'session-request.created',
@@ -81,7 +91,10 @@ export class SessionRequestManager {
       actorId: request.studentId,
       entityType: 'session-request',
       entityId: request.requestId,
-      metadata: { teacherId: request.teacherId },
+      metadata: {
+        teacherId: request.teacherId,
+        organizationId: student.organizationId ?? teacher.organizationId,
+      },
     });
     const timer = this.scheduler(() => this.expireRequest(request.requestId), this.timeoutMs);
     timer.unref?.();
@@ -96,6 +109,32 @@ export class SessionRequestManager {
 
   public rejectRequest(requestId: string, teacherSocketId: string): SessionRequestDelivery {
     return this.completeRequest(requestId, teacherSocketId, 'rejected');
+  }
+
+  public cancelRequest(requestId: string, studentSocketId: string): SessionRequestDelivery {
+    const request = this.requirePendingRequest(requestId);
+    const student = this.studentPresenceManager.findStudentBySocketId(studentSocketId);
+    if (student?.id !== request.studentId) {
+      throw new Error('Somente o aluno solicitante pode cancelar');
+    }
+    const cancelledRequest: SessionRequest = {
+      ...request,
+      status: 'cancelled',
+      respondedAt: this.clock().toISOString(),
+    };
+    this.clearPendingRequest(requestId);
+    this.historyById.set(requestId, cancelledRequest);
+    this.professorPresenceManager.setAvailabilityByProfessorId(request.teacherId, 'available');
+    this.persistence?.saveRequest(cancelledRequest);
+    this.audit?.record({
+      action: 'session-request.cancelled',
+      actorType: 'student',
+      actorId: request.studentId,
+      entityType: 'session-request',
+      entityId: request.requestId,
+      metadata: { organizationId: student.organizationId },
+    });
+    return this.createDelivery(cancelledRequest);
   }
 
   public listPendingRequests(): readonly SessionRequest[] {
@@ -130,6 +169,9 @@ export class SessionRequestManager {
     if (teacher?.id !== request.teacherId) {
       throw new Error('Somente o professor solicitado pode responder');
     }
+    if (status === 'accepted' && teacher.availability === 'unavailable') {
+      throw new Error('Professor indisponível. Escolha outro professor.');
+    }
     if (
       status === 'accepted' &&
       this.studentPresenceManager.findStudentById(request.studentId) === undefined
@@ -137,9 +179,12 @@ export class SessionRequestManager {
       throw new Error('Aluno solicitante não está mais online');
     }
 
-    const completedRequest = { ...request, status };
+    const completedRequest = { ...request, status, respondedAt: this.clock().toISOString() };
     this.clearPendingRequest(requestId);
     this.historyById.set(requestId, completedRequest);
+    if (status === 'rejected') {
+      this.professorPresenceManager.setAvailabilityByProfessorId(request.teacherId, 'available');
+    }
     this.persistence?.saveRequest(completedRequest);
     this.audit?.record({
       action: `session-request.${status}`,
@@ -147,6 +192,7 @@ export class SessionRequestManager {
       actorId: request.teacherId,
       entityType: 'session-request',
       entityId: request.requestId,
+      metadata: { organizationId: teacher.organizationId },
     });
     return this.createDelivery(completedRequest);
   }
@@ -157,15 +203,24 @@ export class SessionRequestManager {
       return;
     }
 
-    const expiredRequest: SessionRequest = { ...request, status: 'expired' };
+    const expiredRequest: SessionRequest = {
+      ...request,
+      status: 'expired',
+      respondedAt: this.clock().toISOString(),
+    };
     this.clearPendingRequest(requestId);
     this.historyById.set(requestId, expiredRequest);
+    this.professorPresenceManager.setAvailabilityByProfessorId(request.teacherId, 'available');
     this.persistence?.saveRequest(expiredRequest);
     this.audit?.record({
       action: 'session-request.expired',
       entityType: 'session-request',
       entityId: request.requestId,
       severity: 'warning',
+      metadata: {
+        organizationId: this.studentPresenceManager.findStudentById(request.studentId)
+          ?.organizationId,
+      },
     });
     const delivery = this.createDelivery(expiredRequest);
 

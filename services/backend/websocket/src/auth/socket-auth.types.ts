@@ -4,6 +4,7 @@ export interface SocketIdentity {
   readonly userId: string;
   readonly organizationId: string;
   readonly displayName: string;
+  readonly avatarUrl?: string;
   readonly roles: readonly SocketUserRole[];
   readonly permissions: readonly string[];
   readonly profileId: string | undefined;

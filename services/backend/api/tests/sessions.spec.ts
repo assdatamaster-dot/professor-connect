@@ -52,7 +52,7 @@ test('expõe solicitações pendentes e o histórico completo', async () => {
     assert.deepEqual(await (await authenticatedFetch('/api/sessions/pending')).json(), []);
     const history = (await (await authenticatedFetch('/api/sessions/history')).json()) as unknown[];
     assert.equal(history.length, 1);
-    assert.equal((history[0] as { status: string }).status, 'accepted');
+    assert.equal((history[0] as { status: string }).status, 'IN_PROGRESS');
 
     assert.deepEqual(await (await authenticatedFetch('/api/sessions/active')).json(), [
       {
@@ -77,6 +77,11 @@ test('expõe solicitações pendentes e o histórico completo', async () => {
       await authenticatedFetch('/api/sessions/session-id')
     ).json()) as Record<string, unknown>;
     assert.equal(finishedDetails.status, 'finished');
+    const completedHistory = (await (
+      await authenticatedFetch('/api/sessions/history')
+    ).json()) as Array<{ status: string; durationSeconds: number }>;
+    assert.equal(completedHistory[0]?.status, 'FINALIZED');
+    assert.equal(completedHistory[0]?.durationSeconds, 0);
   } finally {
     manager.close();
     await new Promise<void>((resolve, reject) => {

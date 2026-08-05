@@ -34,12 +34,20 @@ export function registerSessionIpc(
     assertSender(event);
     return controller.getOnlineTeachers();
   });
+  ipcMain.handle(SESSION_IPC_CHANNELS.GET_HISTORY, (event) => {
+    assertSender(event);
+    return controller.getHistory();
+  });
   ipcMain.handle(SESSION_IPC_CHANNELS.REQUEST, (event, teacherId: unknown) => {
     assertSender(event);
     if (typeof teacherId !== 'string') {
       throw new Error('Professor inválido');
     }
     return controller.requestSession(teacherId);
+  });
+  ipcMain.handle(SESSION_IPC_CHANNELS.CANCEL_REQUEST, (event) => {
+    assertSender(event);
+    return controller.cancelRequest();
   });
   ipcMain.handle(SESSION_IPC_CHANNELS.GET_STATE, (event): StudentSessionSnapshot => {
     assertSender(event);
@@ -98,6 +106,11 @@ export function registerSessionIpc(
       renderer.send(SESSION_IPC_CHANNELS.STATE_CHANGED, snapshot);
     }
   });
+  const unsubscribeTeachers = controller.onAvailableTeachersChanged((teachers) => {
+    if (!renderer.isDestroyed()) {
+      renderer.send(SESSION_IPC_CHANNELS.TEACHERS_CHANGED, teachers);
+    }
+  });
   const unsubscribeOffer = controller.onWebRtcOffer((payload) => {
     if (!renderer.isDestroyed()) {
       renderer.send(SESSION_IPC_CHANNELS.WEBRTC_OFFER, payload);
@@ -117,11 +130,14 @@ export function registerSessionIpc(
   return {
     dispose(): void {
       unsubscribe();
+      unsubscribeTeachers();
       unsubscribeOffer();
       unsubscribeAnswer();
       unsubscribeIce();
       ipcMain.removeHandler(SESSION_IPC_CHANNELS.GET_TEACHERS);
+      ipcMain.removeHandler(SESSION_IPC_CHANNELS.GET_HISTORY);
       ipcMain.removeHandler(SESSION_IPC_CHANNELS.REQUEST);
+      ipcMain.removeHandler(SESSION_IPC_CHANNELS.CANCEL_REQUEST);
       ipcMain.removeHandler(SESSION_IPC_CHANNELS.GET_STATE);
       ipcMain.removeHandler(SESSION_IPC_CHANNELS.END);
       ipcMain.removeHandler(SESSION_IPC_CHANNELS.WEBRTC_SEND_ANSWER);

@@ -138,6 +138,18 @@
           </div>
 
           <div class="app-bar__right">
+            <button
+              id="availability-toggle"
+              class="availability-toggle"
+              type="button"
+              aria-pressed="true"
+            >
+              <i aria-hidden="true"></i>
+              <span>Disponível</span>
+            </button>
+            <button id="teacher-history" class="button button--secondary" type="button">
+              Histórico
+            </button>
             <div class="connection-cluster" aria-label="Status da conexão">
               <span id="presence-pill" class="status-pill" data-status="CONNECTED">
                 <i aria-hidden="true"></i>
@@ -183,7 +195,7 @@
                   <path d="M17 8v6M14 11h6" />
                 </svg>
               </span>
-              <span class="overline">Você está disponível</span>
+              <span id="availability-copy" class="overline">Você está disponível</span>
               <h1 id="waiting-title">Pronto para atender</h1>
               <p>
                 Quando um aluno pedir ajuda, a solicitação aparecerá aqui. Você poderá conversar
@@ -633,6 +645,16 @@
             Cancelar
           </button>
         </div>
+      </form>
+    </dialog>
+    <dialog id="teacher-history-dialog" class="permission-dialog history-dialog">
+      <form method="dialog">
+        <span class="overline">Seus atendimentos</span>
+        <h2>Histórico</h2>
+        <ul id="teacher-history-list" class="history-list" aria-live="polite"></ul>
+        <button id="teacher-history-close" class="button button--secondary" type="button">
+          Fechar
+        </button>
       </form>
     </dialog>
     <script type="module" src="./presence.js"></script>

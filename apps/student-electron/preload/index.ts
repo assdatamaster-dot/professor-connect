@@ -10,6 +10,9 @@ import type {
 } from '../shared/contracts.js' with { 'resolution-mode': 'import' };
 import type {
   StudentSessionApi,
+  AvailableTeachersListener,
+  AttendanceHistoryItem,
+  OnlineTeacher,
   StudentSessionListener,
   StudentSessionSnapshot,
 } from '../shared/session-contracts.js' with { 'resolution-mode': 'import' };
@@ -54,10 +57,13 @@ const workflowApi: DesktopWorkflowApi = {
 
 const sessionChannels = {
   getTeachers: 'student:session:get-teachers',
+  getHistory: 'student:session:get-history',
   request: 'student:session:request',
+  cancelRequest: 'student:session:cancel-request',
   getState: 'student:session:get-state',
   end: 'student:session:end',
   stateChanged: 'student:session:state-changed',
+  teachersChanged: 'student:session:teachers-changed',
   remoteControlApprove: 'student:remote-control:approve',
   remoteControlDeny: 'student:remote-control:deny',
   remoteControlStop: 'student:remote-control:stop',
@@ -65,8 +71,12 @@ const sessionChannels = {
 
 const sessionApi: StudentSessionApi = {
   getOnlineTeachers: () => ipcRenderer.invoke(sessionChannels.getTeachers),
+  getHistory: () =>
+    ipcRenderer.invoke(sessionChannels.getHistory) as Promise<readonly AttendanceHistoryItem[]>,
   requestSession: (teacherId) =>
     ipcRenderer.invoke(sessionChannels.request, teacherId) as Promise<StudentSessionSnapshot>,
+  cancelRequest: () =>
+    ipcRenderer.invoke(sessionChannels.cancelRequest) as Promise<StudentSessionSnapshot>,
   getState: () => ipcRenderer.invoke(sessionChannels.getState) as Promise<StudentSessionSnapshot>,
   endSession: () => ipcRenderer.invoke(sessionChannels.end) as Promise<StudentSessionSnapshot>,
   approveRemoteControl: () =>
@@ -81,6 +91,13 @@ const sessionApi: StudentSessionApi = {
     };
     ipcRenderer.on(sessionChannels.stateChanged, handler);
     return () => ipcRenderer.removeListener(sessionChannels.stateChanged, handler);
+  },
+  onAvailableTeachersChanged(listener: AvailableTeachersListener): () => void {
+    const handler = (_event: IpcRendererEvent, teachers: readonly OnlineTeacher[]): void => {
+      listener(teachers);
+    };
+    ipcRenderer.on(sessionChannels.teachersChanged, handler);
+    return () => ipcRenderer.removeListener(sessionChannels.teachersChanged, handler);
   },
 };
 

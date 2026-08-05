@@ -73,11 +73,16 @@ export class SessionManager {
       studentSocketId: delivery.studentSocketId,
     });
     this.persistence?.saveSession(session);
+    this.professorPresenceManager.setAvailabilityByProfessorId(session.teacherId, 'busy');
     this.audit?.record({
       action: 'session.started',
       entityType: 'attendance-session',
       entityId: session.sessionId,
-      metadata: { requestId: session.requestId },
+      metadata: {
+        requestId: session.requestId,
+        organizationId: this.professorPresenceManager.findProfessorById(session.teacherId)
+          ?.organizationId,
+      },
     });
     return delivery;
   }
@@ -92,6 +97,11 @@ export class SessionManager {
 
   public listHistory(): readonly AttendanceSession[] {
     return [...this.history.values()];
+  }
+
+  public findSessionByRequestId(requestId: string): AttendanceSession | undefined {
+    const sessionId = this.sessionIdsByRequestId.get(requestId);
+    return sessionId === undefined ? undefined : this.findSession(sessionId);
   }
 
   public endSession(sessionId: string, participantSocketId: string): SessionDelivery {
@@ -124,17 +134,34 @@ export class SessionManager {
   }
 
   private finishSession(session: AttendanceSession, endReason: string): SessionDelivery {
-    const finishedSession: AttendanceSession = { ...session, status: 'finished' };
+    const endedAt = this.clock();
+    const durationSeconds = Math.max(
+      0,
+      Math.floor((endedAt.getTime() - Date.parse(session.createdAt)) / 1_000),
+    );
+    const finishedSession: AttendanceSession = {
+      ...session,
+      status: 'finished',
+      endedAt: endedAt.toISOString(),
+      durationSeconds,
+      endReason,
+    };
     this.activeSessions.delete(session.sessionId);
     this.history.set(session.sessionId, finishedSession);
     const delivery = this.createDelivery(finishedSession);
     this.participantSocketsBySessionId.delete(session.sessionId);
     this.persistence?.saveSession(finishedSession, endReason);
+    this.professorPresenceManager.setAvailabilityByProfessorId(session.teacherId, 'available');
     this.audit?.record({
       action: 'session.finished',
       entityType: 'attendance-session',
       entityId: session.sessionId,
-      metadata: { endReason },
+      metadata: {
+        endReason,
+        durationSeconds,
+        organizationId: this.professorPresenceManager.findProfessorById(session.teacherId)
+          ?.organizationId,
+      },
     });
     for (const listener of this.endedListeners) {
       listener(delivery);

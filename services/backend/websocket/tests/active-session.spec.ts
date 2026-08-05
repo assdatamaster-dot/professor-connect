@@ -37,6 +37,7 @@ test('cria, localiza, lista e encerra uma sessão ativa', () => {
     status: 'active',
   });
   assert.equal(manager.findSession('session-id')?.status, 'active');
+  assert.equal(professors.findProfessorById('teacher-id')?.availability, 'busy');
   assert.equal(manager.listActiveSessions().length, 1);
   assert.equal(
     manager.resolveSignalingRoute('session-id', 'teacher-socket').recipientSocketId,
@@ -50,6 +51,9 @@ test('cria, localiza, lista e encerra uma sessão ativa', () => {
   const finished = manager.endSession('session-id', 'student-socket');
 
   assert.equal(finished.session.status, 'finished');
+  assert.equal(finished.session.endedAt, '2026-07-23T12:00:00.000Z');
+  assert.equal(finished.session.durationSeconds, 0);
+  assert.equal(professors.findProfessorById('teacher-id')?.availability, 'available');
   assert.deepEqual(manager.listActiveSessions(), []);
   assert.equal(manager.listHistory()[0]?.status, 'finished');
   assert.equal(manager.findSession('session-id')?.status, 'finished');

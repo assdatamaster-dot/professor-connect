@@ -535,6 +535,7 @@ export class AuthService implements AuthServiceContract {
       organizationId: user.organizationId,
       email: user.email,
       displayName: user.displayName,
+      ...(user.avatarUrl === null ? {} : { avatarUrl: user.avatarUrl }),
       roles,
       permissions,
       profileId,

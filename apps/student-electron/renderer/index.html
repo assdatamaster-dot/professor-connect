@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https:; media-src 'self' blob:; connect-src 'self'"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Professor Connect</title>
@@ -26,6 +26,9 @@
         </div>
         <button id="student-profile" class="button button--secondary" type="button" hidden>
           Perfil
+        </button>
+        <button id="student-history" class="button button--secondary" type="button" hidden>
+          Histórico
         </button>
         <button id="student-logout" class="button button--secondary" type="button" hidden>
           Sair
@@ -64,8 +67,11 @@
               </p>
             </div>
             <div class="call-form">
-              <label for="teacher-select">Professor disponível</label>
-              <div class="select-wrap">
+              <span class="teacher-list-label">Professores disponíveis</span>
+              <div id="teacher-list" class="teacher-list" aria-live="polite">
+                <p class="teacher-list__empty">Carregando professores…</p>
+              </div>
+              <div class="select-wrap" hidden>
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
                   <path d="M4 21a8 8 0 0 1 16 0" />
@@ -90,6 +96,14 @@
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="m9 18 6-6-6-6" />
                 </svg>
+              </button>
+              <button
+                id="cancel-request"
+                class="button button--secondary button--large"
+                type="button"
+                hidden
+              >
+                Cancelar solicitação
               </button>
               <span class="call-assurance">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -480,6 +494,33 @@
             Não permitir
           </button>
         </div>
+      </form>
+    </dialog>
+
+    <dialog id="request-confirmation-dialog" class="permission-dialog request-dialog">
+      <form method="dialog">
+        <span class="overline">Confirmar solicitação</span>
+        <h2>Solicitar atendimento com <strong id="request-teacher-name"></strong>?</h2>
+        <p>O professor receberá a solicitação imediatamente.</p>
+        <div class="confirmation-dialog__actions">
+          <button id="confirm-request" class="button button--primary" type="button">
+            Solicitar
+          </button>
+          <button id="dismiss-request" class="button button--secondary" type="button">
+            Cancelar
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="student-history-dialog" class="permission-dialog history-dialog">
+      <form method="dialog">
+        <span class="overline">Seus atendimentos</span>
+        <h2>Histórico</h2>
+        <ul id="student-history-list" class="history-list" aria-live="polite"></ul>
+        <button id="student-history-close" class="button button--secondary" type="button">
+          Fechar
+        </button>
       </form>
     </dialog>
 

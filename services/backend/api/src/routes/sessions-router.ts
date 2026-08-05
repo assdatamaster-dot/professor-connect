@@ -16,7 +16,7 @@ export function createSessionsRouter(
   const router = Router();
 
   router.get('/pending', createPendingSessionsController(requestManager));
-  router.get('/history', createSessionHistoryController(requestManager));
+  router.get('/history', createSessionHistoryController(requestManager, sessionManager));
   router.get('/active', createActiveSessionsController(sessionManager));
   router.get('/:sessionId', createSessionDetailsController(sessionManager));
   return router;

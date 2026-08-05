@@ -10,9 +10,38 @@ export function createPendingSessionsController(manager: SessionRequestManager) 
   };
 }
 
-export function createSessionHistoryController(manager: SessionRequestManager) {
+export function createSessionHistoryController(
+  requestManager: SessionRequestManager,
+  sessionManager: SessionManager,
+) {
   return function getSessionHistory(request: Request, response: Response): void {
-    response.json(manager.listHistory().filter((session) => isVisibleToIdentity(session, request)));
+    response.json(
+      requestManager
+        .listHistory()
+        .filter((item) => isVisibleToIdentity(item, request))
+        .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))
+        .map((item) => {
+          const session = sessionManager.findSessionByRequestId(item.requestId);
+          return {
+            requestId: item.requestId,
+            sessionId: session?.sessionId ?? null,
+            professor: { id: item.teacherId, name: item.teacherName },
+            student: { id: item.studentId, name: item.studentName },
+            requestedAt: item.createdAt,
+            respondedAt: item.respondedAt ?? null,
+            startedAt: session?.createdAt ?? null,
+            endedAt: session?.endedAt ?? null,
+            durationSeconds: session?.durationSeconds ?? null,
+            status:
+              session?.status === 'active'
+                ? 'IN_PROGRESS'
+                : session?.status === 'finished'
+                  ? 'FINALIZED'
+                  : item.status.toUpperCase(),
+            endReason: session?.endReason ?? null,
+          };
+        }),
+    );
   };
 }
 
