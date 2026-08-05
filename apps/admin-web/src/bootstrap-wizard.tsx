@@ -128,11 +128,17 @@ export function BootstrapWizard({
       const result = await api.bootstrapSetup(input, avatar, logo);
       onCompleted(result.identity, input.settings.theme);
     } catch (caught) {
-      setError(
-        caught instanceof ApiError
-          ? caught.message
-          : 'Não foi possível criar o ambiente. Nenhuma alteração foi mantida.',
-      );
+      if (caught instanceof ApiError) {
+        const issue = caught.issues[0];
+        if (issue !== undefined) {
+          setStep(stepForIssue(issue.path));
+          setError(issue.message);
+        } else {
+          setError(caught.message);
+        }
+      } else {
+        setError('Não foi possível criar o ambiente. Nenhuma alteração foi mantida.');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -449,7 +455,7 @@ function AdministratorStep({
           error={errors.password}
           hint={
             administrator.password === ''
-              ? 'Mínimo de 10 caracteres, com maiúscula, número e símbolo.'
+              ? 'Mínimo de 12 caracteres, com maiúscula, número e símbolo.'
               : validatePassword(administrator.password).message
           }
           label="Senha"
@@ -761,4 +767,11 @@ function validImage(
 
 function themeName(theme: 'light' | 'dark' | 'system'): string {
   return theme === 'light' ? 'claro' : theme === 'dark' ? 'escuro' : 'automático';
+}
+
+function stepForIssue(path: string): number {
+  if (path.startsWith('organization.')) return 1;
+  if (path.startsWith('administrator.')) return 2;
+  if (path.startsWith('settings.')) return 3;
+  return 4;
 }

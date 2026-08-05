@@ -4,7 +4,7 @@ export interface PasswordCheck {
 }
 
 export function validatePassword(value: string): PasswordCheck {
-  if (value.length < 10) return { valid: false, message: 'Use pelo menos 10 caracteres' };
+  if (value.length < 12) return { valid: false, message: 'Use pelo menos 12 caracteres' };
   if (!/[A-Z]/.test(value)) return { valid: false, message: 'Inclua uma letra maiúscula' };
   if (!/[a-z]/.test(value)) return { valid: false, message: 'Inclua uma letra minúscula' };
   if (!/\d/.test(value)) return { valid: false, message: 'Inclua um número' };

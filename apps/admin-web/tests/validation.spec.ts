@@ -8,7 +8,8 @@ test('validação de senha exige todos os grupos de segurança', () => {
   assert.equal(validatePassword('abcdefghijk1#').valid, false);
   assert.equal(validatePassword('Abcdefghijk#').valid, false);
   assert.equal(validatePassword('Abcdefghijk1').valid, false);
-  assert.equal(validatePassword('Abcdefghi1#').valid, true);
+  assert.equal(validatePassword('Abcdefghi1#').valid, false);
+  assert.equal(validatePassword('Abcdefghij1#').valid, true);
 });
 
 test('avatar de iniciais usa no máximo dois nomes', () => {

@@ -96,6 +96,39 @@ test('bootstrap consulta status, envia o wizard e preserva a sessão automática
   }
 });
 
+test('bootstrap preserva o campo e a mensagem detalhada da validação da API', async () => {
+  installMemoryStorage();
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = () =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify({
+          code: 'validation_error',
+          message: 'Dados de entrada inválidos',
+          issues: [
+            {
+              path: 'administrator.password',
+              message: 'A senha deve ter pelo menos 12 caracteres',
+            },
+          ],
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+  try {
+    const api = new AdminApi();
+    await assert.rejects(
+      () => api.bootstrapSetup(bootstrapInput(), null, null),
+      (error: unknown) =>
+        error instanceof ApiError &&
+        error.issues[0]?.path === 'administrator.password' &&
+        error.issues[0]?.message === 'A senha deve ter pelo menos 12 caracteres',
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 function authResponse(roles: readonly string[]): AuthResponse {
   return {
     identity: {

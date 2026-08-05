@@ -14,11 +14,17 @@ import type {
 const REFRESH_TOKEN_KEY = 'professor-connect.admin.refresh-token';
 const ORGANIZATION_KEY = 'professor-connect.admin.organization';
 
+export interface ApiIssue {
+  readonly path: string;
+  readonly message: string;
+}
+
 export class ApiError extends Error {
   public constructor(
     message: string,
     public readonly status: number,
     public readonly code: string,
+    public readonly issues: readonly ApiIssue[] = [],
   ) {
     super(message);
     this.name = 'ApiError';
@@ -220,16 +226,38 @@ export class AdminApi {
   private async toError(response: Response): Promise<ApiError> {
     const fallback = 'Não foi possível concluir a operação';
     try {
-      const body = (await response.json()) as { message?: unknown; code?: unknown };
+      const body = (await response.json()) as {
+        message?: unknown;
+        code?: unknown;
+        issues?: unknown;
+      };
       return new ApiError(
         typeof body.message === 'string' ? body.message : fallback,
         response.status,
         typeof body.code === 'string' ? body.code : 'request_failed',
+        parseIssues(body.issues),
       );
     } catch {
       return new ApiError(fallback, response.status, 'request_failed');
     }
   }
+}
+
+function parseIssues(value: unknown): readonly ApiIssue[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((issue) => {
+    if (
+      typeof issue === 'object' &&
+      issue !== null &&
+      'path' in issue &&
+      typeof issue.path === 'string' &&
+      'message' in issue &&
+      typeof issue.message === 'string'
+    ) {
+      return [{ path: issue.path, message: issue.message }];
+    }
+    return [];
+  });
 }
 
 function jsonRequest(method: 'POST' | 'PUT', body: unknown): RequestInit {
