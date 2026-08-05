@@ -130,3 +130,29 @@ test('mantém bloqueio CORS para uma origem externa não autorizada', async () =
     });
   }
 });
+
+test('reconhece a origem pública encaminhada pelo proxy reverso', async () => {
+  const server = createServer(createApp());
+
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+
+  try {
+    const address = server.address();
+    assert(address !== null && typeof address === 'object');
+    const publicOrigin = 'https://painel.professor-connect.example';
+    const response = await fetch(`http://127.0.0.1:${address.port}/health`, {
+      headers: {
+        Origin: publicOrigin,
+        'X-Forwarded-Host': 'painel.professor-connect.example',
+        'X-Forwarded-Proto': 'https',
+      },
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('access-control-allow-origin'), publicOrigin);
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error === undefined ? resolve() : reject(error)));
+    });
+  }
+});

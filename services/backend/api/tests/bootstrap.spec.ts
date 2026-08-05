@@ -49,10 +49,19 @@ test('endpoints detectam banco vazio, concluem setup e bloqueiam reexecução', 
 
     const setup = await fetch(`${baseUrl}/api/bootstrap/setup`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Origin: 'https://painel.professor-connect.example',
+        'X-Forwarded-Host': 'painel.professor-connect.example',
+        'X-Forwarded-Proto': 'https',
+      },
       body: JSON.stringify(controllerInput()),
     });
     assert.equal(setup.status, 201);
+    assert.equal(
+      setup.headers.get('access-control-allow-origin'),
+      'https://painel.professor-connect.example',
+    );
     const body = (await setup.json()) as BootstrapSetupResult;
     assert.equal(body.identity.roles.includes('ADMIN'), true);
     assert.equal(body.tokens.accessToken, 'access-token');

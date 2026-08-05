@@ -1,4 +1,4 @@
-import express, { type Express } from 'express';
+import express, { type Express, type Request } from 'express';
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -103,7 +103,7 @@ export function createApp(
   app.use(
     cors((request, callback) => {
       const origin = request.header('Origin');
-      const sameOrigin = origin === `${request.protocol}://${request.host}`;
+      const sameOrigin = origin !== undefined && isSameOriginRequest(request, origin);
 
       if (origin !== undefined && !sameOrigin && !environment.corsOrigins.includes(origin)) {
         callback(new HttpError('Origem CORS não autorizada', 403, 'cors_forbidden'));
@@ -158,4 +158,40 @@ export function createApp(
   app.use(globalErrorMiddleware);
 
   return app;
+}
+
+export function isSameOriginRequest(request: Request, origin: string): boolean {
+  const protocols = new Set([
+    request.protocol,
+    firstForwardedValue(request.header('x-forwarded-proto')),
+  ]);
+  const hosts = new Set([
+    request.host,
+    request.header('host'),
+    firstForwardedValue(request.header('x-forwarded-host')),
+  ]);
+
+  let normalizedOrigin: string;
+  try {
+    normalizedOrigin = new URL(origin).origin;
+  } catch {
+    return false;
+  }
+
+  for (const protocol of protocols) {
+    if (protocol !== 'http' && protocol !== 'https') continue;
+    for (const host of hosts) {
+      if (host === undefined || host.length === 0) continue;
+      try {
+        if (new URL(`${protocol}://${host}`).origin === normalizedOrigin) return true;
+      } catch {
+        // Ignore malformed forwarding values and keep evaluating the remaining candidates.
+      }
+    }
+  }
+  return false;
+}
+
+function firstForwardedValue(value: string | undefined): string | undefined {
+  return value?.split(',', 1)[0]?.trim().toLowerCase();
 }
