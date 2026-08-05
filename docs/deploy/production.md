@@ -39,7 +39,7 @@ PostgreSQL persistente e acessível durante toda a inicialização.
 1. `prisma generate` usando `services/backend/database/prisma/schema.prisma`;
 2. `prisma migrate deploy` usando `services/backend/database/prisma/migrations`;
 3. `prisma migrate status` no mesmo `DATABASE_URL`;
-4. validação defensiva de que as 9 migrations e as 24 tabelas do schema existem;
+4. validação defensiva de que as 10 migrations e as 24 tabelas do schema existem;
 5. `RecoveryRepository.recoverAfterRestart()`;
 6. abertura das portas HTTP e Socket.IO.
 

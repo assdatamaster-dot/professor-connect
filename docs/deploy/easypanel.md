@@ -62,7 +62,7 @@ Copie host, porta, usuário e **nome do banco** da seção **Credentials** do Po
 Não digite o nome por aproximação: `professorconnect` e `professor_connect` são bancos distintos.
 No primeiro log do backend, o evento `Destino PostgreSQL configurado` mostra host, porta, banco e
 schema efetivos sem revelar usuário ou senha. O evento `Banco de dados validado`, emitido antes de
-`Servidor iniciado`, confirma o nome retornado pelo próprio PostgreSQL, as 9 migrations e as 24
+`Servidor iniciado`, confirma o nome retornado pelo próprio PostgreSQL, as 10 migrations e as 24
 tabelas esperadas.
 
 `REQUEST_TIMEOUT_MS` limita somente solicitações de atendimento ainda não respondidas. Ele não
@@ -96,7 +96,7 @@ própria origem e mantém bloqueadas somente origens externas que não estejam e
 ## 5. Publicar e validar
 
 Clique em **Deploy** e acompanhe os logs. Em um banco novo, antes de `Servidor iniciado`, devem
-aparecer a geração do Prisma Client e a aplicação das 9 migrations. Em deploys seguintes,
+aparecer a geração do Prisma Client e a aplicação das 10 migrations. Em deploys seguintes,
 `prisma migrate deploy` informa que não há migrations pendentes. Somente então abra:
 
 ```text
@@ -110,7 +110,7 @@ npm run prisma:status
 npm run prisma:pull:print
 ```
 
-O primeiro comando deve informar que 9 migrations foram encontradas e que o banco está atualizado.
+O primeiro comando deve informar que 10 migrations foram encontradas e que o banco está atualizado.
 O segundo imprime o schema introspectado sem sobrescrever `prisma/schema.prisma`. Somente então
 consulte a saúde da aplicação. Resposta esperada:
 
@@ -124,7 +124,8 @@ As migrations embarcadas, na ordem, são:
 6. `20260804090000_user_registration_and_profiles`;
 7. `20260805090000_administrative_panel`;
 8. `20260805150000_intelligent_attendance_flow`;
-9. `20260805180000_bootstrap_first_run`.
+9. `20260805180000_bootstrap_first_run`;
+10. `20260805220000_cleanup_bootstrap_artifacts`.
 
 ```json
 {

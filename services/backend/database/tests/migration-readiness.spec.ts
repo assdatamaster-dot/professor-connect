@@ -16,6 +16,7 @@ const MIGRATIONS = [
   '20260805090000_administrative_panel',
   '20260805150000_intelligent_attendance_flow',
   '20260805180000_bootstrap_first_run',
+  '20260805220000_cleanup_bootstrap_artifacts',
 ] as const;
 const TABLES = [
   'organizations',
@@ -97,7 +98,10 @@ test('rejects startup when a bundled migration is pending', async () => {
     })),
   ]);
 
-  await assert.rejects(assertMigrationsApplied(prisma), /20260805180000_bootstrap_first_run/);
+  await assert.rejects(
+    assertMigrationsApplied(prisma),
+    /20260805220000_cleanup_bootstrap_artifacts/,
+  );
 });
 
 test('rejects startup when migrations are recorded but a domain table is absent', async () => {
@@ -175,6 +179,24 @@ test('migration de bootstrap cria trava transacional e configurações iniciais'
   assert.match(sql, /INSERT INTO "bootstrap_state"/);
   assert.doesNotMatch(sql, /INSERT INTO "users"/i);
   assert.doesNotMatch(sql, /INSERT INTO "organizations"/i);
+});
+
+test('migration de limpeza remove somente organizações técnicas completamente órfãs', async () => {
+  const sql = await readFile(
+    new URL(
+      '../prisma/migrations/20260805220000_cleanup_bootstrap_artifacts/migration.sql',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+
+  assert.match(sql, /"slug" IN \('legacy', 'professor-connect'\)/);
+  assert.match(sql, /NOT EXISTS[\s\S]*FROM "users"/);
+  assert.match(sql, /NOT EXISTS[\s\S]*FROM "professors"/);
+  assert.match(sql, /NOT EXISTS[\s\S]*FROM "students"/);
+  assert.match(sql, /NOT EXISTS[\s\S]*FROM "system_settings"/);
+  assert.match(sql, /NOT EXISTS[\s\S]*FROM "bootstrap_state"/);
+  assert.doesNotMatch(sql, /DELETE FROM "users"/);
 });
 
 test('seed sincroniza somente referências e preserva o estado de primeiro acesso', async () => {
