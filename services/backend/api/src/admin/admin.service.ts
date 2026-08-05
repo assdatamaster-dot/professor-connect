@@ -94,7 +94,10 @@ export class AdminService implements AdminServiceContract {
     const where: Prisma.UserWhereInput = {
       organizationId: identity.organizationId,
       deletedAt: null,
-      roles: { some: { role: { name: input.role } } },
+      roles: {
+        some: { role: { name: input.role } },
+        none: { role: { name: 'ADMIN' } },
+      },
       ...(input.name === undefined
         ? {}
         : { displayName: { contains: input.name, mode: 'insensitive' } }),
@@ -385,7 +388,10 @@ export class AdminService implements AdminServiceContract {
       where: {
         organizationId,
         deletedAt: null,
-        roles: { some: { role: { name: role } } },
+        roles: {
+          some: { role: { name: role } },
+          none: { role: { name: 'ADMIN' } },
+        },
       },
     });
   }

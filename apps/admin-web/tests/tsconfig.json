@@ -1,5 +1,5 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": { "noEmit": true, "types": ["node"] },
-  "include": ["../src/validation.ts", "./**/*.ts"]
+  "include": ["../src/api.ts", "../src/types.ts", "../src/validation.ts", "./**/*.ts"]
 }

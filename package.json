@@ -21,6 +21,7 @@
     "build-backend": "turbo run build --filter=@professor-connect/api... --filter=@professor-connect/admin-web",
     "build-student": "npm run dist:win --workspace=@professor-connect/student-electron",
     "build-teacher": "npm run dist:win --workspace=@professor-connect/teacher-electron",
+    "admin:test-preview": "npm run preview:admin --workspace=@professor-connect/api",
     "check": "npm run lint && npm run typecheck && npm run test && npm run format:check",
     "clean": "turbo run clean",
     "communication:client": "npm run client:test --workspace=@professor-connect/websocket",

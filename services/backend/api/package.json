@@ -19,6 +19,7 @@
     "pretest": "npm run build --workspace=@professor-connect/websocket",
     "predev": "npm run backend:prepare --prefix ../../.. && npm run build --workspace=@professor-connect/protocol --workspace=@professor-connect/services --workspace=@professor-connect/config --workspace=@professor-connect/websocket",
     "prestart": "npm run backend:prepare --prefix ../../..",
+    "preview:admin": "npm run build-admin --prefix ../../.. && tsx tests/admin-preview.ts",
     "start": "node dist/server.js",
     "test": "tsx --test tests/*.spec.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tests/tsconfig.json --noEmit"

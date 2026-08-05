@@ -76,3 +76,21 @@ npm run build-admin
 
 Em produção, `npm run build-backend`, Docker e Nixpacks também compilam o painel. O backend entrega
 os arquivos estáticos e o fallback da SPA em `/admin`.
+
+## Pré-visualização local para auditoria
+
+Quando não houver PostgreSQL local, a interface e as rotas administrativas podem ser verificadas
+com um servidor de teste restrito a `127.0.0.1`:
+
+```bash
+npm run admin:test-preview
+```
+
+O painel fica em `http://127.0.0.1:4300/admin/`, usando a instituição `professor-connect`, o usuário
+`admin@professor-connect.test` e a senha `Admin#ProfessorConnect2026`. Essa conta existe somente no
+servidor de pré-visualização em memória: ela nunca é gravada por migration, seed ou pelo build de
+produção.
+
+Em um ambiente real, o primeiro administrador continua sendo criado exclusivamente por
+`POST /api/auth/onboard-organization` com `ADMIN_ONBOARDING_KEY`; depois do onboarding, desative a
+chave no serviço.

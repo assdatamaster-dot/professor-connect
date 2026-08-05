@@ -1,6 +1,7 @@
 import type {
   AuthenticatedIdentity,
   AuthServiceContract,
+  OnboardOrganizationInput,
   UserProfile,
   TokenPair,
 } from '../src/auth/auth.types.js';
@@ -24,13 +25,31 @@ export const TEST_TOKENS: TokenPair = {
 };
 
 export class TestAuthService implements AuthServiceContract {
+  public lastOnboardingInput: OnboardOrganizationInput | null = null;
+  public lastLogin: {
+    readonly email: string;
+    readonly password: string;
+    readonly organizationSlug?: string;
+  } | null = null;
   public register(): Promise<{ identity: AuthenticatedIdentity; tokens: TokenPair }> {
     return Promise.resolve({ identity: TEST_IDENTITY, tokens: TEST_TOKENS });
   }
-  public onboardOrganization(): Promise<{ identity: AuthenticatedIdentity; tokens: TokenPair }> {
+  public onboardOrganization(
+    input: OnboardOrganizationInput,
+  ): Promise<{ identity: AuthenticatedIdentity; tokens: TokenPair }> {
+    this.lastOnboardingInput = input;
     return Promise.resolve({ identity: TEST_IDENTITY, tokens: TEST_TOKENS });
   }
-  public login(): Promise<{ identity: AuthenticatedIdentity; tokens: TokenPair }> {
+  public login(
+    email: string,
+    password: string,
+    organizationSlug: string | undefined,
+  ): Promise<{ identity: AuthenticatedIdentity; tokens: TokenPair }> {
+    this.lastLogin = {
+      email,
+      password,
+      ...(organizationSlug === undefined ? {} : { organizationSlug }),
+    };
     return Promise.resolve({ identity: TEST_IDENTITY, tokens: TEST_TOKENS });
   }
   public refresh(): Promise<{ identity: AuthenticatedIdentity; tokens: TokenPair }> {

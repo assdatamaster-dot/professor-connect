@@ -97,3 +97,48 @@ test('cadastro público e perfil funcionam sem bootstrap de usuário', async () 
     );
   }
 });
+
+test('onboarding cria o primeiro ADMIN e login preserva a instituição escolhida', async () => {
+  const authService = new TestAuthService();
+  const server = createServer(createApp(undefined, undefined, undefined, undefined, authService));
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const address = server.address();
+    assert(address !== null && typeof address === 'object');
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+    const setupKey = 'onboarding-test-key-with-more-than-32-characters';
+    const onboarding = await fetch(`${baseUrl}/api/auth/onboard-organization`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        organizationName: 'Instituição de Teste',
+        organizationSlug: 'instituicao-teste',
+        name: 'Administrador de Teste',
+        email: 'admin@instituicao.test',
+        password: 'Strong#Password1',
+        confirmPassword: 'Strong#Password1',
+        setupKey,
+      }),
+    });
+    assert.equal(onboarding.status, 201);
+    const onboardingBody = JSON.stringify(await onboarding.json());
+    assert.doesNotMatch(onboardingBody, /Strong#Password1|onboarding-test-key|passwordHash/);
+    assert.equal(authService.lastOnboardingInput?.organizationSlug, 'instituicao-teste');
+
+    const login = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: 'admin@instituicao.test',
+        password: 'Strong#Password1',
+        organizationSlug: 'instituicao-teste',
+      }),
+    });
+    assert.equal(login.status, 200);
+    assert.equal(authService.lastLogin?.organizationSlug, 'instituicao-teste');
+  } finally {
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error === undefined ? resolve() : reject(error))),
+    );
+  }
+});

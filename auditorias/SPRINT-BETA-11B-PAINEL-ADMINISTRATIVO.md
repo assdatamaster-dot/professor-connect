@@ -1,6 +1,8 @@
 # Auditoria — Sprint Beta-11B
 
-Data: 2026-08-04
+Data original: 2026-08-04
+
+Reauditoria e conclusão: 2026-08-05
 
 ## Resultado
 
@@ -8,6 +10,11 @@ A Sprint Beta-11B introduz o painel web administrativo, gestão institucional de
 alunos, onboarding seguro do primeiro administrador, dashboard, avatares, status, auditoria e
 desconexão imediata de usuários revogados. A implementação mantém os contratos de autenticação,
 Electron, presença, WebRTC, controle remoto e transferência de arquivos existentes.
+
+Na reauditoria integral foram encontradas e corrigidas duas lacunas: contas que acumulassem a role
+`ADMIN` com `TEACHER` ou `STUDENT` ainda apareciam nas listagens gerenciáveis, e o build Vite
+publicava source maps. As consultas e indicadores agora excluem explicitamente qualquer ADMIN e o
+bundle de produção não contém `.map` nem comentário `sourceMappingURL`.
 
 ## Arquitetura revisada
 
@@ -62,7 +69,8 @@ continuam sem contas bootstrap.
 - Formulários validam e-mail, nome, senha e confirmação em tempo real.
 - Avatares usam object URLs revogadas no unmount; sem foto, exibem até duas iniciais.
 - Polling, object URLs, timers, listeners e AbortControllers possuem cleanup explícito.
-- Bundle de produção: JavaScript 223,43 kB (68,45 kB gzip) e CSS 19,83 kB (5,12 kB gzip).
+- Bundle de produção: JavaScript 223,38 kB (68,41 kB gzip) e CSS 19,83 kB (5,12 kB gzip), sem
+  source maps públicos.
 
 ## Compatibilidade e regressão
 
@@ -80,11 +88,24 @@ continuam sem contas bootstrap.
 ## Evidências automatizadas
 
 - `npm run check`: aprovado em 14 workspaces.
-- Testes: 139 aprovados, zero falhas, em 16 tarefas Turbo.
-- `npm run build`: 14/14 workspaces compilados.
+- Testes: 148 aprovados, zero falhas, em 16 tarefas Turbo.
+- `npm run build`: 14/14 workspaces compilados; `build-backend` também aprovou API e painel React.
 - `npm run prisma:validate`: schema válido.
 - `npm audit --audit-level=moderate`: zero vulnerabilidades.
 - `git diff --check`: nenhuma inconsistência de whitespace.
+
+## Acesso verificado
+
+- Produção: `https://<domínio-do-backend>/admin/`.
+- Desenvolvimento Vite: `http://127.0.0.1:4173/admin/` com a API em `127.0.0.1:3000`.
+- Pré-visualização auditável sem PostgreSQL: `http://127.0.0.1:4300/admin/`, iniciada por
+  `npm run admin:test-preview`.
+- Usuário exclusivo da pré-visualização: `admin@professor-connect.test`, instituição
+  `professor-connect`, senha `Admin#ProfessorConnect2026`.
+
+A conta acima existe somente no serviço em memória ligado ao loopback. Produção não recebe
+credencial padrão: o primeiro usuário real é criado por `POST /api/auth/onboard-organization` com
+`ADMIN_ONBOARDING_KEY`, e a chave deve ser desativada após o provisionamento.
 
 ## Limitações do ambiente de auditoria
 
@@ -96,4 +117,5 @@ validada pelo Prisma, possui teste estrutural e será aplicada pelo fluxo idempo
 A pré-visualização HTTP local iniciou corretamente, mas o navegador integrado recusou a conexão por
 ausência da política de sandbox fornecida pelo próprio ambiente. A automação visual não foi
 substituída por outro navegador para respeitar o mecanismo oficial; o frontend foi validado por
-tipagem, lint, testes de regras, build Vite e revisão responsiva/acessível do código.
+tipagem, lint, testes de regras, build Vite, HTTP real da página/assets/login/dashboard, headers de
+segurança e revisão responsiva/acessível do código.

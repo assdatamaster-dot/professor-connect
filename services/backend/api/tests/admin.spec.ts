@@ -67,6 +67,98 @@ test('ADMIN cadastra usuário sem retornar senha', async () => {
   });
 });
 
+test('ADMIN edita, altera status, redefine senha e exclui usuário', async () => {
+  const adminService = new TestAdminService();
+  await withServer(new TestAuthService(), adminService, async (baseUrl) => {
+    const update = await fetch(`${baseUrl}/api/admin/users/${MANAGED_USER_ID}`, {
+      method: 'PUT',
+      headers: { ...AUTHORIZATION_HEADERS, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Professor Atualizado', email: 'novo@example.edu' }),
+    });
+    assert.equal(update.status, 200);
+    assert.deepEqual(adminService.lastUpdatedInput, {
+      name: 'Professor Atualizado',
+      email: 'novo@example.edu',
+    });
+
+    const status = await fetch(`${baseUrl}/api/admin/users/${MANAGED_USER_ID}/status`, {
+      method: 'PUT',
+      headers: { ...AUTHORIZATION_HEADERS, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'BLOCKED' }),
+    });
+    assert.equal(status.status, 200);
+    assert.equal(adminService.lastStatus, 'BLOCKED');
+
+    const password = await fetch(`${baseUrl}/api/admin/users/${MANAGED_USER_ID}/reset-password`, {
+      method: 'POST',
+      headers: { ...AUTHORIZATION_HEADERS, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        newPassword: 'NewStrong#Password2',
+        confirmPassword: 'NewStrong#Password2',
+      }),
+    });
+    assert.equal(password.status, 204);
+    assert.equal(adminService.lastPassword, 'NewStrong#Password2');
+
+    const deletion = await fetch(`${baseUrl}/api/admin/users/${MANAGED_USER_ID}`, {
+      method: 'DELETE',
+      headers: AUTHORIZATION_HEADERS,
+    });
+    assert.equal(deletion.status, 204);
+    assert.equal(adminService.lastDeletedUserId, MANAGED_USER_ID);
+  });
+});
+
+test('ADMIN envia, consulta e remove avatar validado', async () => {
+  const adminService = new TestAdminService();
+  await withServer(new TestAuthService(), adminService, async (baseUrl) => {
+    const pngBytes = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const form = new FormData();
+    form.append('avatar', new Blob([pngBytes], { type: 'image/png' }), 'avatar.png');
+    const upload = await fetch(`${baseUrl}/api/admin/users/${MANAGED_USER_ID}/avatar`, {
+      method: 'POST',
+      headers: AUTHORIZATION_HEADERS,
+      body: form,
+    });
+    assert.equal(upload.status, 204);
+    assert.equal(adminService.lastAvatar?.userId, MANAGED_USER_ID);
+    assert.equal(adminService.lastAvatar?.mimeType, 'image/png');
+    assert.deepEqual(new Uint8Array(adminService.lastAvatar?.bytes ?? []), pngBytes);
+
+    const avatar = await fetch(`${baseUrl}/api/admin/users/${MANAGED_USER_ID}/avatar`, {
+      headers: AUTHORIZATION_HEADERS,
+    });
+    assert.equal(avatar.status, 200);
+    assert.equal(avatar.headers.get('content-type'), 'image/png');
+    assert.deepEqual(new Uint8Array(await avatar.arrayBuffer()), pngBytes);
+
+    const deletion = await fetch(`${baseUrl}/api/admin/users/${MANAGED_USER_ID}/avatar`, {
+      method: 'DELETE',
+      headers: AUTHORIZATION_HEADERS,
+    });
+    assert.equal(deletion.status, 204);
+    assert.equal(adminService.lastDeletedAvatarUserId, MANAGED_USER_ID);
+  });
+});
+
+test('upload administrativo rejeita conteúdo que não corresponde ao MIME', async () => {
+  await withServer(new TestAuthService(), new TestAdminService(), async (baseUrl) => {
+    const form = new FormData();
+    form.append(
+      'avatar',
+      new Blob([Uint8Array.from([0x00, 0x01, 0x02])], { type: 'image/png' }),
+      'avatar.png',
+    );
+    const response = await fetch(`${baseUrl}/api/admin/users/${MANAGED_USER_ID}/avatar`, {
+      method: 'POST',
+      headers: AUTHORIZATION_HEADERS,
+      body: form,
+    });
+    assert.equal(response.status, 400);
+    assert.equal(((await response.json()) as { code: string }).code, 'invalid_avatar');
+  });
+});
+
 test('Professor e aluno recebem 403 em todo o painel administrativo', async () => {
   const nonAdminIdentity: AuthenticatedIdentity = {
     ...TEST_IDENTITY,
@@ -108,3 +200,5 @@ async function withServer(
     );
   }
 }
+
+const MANAGED_USER_ID = '70000000-0000-4000-8000-000000000001';
