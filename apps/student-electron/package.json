@@ -14,6 +14,7 @@
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "dev": "npm run build && electron .",
     "dist:win": "npx turbo run build --filter=@professor-connect/student-electron... && electron-builder --win nsis --x64",
+    "publish:win": "npx turbo run build --filter=@professor-connect/student-electron... && electron-builder --win nsis --x64 --publish always",
     "lint": "eslint main preload renderer shared tests --max-warnings=0",
     "start": "electron .",
     "test": "tsx --test tests/*.spec.ts",
@@ -23,6 +24,7 @@
     "@professor-connect/engine": "0.1.0",
     "@professor-connect/protocol": "0.1.0",
     "@professor-connect/shared": "^0.1.0",
+    "@professor-connect/update-manager": "0.1.0",
     "koffi": "3.1.2",
     "socket.io-client": "4.8.3"
   },
@@ -36,6 +38,8 @@
     "productName": "Professor Connect - Aluno",
     "copyright": "Copyright (c) 2026 Professor Connect",
     "asar": true,
+    "electronUpdaterCompatibility": ">=2.16",
+    "generateUpdatesFilesForAllChannels": true,
     "asarUnpack": [
       "node_modules/koffi/**/*",
       "node_modules/@koromix/koffi-win32-x64/**/*"
@@ -60,8 +64,15 @@
       ],
       "icon": "assets/logo.png",
       "executableName": "Professor Connect Aluno",
-      "legalTrademarks": "Professor Connect"
+      "legalTrademarks": "Professor Connect",
+      "verifyUpdateCodeSignature": true
     },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://professorconnect-professoread.lwf5hh.easypanel.host/updates/student"
+      }
+    ],
     "nsis": {
       "oneClick": false,
       "perMachine": false,

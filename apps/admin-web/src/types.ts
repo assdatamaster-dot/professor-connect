@@ -71,6 +71,22 @@ export interface DashboardMetrics {
   readonly generatedAt: string;
 }
 
+export interface UpdateMetricsItem {
+  readonly application: 'teacher' | 'student';
+  readonly channel: 'stable' | 'beta' | 'development';
+  readonly latestVersion: string | null;
+  readonly publishedAt: string | null;
+  readonly totalClients: number;
+  readonly updatedClients: number;
+  readonly outdatedClients: number;
+  readonly currentVersions: readonly { readonly version: string; readonly count: number }[];
+}
+
+export interface UpdateMetrics {
+  readonly items: readonly UpdateMetricsItem[];
+  readonly generatedAt: string;
+}
+
 export interface ManagedUser {
   readonly id: string;
   readonly profileId: string | null;

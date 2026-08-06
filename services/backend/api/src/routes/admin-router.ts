@@ -5,6 +5,9 @@ import type { AdminServiceContract } from '../admin/admin.types.js';
 import type { AuthServiceContract } from '../auth/auth.types.js';
 import { createAdminController } from '../controllers/admin-controller.js';
 import { authenticate, requireRole } from '../middlewares/auth-middleware.js';
+import { VersionService } from '../version/version.service.js';
+import type { VersionServiceContract } from '../version/version.types.js';
+import { z } from 'zod';
 
 const avatarUpload = multer({
   storage: multer.memoryStorage(),
@@ -17,11 +20,42 @@ const avatarUpload = multer({
 export function createAdminRouter(
   authService: AuthServiceContract,
   adminService: AdminServiceContract,
+  versionService: VersionServiceContract = new VersionService(),
 ): Router {
   const router = Router();
   const controller = createAdminController(adminService);
   router.use(authenticate(authService), requireRole('ADMIN'));
   router.get('/dashboard', controller.dashboard);
+  router.get('/updates', async (_request, response, next) => {
+    try {
+      response.json(await versionService.metrics());
+    } catch (error) {
+      next(error);
+    }
+  });
+  router.post('/updates/releases', async (request, response, next) => {
+    try {
+      const input = z
+        .object({
+          application: z.enum(['teacher', 'student']),
+          channel: z.enum(['stable', 'beta', 'development']),
+          version: z
+            .string()
+            .trim()
+            .regex(/^v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/),
+          releaseNotes: z.record(z.string(), z.unknown()),
+          url: z.url({ protocol: /^https$/ }),
+          sha512: z.string().min(80).max(200),
+          checksum: z.string().min(32).max(200),
+          signature: z.string().min(32).max(4_096).optional(),
+          publishedAt: z.iso.datetime().optional(),
+        })
+        .parse(request.body);
+      response.status(201).json(await versionService.publish(input));
+    } catch (error) {
+      next(error);
+    }
+  });
   router.get('/users', controller.listUsers);
   router.post('/users', controller.createUser);
   router.put('/users/:userId', controller.updateUser);

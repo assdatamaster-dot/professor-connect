@@ -36,6 +36,7 @@ export interface Environment {
   readonly bcryptRounds: number;
   readonly adminOnboardingKey: string | undefined;
   readonly trustProxy: boolean;
+  readonly updateArtifactsPath: string;
 }
 
 const DEVELOPMENT_ACCESS_SECRET = 'development-access-secret-change-before-production';
@@ -164,6 +165,9 @@ export const environment: Environment = Object.freeze({
   bcryptRounds: parsePositiveInteger(process.env.BCRYPT_ROUNDS, 12, 'BCRYPT_ROUNDS'),
   adminOnboardingKey: parseOptionalSecret(process.env.ADMIN_ONBOARDING_KEY, 'ADMIN_ONBOARDING_KEY'),
   trustProxy: parseBoolean(process.env.TRUST_PROXY, false),
+  updateArtifactsPath: resolve(
+    process.env.UPDATE_ARTIFACTS_PATH ?? resolve(configDirectory, '../../../../release-updates'),
+  ),
 });
 
 function parseOptionalSecret(value: string | undefined, name: string): string | undefined {

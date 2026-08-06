@@ -48,6 +48,9 @@ services:
       BCRYPT_ROUNDS: ${BCRYPT_ROUNDS:-12}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       TRUST_PROXY: ${TRUST_PROXY:-true}
+      UPDATE_ARTIFACTS_PATH: /app/release-updates
+    volumes:
+      - ${UPDATE_ARTIFACTS_HOST_PATH:-./release-updates}:/app/release-updates:ro
     expose:
       - '3000'
     depends_on:

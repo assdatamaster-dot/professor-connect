@@ -30,6 +30,7 @@ import { createAuthRouter } from './routes/auth-router.js';
 import { createUsersRouter } from './routes/users-router.js';
 import { createAdminRouter } from './routes/admin-router.js';
 import { createBootstrapRouter } from './routes/bootstrap-router.js';
+import { createVersionRouter } from './routes/version-router.js';
 
 const adminWebDirectory = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -101,6 +102,20 @@ export function createApp(
     }),
   );
   app.use(
+    '/updates',
+    express.static(environment.updateArtifactsPath, {
+      index: false,
+      immutable: false,
+      maxAge: '5m',
+      fallthrough: false,
+      setHeaders(response, filePath) {
+        if (filePath.endsWith('.yml'))
+          response.setHeader('Content-Type', 'text/yaml; charset=utf-8');
+        response.setHeader('X-Content-Type-Options', 'nosniff');
+      },
+    }),
+  );
+  app.use(
     cors((request, callback) => {
       const origin = request.header('Origin');
       const sameOrigin = origin !== undefined && isSameOriginRequest(request, origin);
@@ -124,6 +139,7 @@ export function createApp(
   );
   app.use('/health', healthRouter);
   app.use('/api/bootstrap', createBootstrapRouter(bootstrapService));
+  app.use('/api/version', createVersionRouter());
   const authRouter = createAuthRouter(authService);
   const usersRouter = createUsersRouter(authService);
   app.use(['/api/auth', '/auth'], authRouter);

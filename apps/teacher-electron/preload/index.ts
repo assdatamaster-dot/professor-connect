@@ -2,6 +2,11 @@ import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'ele
 import type { DesktopAuthApi } from '@professor-connect/shared' with {
   'resolution-mode': 'import',
 };
+import type {
+  UpdateRendererApi,
+  UpdateSettingsInput,
+  UpdateState,
+} from '@professor-connect/update-manager' with { 'resolution-mode': 'import' };
 
 import type {
   TeacherStateListener,
@@ -68,6 +73,22 @@ const authApi: DesktopAuthApi = {
   getIdentity: () => ipcRenderer.invoke('teacher:auth:get-identity'),
   getProfile: () => ipcRenderer.invoke('teacher:auth:get-profile'),
   updateProfile: (update) => ipcRenderer.invoke('teacher:auth:update-profile', update),
+};
+
+const updateApi: UpdateRendererApi = {
+  getState: () => ipcRenderer.invoke('update-manager:get-state') as Promise<UpdateState>,
+  check: () => ipcRenderer.invoke('update-manager:check') as Promise<UpdateState>,
+  download: () => ipcRenderer.invoke('update-manager:download') as Promise<UpdateState>,
+  getSettings: () => ipcRenderer.invoke('update-manager:get-settings'),
+  saveSettings: (input: UpdateSettingsInput) =>
+    ipcRenderer.invoke('update-manager:save-settings', input),
+  install: () => ipcRenderer.invoke('update-manager:install') as Promise<UpdateState>,
+  defer: () => ipcRenderer.invoke('update-manager:defer') as Promise<UpdateState>,
+  onStateChanged(listener): () => void {
+    const handler = (_event: IpcRendererEvent, state: UpdateState): void => listener(state);
+    ipcRenderer.on('update-manager:state-changed', handler);
+    return () => ipcRenderer.removeListener('update-manager:state-changed', handler);
+  },
 };
 
 const presenceChannels = {
@@ -260,3 +281,4 @@ contextBridge.exposeInMainWorld('professorConnectPresence', presenceApi);
 contextBridge.exposeInMainWorld('professorConnectWebRtc', webRtcApi);
 contextBridge.exposeInMainWorld('professorConnectFileTransfer', fileTransferApi);
 contextBridge.exposeInMainWorld('professorConnectAuth', authApi);
+contextBridge.exposeInMainWorld('professorConnectUpdate', updateApi);

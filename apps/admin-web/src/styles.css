@@ -594,6 +594,18 @@ h3 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 15px;
 }
+
+.update-metric-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.update-inventory {
+  margin-top: 22px;
+}
+
+.update-inventory > .overview-card__header {
+  padding: 22px 24px 8px;
+}
 .metric-card {
   min-height: 126px;
   padding: 22px;

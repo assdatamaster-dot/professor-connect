@@ -86,6 +86,17 @@ enum AuditSeverity {
   ERROR
 }
 
+enum UpdateApplication {
+  TEACHER
+  STUDENT
+}
+
+enum UpdateChannel {
+  STABLE
+  BETA
+  DEVELOPMENT
+}
+
 model Organization {
   id           String          @id @default(uuid()) @db.Uuid
   name         String
@@ -473,4 +484,61 @@ model ApplicationLog {
   @@index([level, occurredAt])
   @@index([event, occurredAt])
   @@map("application_logs")
+}
+
+model UpdateRelease {
+  id            String            @id @default(uuid()) @db.Uuid
+  application   UpdateApplication
+  version       String
+  channel       UpdateChannel
+  releaseNotes  Json              @default("{}") @map("release_notes")
+  downloadUrl   String            @map("download_url")
+  sha512        String
+  checksum      String
+  signature     String?
+  published     Boolean           @default(true)
+  publishedAt   DateTime          @default(now()) @map("published_at") @db.Timestamptz(3)
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([application, channel, version])
+  @@index([application, channel, published, publishedAt])
+  @@map("update_releases")
+}
+
+model UpdateInstallation {
+  id             String            @id @default(uuid()) @db.Uuid
+  clientId       String            @map("client_id") @db.Uuid
+  application    UpdateApplication
+  channel        UpdateChannel
+  currentVersion String            @map("current_version")
+  previousVersion String?          @map("previous_version")
+  userId         String?           @map("user_id") @db.Uuid
+  lastSeenAt     DateTime          @default(now()) @map("last_seen_at") @db.Timestamptz(3)
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([clientId, application])
+  @@index([application, channel, currentVersion])
+  @@index([lastSeenAt])
+  @@map("update_installations")
+}
+
+model UpdateAuditEvent {
+  id                   BigInt            @id @default(autoincrement())
+  clientId             String            @map("client_id") @db.Uuid
+  application          UpdateApplication
+  channel              UpdateChannel
+  event                String
+  previousVersion      String?           @map("previous_version")
+  newVersion           String?           @map("new_version")
+  durationMilliseconds Int?              @map("duration_milliseconds")
+  error                String?
+  userId               String?           @map("user_id") @db.Uuid
+  metadata             Json?
+  occurredAt           DateTime          @default(now()) @map("occurred_at") @db.Timestamptz(3)
+
+  @@index([clientId, occurredAt])
+  @@index([application, channel, event, occurredAt])
+  @@map("update_audit_events")
 }

@@ -9,6 +9,7 @@ import type {
   PaginatedUsers,
   UserFilters,
   UserStatus,
+  UpdateMetrics,
 } from './types';
 
 const REFRESH_TOKEN_KEY = 'professor-connect.admin.refresh-token';
@@ -108,6 +109,10 @@ export class AdminApi {
 
   public dashboard(signal?: AbortSignal): Promise<DashboardMetrics> {
     return this.request('/api/admin/dashboard', signal === undefined ? {} : { signal });
+  }
+
+  public updateMetrics(signal?: AbortSignal): Promise<UpdateMetrics> {
+    return this.request('/api/admin/updates', signal === undefined ? {} : { signal });
   }
 
   public listUsers(

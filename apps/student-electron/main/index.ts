@@ -19,6 +19,11 @@ import {
   ElectronSecureTokenStore,
   registerDesktopAuthIpc,
 } from '@professor-connect/shared/electron';
+import {
+  getElectronAutoUpdater,
+  UpdateManager,
+  UpdateUIController,
+} from '@professor-connect/update-manager';
 
 import { AllScreensCaptureCoordinator } from './all-screens-capture.coordinator.js';
 import { registerFileTransferIpc, type FileTransferIpcRegistration } from './file-transfer-ipc.js';
@@ -47,6 +52,8 @@ let screenCaptureTargetRegistry: ScreenCaptureTargetRegistry | undefined;
 let allScreensCaptureCoordinator: AllScreensCaptureCoordinator | undefined;
 let unsubscribeCaptureSession: (() => void) | undefined;
 let authIpcRegistration: { dispose(): void } | undefined;
+let updateManager: UpdateManager | undefined;
+let updateUIController: UpdateUIController | undefined;
 
 async function createMainWindow(): Promise<void> {
   const preloadPath = path.join(currentDirectory, '..', 'preload', 'index.js');
@@ -122,7 +129,23 @@ async function createMainWindow(): Promise<void> {
       },
     },
   );
+  updateManager = new UpdateManager({
+    updater: getElectronAutoUpdater(),
+    application: 'student',
+    currentVersion: app.getVersion(),
+    userDataPath: app.getPath('userData'),
+    serverUrl,
+    isPackaged: app.isPackaged,
+    quitApplication: () => app.quit(),
+    webContents: () => mainWindow?.webContents,
+  });
+  updateManager.setAttendanceActive(
+    presenceController.getSessionSnapshot().activeSessionId !== undefined,
+  );
+  updateUIController = new UpdateUIController(updateManager, () => mainWindow?.webContents);
+  updateUIController.register();
   unsubscribeCaptureSession = presenceController.onSessionStateChanged((snapshot) => {
+    updateManager?.setAttendanceActive(snapshot.activeSessionId !== undefined);
     if (snapshot.activeSessionId === undefined) {
       captureCoordinator.clear();
     }
@@ -139,18 +162,32 @@ async function createMainWindow(): Promise<void> {
     presenceController?.dispose();
     sessionIpcRegistration?.dispose();
     authIpcRegistration?.dispose();
+    updateUIController?.dispose();
+    updateManager?.dispose();
     workflowController?.dispose();
     fileTransferIpcRegistration = undefined;
     ipcRegistration = undefined;
     presenceController = undefined;
     sessionIpcRegistration = undefined;
     authIpcRegistration = undefined;
+    updateUIController = undefined;
+    updateManager = undefined;
     workflowController = undefined;
     unsubscribeCaptureSession = undefined;
     mainWindow = undefined;
   });
 
   await mainWindow.loadFile(rendererPath);
+  await updateManager.start();
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    if (
+      details.reason === 'crashed' ||
+      details.reason === 'oom' ||
+      details.reason === 'integrity-failure'
+    ) {
+      void updateManager?.reportFatalStartupFailure();
+    }
+  });
   const savedIdentity = await authClient.getIdentity();
   if (savedIdentity?.roles.includes('STUDENT') === true) {
     void presenceController.connect().catch((error: unknown) => {

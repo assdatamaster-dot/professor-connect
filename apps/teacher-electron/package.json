@@ -14,6 +14,7 @@
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "dev": "npm run build && electron .",
     "dist:win": "npx turbo run build --filter=@professor-connect/teacher-electron... && electron-builder --win nsis --x64",
+    "publish:win": "npx turbo run build --filter=@professor-connect/teacher-electron... && electron-builder --win nsis --x64 --publish always",
     "lint": "eslint main preload renderer shared tests --max-warnings=0",
     "start": "electron .",
     "test": "tsx --test tests/*.spec.ts",
@@ -23,6 +24,7 @@
     "@professor-connect/engine": "0.1.0",
     "@professor-connect/protocol": "0.1.0",
     "@professor-connect/shared": "^0.1.0",
+    "@professor-connect/update-manager": "0.1.0",
     "socket.io-client": "4.8.3"
   },
   "devDependencies": {
@@ -35,6 +37,8 @@
     "productName": "Professor Connect - Professor",
     "copyright": "Copyright (c) 2026 Professor Connect",
     "asar": true,
+    "electronUpdaterCompatibility": ">=2.16",
+    "generateUpdatesFilesForAllChannels": true,
     "npmRebuild": false,
     "directories": {
       "buildResources": "assets",
@@ -55,8 +59,15 @@
       ],
       "icon": "assets/logo.png",
       "executableName": "Professor Connect Professor",
-      "legalTrademarks": "Professor Connect"
+      "legalTrademarks": "Professor Connect",
+      "verifyUpdateCodeSignature": true
     },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://professorconnect-professoread.lwf5hh.easypanel.host/updates/teacher"
+      }
+    ],
     "nsis": {
       "oneClick": false,
       "perMachine": false,

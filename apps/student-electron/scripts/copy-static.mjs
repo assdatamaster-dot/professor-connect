@@ -27,3 +27,10 @@ await cp(
   new URL('../dist/renderer/media-devices/', import.meta.url),
   { recursive: true },
 );
+await cp(
+  new URL(
+    '../../../packages/update-manager/dist/renderer/update-ui-controller.js',
+    import.meta.url,
+  ),
+  new URL('../dist/renderer/update-ui-controller.js', import.meta.url),
+);

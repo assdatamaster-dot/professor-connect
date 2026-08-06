@@ -8,8 +8,9 @@ import { GraduationIcon, GridIcon, LogoutIcon, MoonIcon, SunIcon, UsersIcon } fr
 import { Login } from './login';
 import type { Identity, ManagedRole } from './types';
 import { UsersPage } from './users-page';
+import { UpdatesPage } from './updates-page';
 
-type View = 'dashboard' | 'teachers' | 'students';
+type View = 'dashboard' | 'teachers' | 'students' | 'updates';
 interface LoginHandoff {
   readonly email: string;
   readonly organizationSlug: string;
@@ -158,6 +159,13 @@ export function App(): React.JSX.Element {
             label="Dashboard"
             onClick={() => navigate('dashboard')}
           />
+          <span className="nav-label">Sistema</span>
+          <NavButton
+            active={view === 'updates'}
+            icon={<GridIcon />}
+            label="Atualizações"
+            onClick={() => navigate('updates')}
+          />
           <span className="nav-label">Pessoas</span>
           <NavButton
             active={view === 'teachers'}
@@ -186,7 +194,9 @@ export function App(): React.JSX.Element {
                 ? 'Visão geral'
                 : view === 'teachers'
                   ? 'Professores'
-                  : 'Alunos'}
+                  : view === 'students'
+                    ? 'Alunos'
+                    : 'Atualizações'}
             </strong>
           </div>
           <div className="topbar__actions">
@@ -224,6 +234,8 @@ export function App(): React.JSX.Element {
         <main className="content">
           {view === 'dashboard' ? (
             <Dashboard api={api} />
+          ) : view === 'updates' ? (
+            <UpdatesPage api={api} />
           ) : (
             <UsersPage api={api} notify={notify} role={roleForView(view)} />
           )}
@@ -265,9 +277,9 @@ function NavButton({
 
 function viewFromHash(): View {
   const value = window.location.hash.slice(1);
-  return value === 'teachers' || value === 'students' ? value : 'dashboard';
+  return value === 'teachers' || value === 'students' || value === 'updates' ? value : 'dashboard';
 }
 
-function roleForView(view: Exclude<View, 'dashboard'>): ManagedRole {
+function roleForView(view: 'teachers' | 'students'): ManagedRole {
   return view === 'teachers' ? 'TEACHER' : 'STUDENT';
 }

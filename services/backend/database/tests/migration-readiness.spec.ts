@@ -19,6 +19,7 @@ const MIGRATIONS = [
   '20260805220000_cleanup_bootstrap_artifacts',
   '20260806090000_beta_12a_file_transfer_manager',
   '20260806150000_beta_12b_session_recovery',
+  '20260806180000_beta_12c_intelligent_auto_update',
 ] as const;
 const TABLES = [
   'organizations',
@@ -45,6 +46,9 @@ const TABLES = [
   'domain_events',
   'audit_logs',
   'application_logs',
+  'update_releases',
+  'update_installations',
+  'update_audit_events',
 ] as const;
 const IDENTITY = [{ databaseName: 'professorconnect', schemaName: 'public' }] as const;
 
@@ -100,7 +104,10 @@ test('rejects startup when a bundled migration is pending', async () => {
     })),
   ]);
 
-  await assert.rejects(assertMigrationsApplied(prisma), /20260806150000_beta_12b_session_recovery/);
+  await assert.rejects(
+    assertMigrationsApplied(prisma),
+    /20260806180000_beta_12c_intelligent_auto_update/,
+  );
 });
 
 test('rejects startup when migrations are recorded but a domain table is absent', async () => {
@@ -227,6 +234,22 @@ test('migration Beta-12B preserva sessões e armazena apenas hashes de recupera�
   assert.match(sql, /"student_recovery_token_hash"/);
   assert.match(sql, /"reconnecting_milliseconds"/);
   assert.doesNotMatch(sql, /"recovery_token"\s+TEXT/);
+});
+
+test('migration Beta-12C persiste releases, instalações e auditoria de atualização', async () => {
+  const sql = await readFile(
+    new URL(
+      '../prisma/migrations/20260806180000_beta_12c_intelligent_auto_update/migration.sql',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+
+  assert.match(sql, /CREATE TABLE "update_releases"/);
+  assert.match(sql, /CREATE TABLE "update_installations"/);
+  assert.match(sql, /CREATE TABLE "update_audit_events"/);
+  assert.match(sql, /"sha512" TEXT NOT NULL/);
+  assert.match(sql, /client_id_application_key/);
 });
 
 test('seed sincroniza somente referências e preserva o estado de primeiro acesso', async () => {
