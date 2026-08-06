@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
+import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron';
 import type { DesktopAuthApi } from '@professor-connect/shared' with {
   'resolution-mode': 'import',
 };
@@ -26,6 +26,7 @@ import type {
   FileTransferAuditPayload,
   FileTransferChunkPayload,
   FileTransferMetadata,
+  FileTransferSettings,
   FileTransferVerification,
   PreparedIncomingFile,
 } from '../shared/file-transfer-contracts.js' with { 'resolution-mode': 'import' };
@@ -145,6 +146,7 @@ const webRtcApi: StudentWebRtcApi = {
 
 const fileTransferChannels = {
   selectFiles: 'student:file-transfer:select-files',
+  registerFiles: 'student:file-transfer:register-files',
   readChunk: 'student:file-transfer:read-chunk',
   verifySource: 'student:file-transfer:verify-source',
   releaseSource: 'student:file-transfer:release-source',
@@ -153,6 +155,12 @@ const fileTransferChannels = {
   completeReceive: 'student:file-transfer:complete-receive',
   cancelReceive: 'student:file-transfer:cancel-receive',
   appendAudit: 'student:file-transfer:append-audit',
+  listHistory: 'student:file-transfer:list-history',
+  getSettings: 'student:file-transfer:get-settings',
+  updateSettings: 'student:file-transfer:update-settings',
+  chooseDestination: 'student:file-transfer:choose-destination',
+  openFile: 'student:file-transfer:open-file',
+  openDirectory: 'student:file-transfer:open-directory',
 } as const;
 
 const fileTransferApi: FileTransferApi = {
@@ -160,6 +168,11 @@ const fileTransferApi: FileTransferApi = {
     ipcRenderer.invoke(fileTransferChannels.selectFiles) as Promise<
       readonly FileTransferMetadata[]
     >,
+  selectDroppedFiles: (files) =>
+    ipcRenderer.invoke(
+      fileTransferChannels.registerFiles,
+      files.map((file) => webUtils.getPathForFile(file)),
+    ) as Promise<readonly FileTransferMetadata[]>,
   readChunk: (transferId, index) =>
     ipcRenderer.invoke(
       fileTransferChannels.readChunk,
@@ -186,6 +199,24 @@ const fileTransferApi: FileTransferApi = {
     ipcRenderer.invoke(fileTransferChannels.cancelReceive, transferId) as Promise<void>,
   appendAudit: (payload: FileTransferAuditPayload) =>
     ipcRenderer.invoke(fileTransferChannels.appendAudit, payload) as Promise<void>,
+  listHistory: () =>
+    ipcRenderer.invoke(fileTransferChannels.listHistory) as Promise<
+      readonly FileTransferAuditPayload[]
+    >,
+  getSettings: () =>
+    ipcRenderer.invoke(fileTransferChannels.getSettings) as Promise<FileTransferSettings>,
+  updateSettings: (update) =>
+    ipcRenderer.invoke(
+      fileTransferChannels.updateSettings,
+      update,
+    ) as Promise<FileTransferSettings>,
+  chooseDestinationDirectory: () =>
+    ipcRenderer.invoke(fileTransferChannels.chooseDestination) as Promise<
+      FileTransferSettings | undefined
+    >,
+  openFile: (filePath) =>
+    ipcRenderer.invoke(fileTransferChannels.openFile, filePath) as Promise<void>,
+  openDirectory: () => ipcRenderer.invoke(fileTransferChannels.openDirectory) as Promise<void>,
 };
 
 contextBridge.exposeInMainWorld('professorConnect', workflowApi);

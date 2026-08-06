@@ -61,6 +61,12 @@ const remoteControlTeacher = requireElement<HTMLElement>('remote-control-teacher
 const fileTransferButton = requireElement<HTMLButtonElement>('file-transfer-button');
 const fileTransferPanel = requireElement<HTMLElement>('file-transfer-panel');
 const fileTransferList = requireElement<HTMLUListElement>('file-transfer-list');
+const fileTransferDropZone = requireElement<HTMLElement>('file-transfer-drop-zone');
+const fileTransferDestination = requireElement<HTMLElement>('file-transfer-destination');
+const fileTransferAutoReceive = requireElement<HTMLInputElement>('file-transfer-auto-receive');
+const fileTransferChangeDestination = requireElement<HTMLButtonElement>(
+  'file-transfer-change-destination',
+);
 const connectionQuality = requireElement<HTMLElement>('student-connection-quality');
 const sessionDuration = requireElement<HTMLTimeElement>('student-session-duration');
 const dockMicrophoneButton = requireElement<HTMLButtonElement>('student-dock-microphone');
@@ -97,6 +103,11 @@ const studentProfileDialog = requireElement<HTMLDialogElement>('student-profile-
 const studentProfileForm = requireElement<HTMLFormElement>('student-profile-form');
 const studentProfileName = requireElement<HTMLInputElement>('student-profile-name');
 const studentProfileAvatar = requireElement<HTMLInputElement>('student-profile-avatar');
+const profileFileAutoReceive = requireElement<HTMLInputElement>('profile-file-auto-receive');
+const profileFileDestination = requireElement<HTMLElement>('profile-file-destination');
+const profileFileChangeDestination = requireElement<HTMLButtonElement>(
+  'profile-file-change-destination',
+);
 const studentCurrentPassword = requireElement<HTMLInputElement>('student-current-password');
 const studentNewPassword = requireElement<HTMLInputElement>('student-new-password');
 const studentConfirmPassword = requireElement<HTMLInputElement>('student-confirm-password');
@@ -137,11 +148,16 @@ const fileTransferClient = new FileTransferClient({
     button: fileTransferButton,
     panel: fileTransferPanel,
     list: fileTransferList,
+    dropZone: fileTransferDropZone,
+    destination: fileTransferDestination,
+    autoReceive: fileTransferAutoReceive,
+    changeDestination: fileTransferChangeDestination,
   },
   getLocalName: () => 'Aluno',
   notify: (message) => {
     statusMessage.textContent = message;
   },
+  onIncoming: () => setFileDrawerOpen(true),
 });
 
 function render(snapshot: DesktopWorkflowSnapshot): void {
@@ -766,6 +782,7 @@ studentProfile.addEventListener('click', () => {
     .then((profile) => {
       studentProfileName.value = profile.name;
       studentProfileAvatar.value = profile.avatar ?? '';
+      void window.professorConnectFileTransfer.getSettings().then(renderProfileFileSettings);
       studentCurrentPassword.value = '';
       studentNewPassword.value = '';
       studentConfirmPassword.value = '';
@@ -781,6 +798,16 @@ studentProfile.addEventListener('click', () => {
 });
 
 studentProfileCancel.addEventListener('click', () => studentProfileDialog.close());
+profileFileAutoReceive.addEventListener('change', () => {
+  void window.professorConnectFileTransfer
+    .updateSettings({ autoReceive: profileFileAutoReceive.checked })
+    .then(renderProfileFileSettings);
+});
+profileFileChangeDestination.addEventListener('click', () => {
+  void window.professorConnectFileTransfer
+    .chooseDestinationDirectory()
+    .then((settings) => settings === undefined || renderProfileFileSettings(settings));
+});
 studentHistory.addEventListener('click', () => {
   studentHistory.disabled = true;
   studentHistoryList.replaceChildren(createHistoryMessage('Carregando histórico…'));
@@ -1443,4 +1470,13 @@ function setFileDrawerOpen(isOpen: boolean): void {
   fileTransferPanel.classList.toggle('is-open', nextOpen);
   fileTransferPanel.setAttribute('aria-hidden', String(!nextOpen));
   dockFilesButton.setAttribute('aria-expanded', String(nextOpen));
+}
+
+function renderProfileFileSettings(settings: {
+  readonly autoReceive: boolean;
+  readonly destinationDirectory: string;
+}): void {
+  profileFileAutoReceive.checked = settings.autoReceive;
+  profileFileDestination.textContent = settings.destinationDirectory;
+  profileFileDestination.title = settings.destinationDirectory;
 }

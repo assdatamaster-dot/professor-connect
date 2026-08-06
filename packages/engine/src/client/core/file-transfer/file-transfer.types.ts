@@ -1,4 +1,5 @@
 export const FILE_TRANSFER_CHUNK_SIZE = 64 * 1024;
+export const FILE_TRANSFER_MAX_SIZE = 5 * 1024 * 1024 * 1024;
 
 export type FileTransferDuplicateDecision = 'replace' | 'rename' | 'cancel';
 export type FileTransferDirection = 'sent' | 'received';
@@ -55,7 +56,13 @@ export interface FileTransferAuditEntry {
   readonly averageBytesPerSecond: number;
   readonly sha256: string;
   readonly result: FileTransferResult;
+  readonly destinationPath?: string;
   readonly error?: string;
+}
+
+export interface FileTransferSettings {
+  readonly autoReceive: boolean;
+  readonly destinationDirectory: string;
 }
 
 export interface DuplicateFileContext {
@@ -64,7 +71,9 @@ export interface DuplicateFileContext {
 }
 
 export interface FileTransferStorageOptions {
-  readonly documentsPath: string;
+  /** @deprecated Use downloadsPath. Kept for compatibility with existing integrations. */
+  readonly documentsPath?: string;
+  readonly downloadsPath?: string;
   readonly userDataPath: string;
   readonly selectFiles: () => Promise<readonly string[]>;
   readonly resolveDuplicate: (

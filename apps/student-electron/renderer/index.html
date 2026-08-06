@@ -304,25 +304,59 @@
                   </svg>
                 </span>
                 <div>
-                  <span class="support-label">Arquivos</span>
-                  <h3 id="file-transfer-title">Transferência de arquivos</h3>
+                  <span class="support-label">Sessão segura</span>
+                  <h3 id="file-transfer-title">Transferência de Arquivos</h3>
                 </div>
+              </div>
+              <div class="file-transfer-tabs" role="tablist" aria-label="Transferências">
+                <button type="button" role="tab" data-transfer-tab="sent" aria-selected="true">
+                  ↑ Enviados
+                </button>
+                <button type="button" role="tab" data-transfer-tab="received" aria-selected="false">
+                  ↓ Recebidos
+                </button>
+                <button type="button" role="tab" data-transfer-tab="history" aria-selected="false">
+                  Histórico
+                </button>
+              </div>
+              <div id="file-transfer-drop-zone" class="file-transfer-drop-zone">
+                <span class="file-transfer-drop-zone__icon" aria-hidden="true">⇧</span>
+                <strong>Arraste arquivos para enviar</strong>
+                <small>PDF, Office, ZIP, imagens, áudio, vídeo e outros arquivos até 5 GB</small>
                 <button
                   id="file-transfer-button"
-                  class="button button--secondary button--compact"
+                  class="button button--primary button--compact"
                   type="button"
                   disabled
                 >
-                  Selecionar arquivos
+                  Selecionar Arquivos
                 </button>
               </div>
-              <p class="file-transfer-note">
-                O destinatário precisa aceitar. Arquivos recebidos nunca são abertos
-                automaticamente.
-              </p>
               <ul id="file-transfer-list" class="file-transfer-list" aria-live="polite">
-                <li class="file-transfer-empty">Nenhuma transferência nesta sessão.</li>
+                <li class="file-transfer-empty">Nenhum arquivo enviado nesta sessão.</li>
               </ul>
+              <section class="file-transfer-settings" aria-label="Configurações de recebimento">
+                <div class="file-transfer-setting-row">
+                  <span>
+                    <strong>Receber arquivos automaticamente</strong>
+                    <small>Inicia o download sem solicitar confirmação.</small>
+                  </span>
+                  <label class="file-transfer-switch">
+                    <input id="file-transfer-auto-receive" type="checkbox" checked />
+                    <span aria-hidden="true"></span>
+                    <em>Sim</em>
+                  </label>
+                </div>
+                <div class="file-transfer-destination-row">
+                  <span>
+                    <small>Salvar em</small>
+                    <strong id="file-transfer-destination"
+                      >Downloads/Professor Connect/Recebidos</strong
+                    >
+                  </span>
+                  <button id="file-transfer-change-destination" type="button">Alterar pasta</button>
+                </div>
+              </section>
             </section>
           </section>
 
@@ -605,6 +639,27 @@
         />
         <label for="student-profile-avatar">URL da foto <small>(opcional, HTTPS)</small></label>
         <input id="student-profile-avatar" type="url" placeholder="https://..." />
+        <section class="profile-file-settings" aria-labelledby="profile-file-settings-title">
+          <strong id="profile-file-settings-title">Transferência de arquivos</strong>
+          <label class="profile-file-auto">
+            <input id="profile-file-auto-receive" type="checkbox" checked />
+            Receber arquivos automaticamente
+          </label>
+          <small>Desative para perguntar antes de cada recebimento.</small>
+          <div>
+            <span>
+              <small>Pasta padrão</small>
+              <strong id="profile-file-destination">Downloads/Professor Connect/Recebidos</strong>
+            </span>
+            <button
+              id="profile-file-change-destination"
+              class="button button--secondary"
+              type="button"
+            >
+              Alterar pasta
+            </button>
+          </div>
+        </section>
         <div class="password-section">
           <strong>Alterar senha <small>(opcional)</small></strong>
           <input

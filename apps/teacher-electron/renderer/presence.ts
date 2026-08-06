@@ -96,6 +96,12 @@ const remoteControlLog = requireElement<HTMLUListElement>('remote-control-log');
 const fileTransferButton = requireElement<HTMLButtonElement>('file-transfer-button');
 const fileTransferPanel = requireElement<HTMLElement>('file-transfer-panel');
 const fileTransferList = requireElement<HTMLUListElement>('file-transfer-list');
+const fileTransferDropZone = requireElement<HTMLElement>('file-transfer-drop-zone');
+const fileTransferDestination = requireElement<HTMLElement>('file-transfer-destination');
+const fileTransferAutoReceive = requireElement<HTMLInputElement>('file-transfer-auto-receive');
+const fileTransferChangeDestination = requireElement<HTMLButtonElement>(
+  'file-transfer-change-destination',
+);
 const connectionQuality = requireElement<HTMLElement>('teacher-connection-quality');
 const sessionDuration = requireElement<HTMLTimeElement>('teacher-session-duration');
 const dockMicrophoneButton = requireElement<HTMLButtonElement>('teacher-dock-microphone');
@@ -142,11 +148,16 @@ const fileTransferClient = new FileTransferClient({
     button: fileTransferButton,
     panel: fileTransferPanel,
     list: fileTransferList,
+    dropZone: fileTransferDropZone,
+    destination: fileTransferDestination,
+    autoReceive: fileTransferAutoReceive,
+    changeDestination: fileTransferChangeDestination,
   },
   getLocalName: () => professorDisplayName.textContent ?? 'Professor',
   notify: (message) => {
     attendanceState.textContent = message;
   },
+  onIncoming: () => setFileDrawerOpen(true),
 });
 
 function render(snapshot: ProfessorPresenceSnapshot): void {

@@ -1,4 +1,13 @@
-import { ipcMain, type IpcMainInvokeEvent, type WebContents } from 'electron';
+import {
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  shell,
+  type IpcMainInvokeEvent,
+  type OpenDialogOptions,
+  type WebContents,
+} from 'electron';
+import path from 'node:path';
 
 import type {
   FileTransferAuditEntry,
@@ -31,6 +40,10 @@ export function registerFileTransferIpc(
   ipcMain.handle(FILE_TRANSFER_IPC_CHANNELS.SELECT_FILES, (event) => {
     assertSender(event);
     return withFileTransferError(() => storage.selectFiles());
+  });
+  ipcMain.handle(FILE_TRANSFER_IPC_CHANNELS.REGISTER_FILES, (event, paths: unknown) => {
+    assertSender(event);
+    return withFileTransferError(() => storage.registerFiles(requireFilePaths(paths)));
   });
   ipcMain.handle(
     FILE_TRANSFER_IPC_CHANNELS.READ_CHUNK,
@@ -72,6 +85,53 @@ export function registerFileTransferIpc(
       await storage.appendAudit(entry);
       await options.onAudit?.(entry);
     });
+  });
+  ipcMain.handle(FILE_TRANSFER_IPC_CHANNELS.LIST_HISTORY, (event) => {
+    assertSender(event);
+    return withFileTransferError(() => storage.listHistory());
+  });
+  ipcMain.handle(FILE_TRANSFER_IPC_CHANNELS.GET_SETTINGS, (event) => {
+    assertSender(event);
+    return withFileTransferError(() => storage.getSettings());
+  });
+  ipcMain.handle(FILE_TRANSFER_IPC_CHANNELS.UPDATE_SETTINGS, (event, payload: unknown) => {
+    assertSender(event);
+    const record = requireRecord(payload);
+    if (typeof record.autoReceive !== 'boolean') {
+      throw new Error('Configuração de recebimento inválida');
+    }
+    return withFileTransferError(() =>
+      storage.updateSettings({ autoReceive: record.autoReceive as boolean }),
+    );
+  });
+  ipcMain.handle(FILE_TRANSFER_IPC_CHANNELS.CHOOSE_DESTINATION, async (event) => {
+    assertSender(event);
+    const owner = BrowserWindow.fromWebContents(renderer);
+    const dialogOptions: OpenDialogOptions = {
+      title: 'Escolher pasta para arquivos recebidos',
+      buttonLabel: 'Usar esta pasta',
+      defaultPath: storage.getReceiveDirectory(),
+      properties: ['openDirectory', 'createDirectory'],
+    };
+    const result =
+      owner === null
+        ? await dialog.showOpenDialog(dialogOptions)
+        : await dialog.showOpenDialog(owner, dialogOptions);
+    const destinationDirectory = result.filePaths[0];
+    return result.canceled || destinationDirectory === undefined
+      ? undefined
+      : storage.updateSettings({ destinationDirectory });
+  });
+  ipcMain.handle(FILE_TRANSFER_IPC_CHANNELS.OPEN_FILE, async (event, filePath: unknown) => {
+    assertSender(event);
+    const safePath = await requireRecordedPath(filePath, storage);
+    const error = await shell.openPath(safePath);
+    if (error.length > 0) throw new Error(error);
+  });
+  ipcMain.handle(FILE_TRANSFER_IPC_CHANNELS.OPEN_DIRECTORY, async (event) => {
+    assertSender(event);
+    const error = await shell.openPath(storage.getReceiveDirectory());
+    if (error.length > 0) throw new Error(error);
   });
 
   return {
@@ -150,8 +210,43 @@ function requireAudit(value: unknown): FileTransferAuditEntry {
     averageBytesPerSecond: record.averageBytesPerSecond,
     sha256: record.sha256,
     result: record.result,
+    ...(typeof record.destinationPath === 'string'
+      ? { destinationPath: record.destinationPath }
+      : {}),
     ...(typeof record.error === 'string' ? { error: record.error } : {}),
   };
+}
+
+function requireFilePaths(value: unknown): readonly string[] {
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.length > 100 ||
+    !value.every((item) => typeof item === 'string' && path.isAbsolute(item))
+  ) {
+    throw new Error('Arquivos arrastados inválidos');
+  }
+  return value as string[];
+}
+
+async function requireRecordedPath(value: unknown, storage: FileTransferStorage): Promise<string> {
+  if (typeof value !== 'string' || !path.isAbsolute(value)) {
+    throw new Error('Caminho de arquivo inválido');
+  }
+  const resolved = path.resolve(value);
+  const history = await storage.listHistory(500);
+  if (
+    !history.some(
+      (entry) =>
+        entry.direction === 'received' &&
+        entry.result === 'completed' &&
+        entry.destinationPath !== undefined &&
+        path.resolve(entry.destinationPath) === resolved,
+    )
+  ) {
+    throw new Error('O arquivo não consta no histórico de recebimentos');
+  }
+  return resolved;
 }
 
 function requireTransferId(value: unknown): string {

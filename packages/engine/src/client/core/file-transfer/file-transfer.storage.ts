@@ -17,6 +17,8 @@ import {
   type FileTransferAuditEntry,
   type FileTransferChunk,
   type FileTransferSelection,
+  FILE_TRANSFER_MAX_SIZE,
+  type FileTransferSettings,
   type FileTransferStorageOptions,
   type FileTransferVerification,
   type IncomingFileTransfer,
@@ -50,18 +52,29 @@ const SHA_256_PATTERN = /^[a-f0-9]{64}$/u;
 const TRANSFER_ID_PATTERN = /^[a-zA-Z0-9-]{8,128}$/u;
 
 export class FileTransferStorage {
-  private readonly receiveDirectory: string;
+  private receiveDirectory: string;
   private readonly auditLogPath: string;
+  private readonly settingsPath: string;
   private readonly sources = new Map<string, RegisteredSource>();
   private readonly receives = new Map<string, ReceiveRecord>();
 
   public constructor(private readonly options: FileTransferStorageOptions) {
-    this.receiveDirectory = path.join(options.documentsPath, 'Professor Connect');
+    const baseDirectory = options.downloadsPath ?? options.documentsPath;
+    if (baseDirectory === undefined) {
+      throw new Error('A pasta de Downloads precisa ser configurada');
+    }
+    this.receiveDirectory = path.join(baseDirectory, 'Professor Connect', 'Recebidos');
     this.auditLogPath = path.join(options.userDataPath, 'file-transfers.jsonl');
+    this.settingsPath = path.join(options.userDataPath, 'file-transfer-settings.json');
   }
 
   public async selectFiles(): Promise<readonly FileTransferSelection[]> {
-    const selectedPaths = await this.options.selectFiles();
+    return this.registerFiles(await this.options.selectFiles());
+  }
+
+  public async registerFiles(
+    selectedPaths: readonly string[],
+  ): Promise<readonly FileTransferSelection[]> {
     const selections: FileTransferSelection[] = [];
 
     for (const sourcePath of selectedPaths) {
@@ -71,6 +84,9 @@ export class FileTransferStorage {
       }
       if (!Number.isSafeInteger(sourceStat.size) || sourceStat.size < 0) {
         throw new Error(`O arquivo excede o tamanho suportado: ${path.basename(sourcePath)}`);
+      }
+      if (sourceStat.size > FILE_TRANSFER_MAX_SIZE) {
+        throw new Error(`O arquivo excede o limite de 5 GB: ${path.basename(sourcePath)}`);
       }
 
       const transferId = this.createTransferId();
@@ -129,6 +145,7 @@ export class FileTransferStorage {
 
   public async prepareReceive(metadata: IncomingFileTransfer): Promise<PreparedIncomingFile> {
     validateIncomingMetadata(metadata);
+    await this.loadSettings();
     await mkdir(this.receiveDirectory, { recursive: true });
     await this.assertFreeSpace(metadata.size);
 
@@ -269,8 +286,83 @@ export class FileTransferStorage {
     await appendFile(this.auditLogPath, `${JSON.stringify(entry)}\n`, 'utf8');
   }
 
+  public async listHistory(limit = 200): Promise<readonly FileTransferAuditEntry[]> {
+    const safeLimit = Math.max(1, Math.min(500, Math.trunc(limit)));
+    try {
+      const entries = (await readFile(this.auditLogPath, 'utf8'))
+        .split(/\r?\n/u)
+        .filter((line) => line.trim().length > 0)
+        .flatMap((line) => {
+          try {
+            return [JSON.parse(line) as FileTransferAuditEntry];
+          } catch {
+            return [];
+          }
+        });
+      return entries.slice(-safeLimit).reverse();
+    } catch (error) {
+      if (isNodeError(error) && error.code === 'ENOENT') return [];
+      throw error;
+    }
+  }
+
+  public async getSettings(): Promise<FileTransferSettings> {
+    await this.loadSettings();
+    await mkdir(this.receiveDirectory, { recursive: true });
+    return { autoReceive: this.autoReceive, destinationDirectory: this.receiveDirectory };
+  }
+
+  public async updateSettings(
+    update: Partial<Pick<FileTransferSettings, 'autoReceive' | 'destinationDirectory'>>,
+  ): Promise<FileTransferSettings> {
+    await this.loadSettings();
+    if (update.autoReceive !== undefined) this.autoReceive = update.autoReceive;
+    if (update.destinationDirectory !== undefined) {
+      if (!path.isAbsolute(update.destinationDirectory)) {
+        throw new Error('A pasta de destino precisa ser absoluta');
+      }
+      this.receiveDirectory = path.resolve(update.destinationDirectory);
+    }
+    await mkdir(this.receiveDirectory, { recursive: true });
+    await mkdir(path.dirname(this.settingsPath), { recursive: true });
+    await writeFile(
+      this.settingsPath,
+      JSON.stringify({
+        autoReceive: this.autoReceive,
+        destinationDirectory: this.receiveDirectory,
+      }),
+      'utf8',
+    );
+    return { autoReceive: this.autoReceive, destinationDirectory: this.receiveDirectory };
+  }
+
   public getReceiveDirectory(): string {
     return this.receiveDirectory;
+  }
+
+  private autoReceive = true;
+  private settingsLoaded = false;
+
+  private async loadSettings(): Promise<void> {
+    if (this.settingsLoaded) return;
+    this.settingsLoaded = true;
+    try {
+      const parsed = JSON.parse(await readFile(this.settingsPath, 'utf8')) as {
+        readonly autoReceive?: unknown;
+        readonly destinationDirectory?: unknown;
+      };
+      if (typeof parsed.autoReceive === 'boolean') this.autoReceive = parsed.autoReceive;
+      if (
+        typeof parsed.destinationDirectory === 'string' &&
+        path.isAbsolute(parsed.destinationDirectory)
+      ) {
+        this.receiveDirectory = path.resolve(parsed.destinationDirectory);
+      }
+    } catch (error) {
+      if (!isNodeError(error) || error.code !== 'ENOENT') {
+        this.settingsLoaded = true;
+      }
+    }
   }
 
   private createTransferId(): string {
@@ -441,6 +533,7 @@ function validateIncomingMetadata(metadata: IncomingFileTransfer): void {
     !TRANSFER_ID_PATTERN.test(metadata.transferId) ||
     !Number.isSafeInteger(metadata.size) ||
     metadata.size < 0 ||
+    metadata.size > FILE_TRANSFER_MAX_SIZE ||
     !SHA_256_PATTERN.test(metadata.sha256) ||
     metadata.chunkSize !== FILE_TRANSFER_CHUNK_SIZE ||
     metadata.totalChunks !== Math.ceil(metadata.size / metadata.chunkSize)

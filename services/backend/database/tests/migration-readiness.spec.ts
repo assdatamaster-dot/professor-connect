@@ -17,6 +17,7 @@ const MIGRATIONS = [
   '20260805150000_intelligent_attendance_flow',
   '20260805180000_bootstrap_first_run',
   '20260805220000_cleanup_bootstrap_artifacts',
+  '20260806090000_beta_12a_file_transfer_manager',
 ] as const;
 const TABLES = [
   'organizations',
@@ -100,7 +101,7 @@ test('rejects startup when a bundled migration is pending', async () => {
 
   await assert.rejects(
     assertMigrationsApplied(prisma),
-    /20260805220000_cleanup_bootstrap_artifacts/,
+    /20260806090000_beta_12a_file_transfer_manager/,
   );
 });
 
@@ -197,6 +198,21 @@ test('migration de limpeza remove somente organizações técnicas completamente
   assert.match(sql, /NOT EXISTS[\s\S]*FROM "system_settings"/);
   assert.match(sql, /NOT EXISTS[\s\S]*FROM "bootstrap_state"/);
   assert.doesNotMatch(sql, /DELETE FROM "users"/);
+});
+
+test('migration Beta-12A registra métricas profissionais de transferência', async () => {
+  const sql = await readFile(
+    new URL(
+      '../prisma/migrations/20260806090000_beta_12a_file_transfer_manager/migration.sql',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+
+  assert.match(sql, /ADD COLUMN "average_bytes_per_second" BIGINT/);
+  assert.match(sql, /ADD COLUMN "duration_milliseconds" BIGINT/);
+  assert.match(sql, /file_transfers_average_speed_check/);
+  assert.match(sql, /file_transfers_duration_check/);
 });
 
 test('seed sincroniza somente referências e preserva o estado de primeiro acesso', async () => {

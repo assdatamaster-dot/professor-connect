@@ -54,7 +54,16 @@ export interface FileTransferPersistence {
     readonly checksum?: string;
     readonly status: 'completed' | 'rejected' | 'cancelled' | 'failed';
     readonly failureReason?: string;
+    readonly averageBytesPerSecond?: bigint;
+    readonly durationMilliseconds?: bigint;
     readonly startedAt: Date;
     readonly completedAt: Date;
+  }): void;
+  recordAudit?(record: {
+    readonly action: string;
+    readonly actorType: 'teacher' | 'student';
+    readonly entityId: string;
+    readonly severity: 'info' | 'warning' | 'error';
+    readonly metadata: Readonly<Record<string, unknown>>;
   }): void;
 }

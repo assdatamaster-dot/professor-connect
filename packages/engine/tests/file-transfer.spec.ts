@@ -209,6 +209,44 @@ describe('FileTransferStorage', () => {
     assert.equal((await storage.completeReceive(replacedMetadata.transferId)).valid, true);
     assert.equal((await stat(path.join(receiveDirectory, 'duplicado.txt'))).size, 0);
   });
+
+  it('cria a pasta padrão, persiste preferências e mantém histórico local', async () => {
+    const root = await createTemporaryRoot();
+    const storage = createStorage(root, []);
+    const defaults = await storage.getSettings();
+
+    assert.equal(defaults.autoReceive, true);
+    assert.equal(
+      defaults.destinationDirectory,
+      path.join(root, 'documents', 'Professor Connect', 'Recebidos'),
+    );
+    assert.equal((await stat(defaults.destinationDirectory)).isDirectory(), true);
+
+    const customDirectory = path.join(root, 'custom-received');
+    await storage.updateSettings({ autoReceive: false, destinationDirectory: customDirectory });
+    await storage.appendAudit({
+      transferId: 'transfer-history',
+      direction: 'received',
+      origin: 'Professor',
+      destination: 'Aluno',
+      peerName: 'Professor',
+      fileName: 'aula.pdf',
+      size: 123,
+      startedAt: '2026-08-06T12:00:00.000Z',
+      finishedAt: '2026-08-06T12:00:01.000Z',
+      averageBytesPerSecond: 123,
+      sha256: 'a'.repeat(64),
+      result: 'completed',
+      destinationPath: path.join(customDirectory, 'aula.pdf'),
+    });
+
+    const restored = createStorage(root, []);
+    assert.deepEqual(await restored.getSettings(), {
+      autoReceive: false,
+      destinationDirectory: customDirectory,
+    });
+    assert.equal((await restored.listHistory())[0]?.fileName, 'aula.pdf');
+  });
 });
 
 function createStorage(

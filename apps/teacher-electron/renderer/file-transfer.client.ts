@@ -2,6 +2,7 @@ import type {
   FileTransferApi,
   FileTransferAuditPayload,
   FileTransferMetadata,
+  FileTransferSettings,
   FileTransferStatus,
 } from '../shared/file-transfer-contracts.js';
 
@@ -15,6 +16,10 @@ interface FileTransferClientElements {
   readonly button: HTMLButtonElement;
   readonly panel: HTMLElement;
   readonly list: HTMLUListElement;
+  readonly dropZone: HTMLElement;
+  readonly destination: HTMLElement;
+  readonly autoReceive: HTMLInputElement;
+  readonly changeDestination: HTMLButtonElement;
 }
 
 export interface FileTransferClientOptions {
@@ -22,12 +27,13 @@ export interface FileTransferClientOptions {
   readonly elements: FileTransferClientElements;
   readonly getLocalName: () => string;
   readonly notify: (message: string) => void;
+  readonly onIncoming?: () => void;
 }
 
 interface TransferState {
   readonly metadata: FileTransferMetadata;
   readonly direction: 'sent' | 'received';
-  readonly startedAt: string;
+  startedAt: string;
   peerName: string;
   status: FileTransferStatus;
   transferredBytes: number;
@@ -38,6 +44,7 @@ interface TransferState {
   pumping: boolean;
   completionSent: boolean;
   auditWritten: boolean;
+  destinationPath?: string;
 }
 
 type ControlMessage =
@@ -73,10 +80,24 @@ export class FileTransferClient {
   private sessionId: string | undefined;
   private peerName = 'Participante';
   private receiveQueue = Promise.resolve();
+  private settings: FileTransferSettings = { autoReceive: true, destinationDirectory: '' };
+  private settingsReady: Promise<void>;
+  private selectedTab: 'sent' | 'received' | 'history' = 'sent';
+  private history: readonly FileTransferAuditPayload[] = [];
+  private readonly renderTimer: number;
 
   public constructor(private readonly options: FileTransferClientOptions) {
     options.elements.button.addEventListener('click', this.handleSelectFiles);
     options.elements.list.addEventListener('click', this.handleListAction);
+    options.elements.panel.addEventListener('click', this.handlePanelAction);
+    options.elements.dropZone.addEventListener('dragenter', this.handleDragEnter);
+    options.elements.dropZone.addEventListener('dragover', this.handleDragEnter);
+    options.elements.dropZone.addEventListener('dragleave', this.handleDragLeave);
+    options.elements.dropZone.addEventListener('drop', this.handleDrop);
+    options.elements.autoReceive.addEventListener('change', this.handleAutoReceiveChange);
+    options.elements.changeDestination.addEventListener('click', this.handleChangeDestination);
+    this.settingsReady = this.loadSettings();
+    this.renderTimer = window.setInterval(() => this.render(), 1_000);
     this.render();
   }
 
@@ -144,6 +165,17 @@ export class FileTransferClient {
     this.endSession();
     this.options.elements.button.removeEventListener('click', this.handleSelectFiles);
     this.options.elements.list.removeEventListener('click', this.handleListAction);
+    this.options.elements.panel.removeEventListener('click', this.handlePanelAction);
+    this.options.elements.dropZone.removeEventListener('dragenter', this.handleDragEnter);
+    this.options.elements.dropZone.removeEventListener('dragover', this.handleDragEnter);
+    this.options.elements.dropZone.removeEventListener('dragleave', this.handleDragLeave);
+    this.options.elements.dropZone.removeEventListener('drop', this.handleDrop);
+    this.options.elements.autoReceive.removeEventListener('change', this.handleAutoReceiveChange);
+    this.options.elements.changeDestination.removeEventListener(
+      'click',
+      this.handleChangeDestination,
+    );
+    window.clearInterval(this.renderTimer);
   }
 
   private readonly handleSelectFiles = (): void => {
@@ -154,31 +186,91 @@ export class FileTransferClient {
     this.options.elements.button.disabled = true;
     void this.options.api
       .selectFiles()
-      .then((files) => {
-        for (const metadata of files) {
-          const transfer: TransferState = {
-            metadata,
-            direction: 'sent',
-            peerName: this.peerName,
-            status: 'waiting',
-            transferredBytes: 0,
-            nextChunkIndex: 0,
-            acknowledgedChunkIndex: 0,
-            startedAt: new Date().toISOString(),
-            pumping: false,
-            completionSent: false,
-            auditWritten: false,
-          };
-          this.transfers.set(metadata.transferId, transfer);
-          this.sendRequest(transfer);
-        }
-        this.render();
-      })
+      .then((files) => this.enqueueFiles(files))
       .catch((error: unknown) => {
         this.options.notify(toErrorMessage(error, 'Não foi possível selecionar os arquivos.'));
       })
       .finally(() => this.render());
   };
+
+  private readonly handleDragEnter = (event: DragEvent): void => {
+    event.preventDefault();
+    if (this.isChannelOpen()) this.options.elements.dropZone.classList.add('is-dragging');
+  };
+
+  private readonly handleDragLeave = (event: DragEvent): void => {
+    event.preventDefault();
+    if (event.type === 'dragleave') this.options.elements.dropZone.classList.remove('is-dragging');
+  };
+
+  private readonly handleDrop = (event: DragEvent): void => {
+    event.preventDefault();
+    this.options.elements.dropZone.classList.remove('is-dragging');
+    if (!this.isChannelOpen()) {
+      this.options.notify('A transferência fica disponível durante um atendimento conectado.');
+      return;
+    }
+    const files = [...(event.dataTransfer?.files ?? [])];
+    if (files.length === 0) return;
+    void this.options.api
+      .selectDroppedFiles(files)
+      .then((metadata) => this.enqueueFiles(metadata))
+      .catch((error: unknown) =>
+        this.options.notify(
+          toErrorMessage(error, 'Não foi possível enviar os arquivos arrastados.'),
+        ),
+      );
+  };
+
+  private readonly handlePanelAction = (event: Event): void => {
+    const target = event.target;
+    if (!(target instanceof HTMLButtonElement)) return;
+    const tab = target.dataset.transferTab;
+    if (tab === 'sent' || tab === 'received' || tab === 'history') {
+      this.selectedTab = tab;
+      if (tab === 'history') void this.loadHistory();
+      this.render();
+    }
+  };
+
+  private readonly handleAutoReceiveChange = (): void => {
+    const autoReceive = this.options.elements.autoReceive.checked;
+    void this.options.api.updateSettings({ autoReceive }).then((settings) => {
+      this.settings = settings;
+      this.renderSettings();
+    });
+  };
+
+  private readonly handleChangeDestination = (): void => {
+    void this.options.api.chooseDestinationDirectory().then((settings) => {
+      if (settings !== undefined) {
+        this.settings = settings;
+        this.renderSettings();
+      }
+    });
+  };
+
+  private enqueueFiles(files: readonly FileTransferMetadata[]): void {
+    for (const metadata of files) {
+      const transfer: TransferState = {
+        metadata,
+        direction: 'sent',
+        peerName: this.peerName,
+        status: 'waiting',
+        transferredBytes: 0,
+        nextChunkIndex: 0,
+        acknowledgedChunkIndex: 0,
+        startedAt: new Date().toISOString(),
+        pumping: false,
+        completionSent: false,
+        auditWritten: false,
+      };
+      this.transfers.set(metadata.transferId, transfer);
+      this.sendRequest(transfer);
+    }
+    this.selectedTab = 'sent';
+    this.render();
+  }
 
   private readonly handleListAction = (event: Event): void => {
     const target = event.target;
@@ -196,6 +288,19 @@ export class FileTransferClient {
       void this.rejectIncoming(transferId);
     } else if (action === 'cancel') {
       void this.cancelTransfer(transferId);
+    } else if (action === 'retry') {
+      this.retryTransfer(transferId);
+    } else if (action === 'open') {
+      const transfer = this.transfers.get(transferId);
+      const filePath = transfer?.destinationPath ?? target.dataset.filePath;
+      if (filePath !== undefined) {
+        void this.options.api.openFile(filePath);
+      }
+    } else if (action === 'folder') {
+      void this.options.api.openDirectory();
+    } else if (action === 'close') {
+      this.transfers.delete(transferId);
+      this.render();
     }
   };
 
@@ -305,6 +410,12 @@ export class FileTransferClient {
         });
       } else if (existing.status === 'receiving' || existing.status === 'paused') {
         await this.prepareAndAccept(existing);
+      } else if (existing.status === 'failed' || existing.status === 'rejected') {
+        existing.status = 'waiting';
+        delete existing.error;
+        existing.auditWritten = false;
+        await this.settingsReady;
+        if (this.settings.autoReceive) await this.prepareAndAccept(existing);
       }
       this.render();
       return;
@@ -323,6 +434,14 @@ export class FileTransferClient {
       completionSent: false,
       auditWritten: false,
     });
+    this.selectedTab = 'received';
+    this.options.onIncoming?.();
+    this.options.notify(`Recebendo ${message.metadata.name} de ${message.senderName}.`);
+    await this.settingsReady;
+    const incoming = this.transfers.get(message.metadata.transferId);
+    if (incoming !== undefined && this.settings.autoReceive) {
+      await this.prepareAndAccept(incoming);
+    }
     this.render();
   }
 
@@ -553,8 +672,14 @@ export class FileTransferClient {
       }
       transfer.status = 'completed';
       transfer.transferredBytes = transfer.metadata.size;
+      if (verification.destinationPath !== undefined) {
+        transfer.destinationPath = verification.destinationPath;
+      }
       this.sendControl({ type: 'verified', transferId, sha256: verification.actualSha256 });
       await this.writeAudit(transfer, 'completed');
+      this.options.notify(
+        `Arquivo recebido com sucesso: ${transfer.targetName ?? transfer.metadata.name}`,
+      );
       this.render();
     } catch (error) {
       if (!this.isChannelOpen()) {
@@ -632,7 +757,6 @@ export class FileTransferClient {
       return;
     }
     transfer.status = 'rejected';
-    await this.options.api.releaseSource(transferId);
     await this.writeAudit(transfer, 'rejected');
     this.render();
   }
@@ -683,7 +807,7 @@ export class FileTransferClient {
       this.sendControl({ type: 'error', transferId, message });
     }
     if (transfer.direction === 'sent') {
-      await this.options.api.releaseSource(transferId).catch(() => undefined);
+      transfer.pumping = false;
     }
     await this.writeAudit(transfer, 'failed', message);
     this.options.notify(message);
@@ -719,6 +843,9 @@ export class FileTransferClient {
         averageBytesPerSecond: transfer.transferredBytes / elapsedSeconds,
         sha256: transfer.metadata.sha256,
         result,
+        ...(transfer.destinationPath === undefined
+          ? {}
+          : { destinationPath: transfer.destinationPath }),
         ...(error === undefined ? {} : { error }),
       })
       .catch(() => undefined);
@@ -727,12 +854,10 @@ export class FileTransferClient {
   private async clearTransfers(): Promise<void> {
     const operations: Promise<unknown>[] = [];
     for (const transfer of this.transfers.values()) {
-      if (!isTerminal(transfer.status)) {
-        if (transfer.direction === 'sent') {
-          operations.push(this.options.api.releaseSource(transfer.metadata.transferId));
-        } else {
-          operations.push(this.options.api.cancelReceive(transfer.metadata.transferId));
-        }
+      if (transfer.direction === 'sent') {
+        operations.push(this.options.api.releaseSource(transfer.metadata.transferId));
+      } else if (!isTerminal(transfer.status)) {
+        operations.push(this.options.api.cancelReceive(transfer.metadata.transferId));
       }
     }
     this.transfers.clear();
@@ -763,14 +888,83 @@ export class FileTransferClient {
     return this.channel;
   }
 
+  private retryTransfer(transferId: string): void {
+    const transfer = this.transfers.get(transferId);
+    if (
+      transfer === undefined ||
+      transfer.direction !== 'sent' ||
+      (transfer.status !== 'failed' && transfer.status !== 'rejected') ||
+      !this.isChannelOpen()
+    ) {
+      return;
+    }
+    transfer.status = 'waiting';
+    transfer.startedAt = new Date().toISOString();
+    delete transfer.error;
+    transfer.transferredBytes = 0;
+    transfer.nextChunkIndex = 0;
+    transfer.acknowledgedChunkIndex = 0;
+    transfer.pumping = false;
+    transfer.completionSent = false;
+    transfer.auditWritten = false;
+    this.sendRequest(transfer);
+    this.render();
+  }
+
+  private async loadSettings(): Promise<void> {
+    try {
+      this.settings = await this.options.api.getSettings();
+      this.renderSettings();
+    } catch (error) {
+      this.options.notify(
+        toErrorMessage(error, 'Não foi possível carregar as preferências de arquivos.'),
+      );
+    }
+  }
+
+  private async loadHistory(): Promise<void> {
+    try {
+      this.history = await this.options.api.listHistory();
+      this.render();
+    } catch (error) {
+      this.options.notify(toErrorMessage(error, 'Não foi possível carregar o histórico.'));
+    }
+  }
+
+  private renderSettings(): void {
+    this.options.elements.autoReceive.checked = this.settings.autoReceive;
+    const modeLabel = this.options.elements.autoReceive
+      .closest('.file-transfer-switch')
+      ?.querySelector('em');
+    if (modeLabel !== null && modeLabel !== undefined) {
+      modeLabel.textContent = this.settings.autoReceive ? 'Sim' : 'Perguntar antes';
+    }
+    this.options.elements.destination.textContent =
+      this.settings.destinationDirectory || 'Downloads/Professor Connect/Recebidos';
+    this.options.elements.destination.title = this.settings.destinationDirectory;
+  }
+
   private render(): void {
     this.options.elements.button.disabled = !this.isChannelOpen();
     this.options.elements.panel.hidden = this.sessionId === undefined && this.transfers.size === 0;
-    const items = [...this.transfers.values()].map((transfer) => createTransferItem(transfer));
+    for (const button of this.options.elements.panel.querySelectorAll<HTMLButtonElement>(
+      '[data-transfer-tab]',
+    )) {
+      button.setAttribute('aria-selected', String(button.dataset.transferTab === this.selectedTab));
+    }
+    const items =
+      this.selectedTab === 'history'
+        ? this.history.map((entry) => createHistoryItem(entry))
+        : [...this.transfers.values()]
+            .filter((transfer) => transfer.direction === this.selectedTab)
+            .map((transfer) => createTransferItem(transfer));
     if (items.length === 0) {
       const empty = document.createElement('li');
       empty.className = 'file-transfer-empty';
-      empty.textContent = 'Nenhuma transferência nesta sessão.';
+      empty.textContent =
+        this.selectedTab === 'history'
+          ? 'O histórico de transferências aparecerá aqui.'
+          : `Nenhum arquivo ${this.selectedTab === 'sent' ? 'enviado' : 'recebido'} nesta sessão.`;
       this.options.elements.list.replaceChildren(empty);
     } else {
       this.options.elements.list.replaceChildren(...items);
@@ -790,18 +984,22 @@ function createTransferItem(transfer: TransferState): HTMLLIElement {
   const speed = transfer.transferredBytes / elapsedSeconds;
   const remaining = Math.max(0, transfer.metadata.size - transfer.transferredBytes);
   const eta = speed > 0 ? remaining / speed : undefined;
+  const percentage =
+    transfer.metadata.size === 0
+      ? 100
+      : Math.min(100, Math.round((transfer.transferredBytes / transfer.metadata.size) * 100));
 
   item.className = 'file-transfer-item';
   heading.className = 'file-transfer-heading';
   name.textContent = transfer.targetName ?? transfer.metadata.name;
-  status.textContent = statusLabel(transfer.status);
+  status.textContent = statusLabel(transfer.status, transfer.direction);
   status.dataset.status = transfer.status;
   heading.append(name, status);
   progress.max = Math.max(1, transfer.metadata.size);
   progress.value = transfer.metadata.size === 0 ? 1 : transfer.transferredBytes;
-  details.textContent = `${formatBytes(transfer.transferredBytes)} / ${formatBytes(
+  details.textContent = `${percentage}% · ${formatBytes(transfer.transferredBytes)} / ${formatBytes(
     transfer.metadata.size,
-  )} · ${formatSpeed(speed)} · ETA ${formatEta(eta)} · ${
+  )} · ${formatSpeed(speed)} · ${formatEta(eta)} restantes · ${
     transfer.direction === 'sent' ? 'para' : 'de'
   } ${transfer.peerName}`;
   item.append(heading, progress, details);
@@ -820,9 +1018,49 @@ function createTransferItem(transfer: TransferState): HTMLLIElement {
     );
   } else if (!isTerminal(transfer.status)) {
     actions.append(createActionButton('Cancelar', 'cancel', transfer.metadata.transferId));
+  } else if (
+    transfer.direction === 'sent' &&
+    (transfer.status === 'failed' || transfer.status === 'rejected')
+  ) {
+    actions.append(createActionButton('Reenviar', 'retry', transfer.metadata.transferId));
+  } else if (transfer.status === 'completed' && transfer.direction === 'received') {
+    actions.append(
+      createActionButton('Abrir arquivo', 'open', transfer.metadata.transferId),
+      createActionButton('Abrir pasta', 'folder', transfer.metadata.transferId),
+      createActionButton('Fechar', 'close', transfer.metadata.transferId),
+    );
+  } else if (isTerminal(transfer.status)) {
+    actions.append(createActionButton('Fechar', 'close', transfer.metadata.transferId));
   }
   if (actions.childElementCount > 0) {
     actions.className = 'file-transfer-actions';
+    item.append(actions);
+  }
+  return item;
+}
+
+function createHistoryItem(entry: FileTransferAuditPayload): HTMLLIElement {
+  const item = document.createElement('li');
+  const heading = document.createElement('div');
+  const name = document.createElement('strong');
+  const status = document.createElement('span');
+  const details = document.createElement('small');
+  item.className = 'file-transfer-item file-transfer-history-item';
+  heading.className = 'file-transfer-heading';
+  name.textContent = entry.fileName;
+  status.textContent = historyStatusLabel(entry.result);
+  status.dataset.status = entry.result === 'completed' ? 'completed' : 'failed';
+  details.textContent = `${entry.direction === 'sent' ? 'Enviado para' : 'Recebido de'} ${
+    entry.peerName
+  } · ${formatBytes(entry.size)} · ${new Date(entry.finishedAt).toLocaleString('pt-BR')}`;
+  heading.append(name, status);
+  item.append(heading, details);
+  if (entry.destinationPath !== undefined && entry.result === 'completed') {
+    const actions = document.createElement('div');
+    const open = createActionButton('Abrir arquivo', 'open', entry.transferId);
+    open.dataset.filePath = entry.destinationPath;
+    actions.className = 'file-transfer-actions';
+    actions.append(open, createActionButton('Abrir pasta', 'folder', entry.transferId));
     item.append(actions);
   }
   return item;
@@ -999,9 +1237,9 @@ function isTerminal(status: FileTransferStatus): boolean {
   );
 }
 
-function statusLabel(status: FileTransferStatus): string {
+function statusLabel(status: FileTransferStatus, direction: TransferState['direction']): string {
   const labels: Record<FileTransferStatus, string> = {
-    waiting: 'Aguardando aceite',
+    waiting: direction === 'sent' ? 'Preparando envio' : 'Aguardando confirmação',
     sending: 'Enviando',
     receiving: 'Recebendo',
     paused: 'Aguardando conexão',
@@ -1011,6 +1249,16 @@ function statusLabel(status: FileTransferStatus): string {
     rejected: 'Recusado',
   };
   return labels[status];
+}
+
+function historyStatusLabel(result: FileTransferAuditPayload['result']): string {
+  const labels: Record<FileTransferAuditPayload['result'], string> = {
+    completed: 'Concluído',
+    cancelled: 'Cancelado',
+    failed: 'Falhou',
+    rejected: 'Recusado',
+  };
+  return labels[result];
 }
 
 function formatBytes(value: number): string {

@@ -91,6 +91,8 @@ export interface FileTransferRecord {
   readonly status:
     'requested' | 'accepted' | 'in-progress' | 'completed' | 'rejected' | 'cancelled' | 'failed';
   readonly failureReason?: string;
+  readonly averageBytesPerSecond?: bigint;
+  readonly durationMilliseconds?: bigint;
   readonly startedAt: Date;
   readonly completedAt?: Date;
 }
@@ -445,6 +447,12 @@ export class FileTransferRepository {
               ? {}
               : { failureReason: transfer.failureReason }),
             ...(transfer.completedAt === undefined ? {} : { completedAt: transfer.completedAt }),
+            ...(transfer.averageBytesPerSecond === undefined
+              ? {}
+              : { averageBytesPerSecond: transfer.averageBytesPerSecond }),
+            ...(transfer.durationMilliseconds === undefined
+              ? {}
+              : { durationMilliseconds: transfer.durationMilliseconds }),
           },
           update: {
             status: toTransferStatus(transfer.status),
@@ -453,6 +461,12 @@ export class FileTransferRepository {
               ? {}
               : { failureReason: transfer.failureReason }),
             ...(transfer.completedAt === undefined ? {} : { completedAt: transfer.completedAt }),
+            ...(transfer.averageBytesPerSecond === undefined
+              ? {}
+              : { averageBytesPerSecond: transfer.averageBytesPerSecond }),
+            ...(transfer.durationMilliseconds === undefined
+              ? {}
+              : { durationMilliseconds: transfer.durationMilliseconds }),
           },
         }),
         this.prisma.attendanceSession.update({
@@ -460,6 +474,27 @@ export class FileTransferRepository {
           data: { usedFileTransfer: true },
         }),
       ]),
+    );
+  }
+
+  public recordAudit(record: {
+    readonly action: string;
+    readonly actorType: 'teacher' | 'student';
+    readonly entityId: string;
+    readonly severity: 'info' | 'warning' | 'error';
+    readonly metadata: Readonly<Record<string, unknown>>;
+  }): void {
+    this.queue.enqueue(() =>
+      this.prisma.auditLog.create({
+        data: {
+          action: record.action,
+          actorType: record.actorType,
+          entityType: 'file-transfer',
+          entityId: record.entityId,
+          severity: toSeverity(record.severity),
+          metadata: toJson(record.metadata),
+        },
+      }),
     );
   }
 }

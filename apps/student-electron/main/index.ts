@@ -67,7 +67,7 @@ async function createMainWindow(): Promise<void> {
   const window = mainWindow;
   ipcRegistration = registerDesktopIpc(workflowController, mainWindow.webContents);
   const fileTransferStorage = new FileTransferStorage({
-    documentsPath: app.getPath('documents'),
+    downloadsPath: app.getPath('downloads'),
     userDataPath: app.getPath('userData'),
     selectFiles: async () => {
       const result = await dialog.showOpenDialog(window, {
@@ -77,20 +77,9 @@ async function createMainWindow(): Promise<void> {
       });
       return result.canceled ? [] : result.filePaths;
     },
-    resolveDuplicate: async ({ fileName }) => {
-      const result = await dialog.showMessageBox(window, {
-        type: 'question',
-        title: 'Arquivo já existente',
-        message: `O arquivo "${fileName}" já existe.`,
-        detail: 'Escolha como deseja salvar o arquivo recebido.',
-        buttons: ['Substituir', 'Renomear automaticamente', 'Cancelar'],
-        defaultId: 1,
-        cancelId: 2,
-        noLink: true,
-      });
-      return result.response === 0 ? 'replace' : result.response === 1 ? 'rename' : 'cancel';
-    },
+    resolveDuplicate: async () => 'rename',
   });
+  await fileTransferStorage.getSettings();
   fileTransferIpcRegistration = registerFileTransferIpc(
     fileTransferStorage,
     mainWindow.webContents,

@@ -1,5 +1,6 @@
 export const FILE_TRANSFER_IPC_CHANNELS = {
   SELECT_FILES: 'teacher:file-transfer:select-files',
+  REGISTER_FILES: 'teacher:file-transfer:register-files',
   READ_CHUNK: 'teacher:file-transfer:read-chunk',
   VERIFY_SOURCE: 'teacher:file-transfer:verify-source',
   RELEASE_SOURCE: 'teacher:file-transfer:release-source',
@@ -8,4 +9,10 @@ export const FILE_TRANSFER_IPC_CHANNELS = {
   COMPLETE_RECEIVE: 'teacher:file-transfer:complete-receive',
   CANCEL_RECEIVE: 'teacher:file-transfer:cancel-receive',
   APPEND_AUDIT: 'teacher:file-transfer:append-audit',
+  LIST_HISTORY: 'teacher:file-transfer:list-history',
+  GET_SETTINGS: 'teacher:file-transfer:get-settings',
+  UPDATE_SETTINGS: 'teacher:file-transfer:update-settings',
+  CHOOSE_DESTINATION: 'teacher:file-transfer:choose-destination',
+  OPEN_FILE: 'teacher:file-transfer:open-file',
+  OPEN_DIRECTORY: 'teacher:file-transfer:open-directory',
 } as const;

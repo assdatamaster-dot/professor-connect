@@ -2047,3 +2047,305 @@ button svg,
 .history-item small {
   color: #627184;
 }
+
+/* Beta-12A — gerenciador profissional de arquivos */
+.file-transfer-panel {
+  width: min(470px, calc(100vw - 20px));
+  gap: 16px;
+  padding-inline: 24px;
+  background:
+    radial-gradient(circle at 100% 0, rgb(22 163 106 / 9%), transparent 220px), var(--surface);
+}
+
+.file-transfer-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.file-transfer-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-subtle);
+}
+
+.file-transfer-tabs button {
+  min-height: 36px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--ink-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.file-transfer-tabs button[aria-selected='true'] {
+  background: var(--surface);
+  color: var(--brand);
+  box-shadow: 0 3px 12px rgb(15 23 42 / 8%);
+}
+
+.file-transfer-drop-zone {
+  display: grid;
+  min-height: 178px;
+  place-items: center;
+  align-content: center;
+  gap: 7px;
+  padding: 22px;
+  border: 1.5px dashed #8acdb0;
+  border-radius: 16px;
+  background: rgb(22 163 106 / 5%);
+  text-align: center;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease,
+    transform 150ms ease;
+}
+
+.file-transfer-drop-zone.is-dragging {
+  border-color: var(--brand);
+  background: rgb(22 163 106 / 13%);
+  transform: scale(1.01);
+}
+
+.file-transfer-drop-zone__icon {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border-radius: 14px;
+  background: var(--brand);
+  color: #fff;
+  font-size: 1.45rem;
+  box-shadow: 0 10px 24px rgb(22 163 106 / 24%);
+}
+
+.file-transfer-drop-zone > strong {
+  color: var(--ink);
+  font-size: 0.86rem;
+}
+
+.file-transfer-drop-zone > small {
+  max-width: 330px;
+  color: var(--ink-tertiary);
+  font-size: 0.65rem;
+  line-height: 1.45;
+}
+
+.file-transfer-drop-zone #file-transfer-button {
+  width: auto;
+  min-height: 38px;
+  margin-top: 5px;
+}
+
+.file-transfer-list {
+  gap: 10px;
+  max-height: none;
+}
+
+.file-transfer-item {
+  gap: 8px;
+  padding: 13px;
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 5px 18px rgb(15 23 42 / 5%);
+}
+
+.file-transfer-heading strong {
+  font-size: 0.75rem;
+}
+
+.file-transfer-heading span {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: var(--surface-subtle);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.file-transfer-item progress {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+}
+
+.file-transfer-actions {
+  flex-wrap: wrap;
+}
+
+.file-transfer-actions button,
+.file-transfer-destination-row button {
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--brand);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+.file-transfer-settings {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-subtle);
+}
+
+.file-transfer-setting-row,
+.file-transfer-destination-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.file-transfer-setting-row > span,
+.file-transfer-destination-row > span {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.file-transfer-setting-row strong,
+.file-transfer-destination-row strong {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 0.69rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-transfer-setting-row small,
+.file-transfer-destination-row small {
+  color: var(--ink-tertiary);
+  font-size: 0.61rem;
+}
+
+.file-transfer-switch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.file-transfer-switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.file-transfer-switch > span {
+  position: relative;
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  background: #aeb8c5;
+  transition: background 150ms ease;
+}
+
+.file-transfer-switch > span::after {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgb(15 23 42 / 25%);
+  content: '';
+  transition: transform 150ms ease;
+}
+
+.file-transfer-switch input:checked + span {
+  background: var(--brand);
+}
+
+.file-transfer-switch input:checked + span::after {
+  transform: translateX(14px);
+}
+
+.file-transfer-switch em {
+  color: var(--ink-secondary);
+  font-size: 0.64rem;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.file-transfer-empty {
+  padding: 22px 10px;
+  text-align: center;
+}
+
+@media (max-width: 520px) {
+  .file-transfer-panel {
+    top: 0;
+    width: 100vw;
+    padding: 62px 16px 20px;
+  }
+
+  .file-transfer-tabs button {
+    font-size: 0.66rem;
+  }
+
+  .file-transfer-destination-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+.profile-file-settings {
+  display: grid;
+  gap: 9px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-subtle);
+}
+
+.profile-file-auto {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.profile-file-settings > small,
+.profile-file-settings > div small {
+  color: var(--ink-tertiary);
+  font-size: 0.64rem;
+}
+
+.profile-file-settings > div {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.profile-file-settings > div > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.profile-file-settings > div strong {
+  overflow: hidden;
+  max-width: 270px;
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

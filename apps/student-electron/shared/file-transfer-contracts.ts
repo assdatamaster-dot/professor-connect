@@ -50,11 +50,18 @@ export interface FileTransferAuditPayload {
   readonly averageBytesPerSecond: number;
   readonly sha256: string;
   readonly result: 'completed' | 'cancelled' | 'failed' | 'rejected';
+  readonly destinationPath?: string;
   readonly error?: string;
+}
+
+export interface FileTransferSettings {
+  readonly autoReceive: boolean;
+  readonly destinationDirectory: string;
 }
 
 export interface FileTransferApi {
   selectFiles(): Promise<readonly FileTransferMetadata[]>;
+  selectDroppedFiles(files: readonly File[]): Promise<readonly FileTransferMetadata[]>;
   readChunk(transferId: string, index: number): Promise<FileTransferChunkPayload>;
   verifySource(transferId: string): Promise<boolean>;
   releaseSource(transferId: string): Promise<void>;
@@ -63,4 +70,10 @@ export interface FileTransferApi {
   completeReceive(transferId: string): Promise<FileTransferVerification>;
   cancelReceive(transferId: string): Promise<void>;
   appendAudit(payload: FileTransferAuditPayload): Promise<void>;
+  listHistory(): Promise<readonly FileTransferAuditPayload[]>;
+  getSettings(): Promise<FileTransferSettings>;
+  updateSettings(update: Partial<FileTransferSettings>): Promise<FileTransferSettings>;
+  chooseDestinationDirectory(): Promise<FileTransferSettings | undefined>;
+  openFile(filePath: string): Promise<void>;
+  openDirectory(directoryPath?: string): Promise<void>;
 }

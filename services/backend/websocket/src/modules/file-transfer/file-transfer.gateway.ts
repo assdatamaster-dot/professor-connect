@@ -15,6 +15,7 @@ export interface FileTransferAuditPayload {
   readonly startedAt: string;
   readonly finishedAt: string;
   readonly sha256: string;
+  readonly averageBytesPerSecond: number;
   readonly result: 'completed' | 'cancelled' | 'failed' | 'rejected';
   readonly error?: string;
 }
@@ -53,8 +54,32 @@ export class FileTransferAuditGateway {
           checksum: audit.sha256,
           status: audit.result,
           ...(audit.error === undefined ? {} : { failureReason: audit.error }),
+          averageBytesPerSecond: BigInt(Math.max(0, Math.round(audit.averageBytesPerSecond))),
+          durationMilliseconds: BigInt(
+            Math.max(0, Date.parse(audit.finishedAt) - Date.parse(audit.startedAt)),
+          ),
           startedAt: new Date(audit.startedAt),
           completedAt: new Date(audit.finishedAt),
+        });
+        this.persistence.recordAudit?.({
+          action: `file-transfer.${audit.result}`,
+          actorType: route.senderRole,
+          entityId: audit.transferId,
+          severity:
+            audit.result === 'failed' ? 'error' : audit.result === 'completed' ? 'info' : 'warning',
+          metadata: {
+            sessionId: audit.sessionId,
+            fileName: audit.fileName,
+            size: audit.size,
+            averageBytesPerSecond: audit.averageBytesPerSecond,
+            durationMilliseconds: Math.max(
+              0,
+              Date.parse(audit.finishedAt) - Date.parse(audit.startedAt),
+            ),
+            professor: route.session.teacherName,
+            student: route.session.studentName,
+            ...(audit.error === undefined ? {} : { error: audit.error }),
+          },
         });
         this.sessionManager.markFeatureUsed(audit.sessionId, 'file-transfer');
         this.logger.info('Transferência de arquivo auditada', {
@@ -89,6 +114,14 @@ function requireAudit(value: unknown): FileTransferAuditPayload {
   }
   const error = record.error;
   if (error !== undefined && typeof error !== 'string') throw new Error('Erro inválido');
+  const averageBytesPerSecond = record.averageBytesPerSecond;
+  if (
+    typeof averageBytesPerSecond !== 'number' ||
+    !Number.isFinite(averageBytesPerSecond) ||
+    averageBytesPerSecond < 0
+  ) {
+    throw new Error('Velocidade média inválida');
+  }
   return {
     sessionId: requireText(record.sessionId, 'sessionId'),
     transferId: requireText(record.transferId, 'transferId'),
@@ -98,6 +131,7 @@ function requireAudit(value: unknown): FileTransferAuditPayload {
     startedAt: requireDate(record.startedAt, 'startedAt'),
     finishedAt: requireDate(record.finishedAt, 'finishedAt'),
     sha256: requireText(record.sha256, 'sha256'),
+    averageBytesPerSecond,
     result,
     ...(error === undefined ? {} : { error }),
   };

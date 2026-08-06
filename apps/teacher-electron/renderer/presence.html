@@ -461,31 +461,79 @@
                     <path d="m6 6 12 12M18 6 6 18" />
                   </svg>
                 </button>
-                <div class="support-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24">
-                    <path d="M3 7h7l2 2h9v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />
-                    <path d="M12 12v6M9 15l3 3 3-3" />
-                  </svg>
+                <div class="file-transfer-panel__header">
+                  <div class="support-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                      <path d="M3 7h7l2 2h9v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z" />
+                      <path d="M12 12v6M9 15l3 3 3-3" />
+                    </svg>
+                  </div>
+                  <div class="file-transfer-copy">
+                    <span class="support-label">Sessão segura</span>
+                    <strong id="file-transfer-title">Transferência de Arquivos</strong>
+                  </div>
                 </div>
-                <div class="file-transfer-copy">
-                  <span class="support-label" id="file-transfer-title">Arquivos</span>
-                  <p>Envio protegido, sempre com confirmação.</p>
+                <div class="file-transfer-tabs" role="tablist" aria-label="Transferências">
+                  <button type="button" role="tab" data-transfer-tab="sent" aria-selected="true">
+                    ↑ Enviados
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    data-transfer-tab="received"
+                    aria-selected="false"
+                  >
+                    ↓ Recebidos
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    data-transfer-tab="history"
+                    aria-selected="false"
+                  >
+                    Histórico
+                  </button>
                 </div>
-                <button
-                  id="file-transfer-button"
-                  class="button button--secondary button--compact"
-                  type="button"
-                  disabled
-                >
-                  Enviar arquivos
-                </button>
-                <p class="file-transfer-note">
-                  Os arquivos são salvos em Documentos/Professor Connect e nunca são abertos
-                  automaticamente.
-                </p>
+                <div id="file-transfer-drop-zone" class="file-transfer-drop-zone">
+                  <span class="file-transfer-drop-zone__icon" aria-hidden="true">⇧</span>
+                  <strong>Arraste arquivos para enviar</strong>
+                  <small>PDF, Office, ZIP, imagens, áudio, vídeo e outros arquivos até 5 GB</small>
+                  <button
+                    id="file-transfer-button"
+                    class="button button--primary button--compact"
+                    type="button"
+                    disabled
+                  >
+                    Selecionar Arquivos
+                  </button>
+                </div>
                 <ul id="file-transfer-list" class="file-transfer-list" aria-live="polite">
-                  <li class="file-transfer-empty">Nenhuma transferência nesta sessão.</li>
+                  <li class="file-transfer-empty">Nenhum arquivo enviado nesta sessão.</li>
                 </ul>
+                <section class="file-transfer-settings" aria-label="Configurações de recebimento">
+                  <div class="file-transfer-setting-row">
+                    <span>
+                      <strong>Receber arquivos automaticamente</strong>
+                      <small>Inicia o download sem solicitar confirmação.</small>
+                    </span>
+                    <label class="file-transfer-switch">
+                      <input id="file-transfer-auto-receive" type="checkbox" checked />
+                      <span aria-hidden="true"></span>
+                      <em>Sim</em>
+                    </label>
+                  </div>
+                  <div class="file-transfer-destination-row">
+                    <span>
+                      <small>Salvar em</small>
+                      <strong id="file-transfer-destination"
+                        >Downloads/Professor Connect/Recebidos</strong
+                      >
+                    </span>
+                    <button id="file-transfer-change-destination" type="button">
+                      Alterar pasta
+                    </button>
+                  </div>
+                </section>
               </section>
             </div>
           </section>

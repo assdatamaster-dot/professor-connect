@@ -405,6 +405,8 @@ model FileTransfer {
   checksum      String?
   status        FileTransferStatus
   failureReason String?               @map("failure_reason")
+  averageBytesPerSecond BigInt?       @map("average_bytes_per_second")
+  durationMilliseconds BigInt?        @map("duration_milliseconds")
   startedAt     DateTime              @map("started_at") @db.Timestamptz(3)
   completedAt   DateTime?             @map("completed_at") @db.Timestamptz(3)
   session       AttendanceSession     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
