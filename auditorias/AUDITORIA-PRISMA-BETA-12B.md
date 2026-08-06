@@ -127,19 +127,23 @@ lote completo.
 
 ## Recuperação em produção
 
-Publicar primeiro uma revisão que contenha a migration preparatória. No mesmo
-ambiente e com a mesma `DATABASE_URL` usada pelo backend:
+Publicar primeiro uma revisão que contenha a migration preparatória e o script
+de recuperação. O entrypoint do backend executa o script automaticamente. Para
+executá-lo explicitamente no Console do EasyPanel, com a mesma `DATABASE_URL`
+do serviço:
 
-```powershell
-Set-Location services/backend/database
-npx prisma migrate resolve --rolled-back 20260806150000_beta_12b_session_recovery --schema prisma/schema.prisma
-npx prisma migrate deploy --schema prisma/schema.prisma
-npx prisma migrate status --schema prisma/schema.prisma
+```bash
+cd /app
+npm run backend:recover-migration
+npm run prisma:status
 ```
 
-`--rolled-back` é a opção correta: ele libera uma nova tentativa depois da
-correção. Não usar `--applied`, pois isso faria o Prisma pular a Beta-12B mesmo
-com suas colunas, índice e conversão de dados ausentes.
+Internamente, o script confirma a falha ativa e o SQLSTATE `55P04` antes de
+executar `prisma migrate resolve --rolled-back
+20260806150000_beta_12b_session_recovery`. Depois confirma que não resta falha
+ativa e executa `prisma migrate deploy`. Não usar `--applied`, pois isso faria
+o Prisma pular a Beta-12B mesmo com suas colunas, índice e conversão de dados
+ausentes.
 
 O `deploy` aplica, nesta ordem:
 

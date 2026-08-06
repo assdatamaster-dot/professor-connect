@@ -282,10 +282,12 @@ test('imagem Docker prepara e valida o banco pelo entrypoint antes do servidor',
 
   assert.match(dockerfile, /ENTRYPOINT \["\/usr\/local\/bin\/professor-connect-entrypoint"\]/);
   assert.match(dockerfile, /CMD \["node", "services\/backend\/api\/dist\/server\.js"\]/);
+  assert.match(dockerfile, /database\/migration-recovery\.mjs/);
   assert.match(entrypoint, /npm run backend:prepare/);
   assert.match(entrypoint, /exec "\$@"/);
   assert.doesNotMatch(entrypoint, /username|password/);
-  assert.match(rootPackage, /prisma:generate.*prisma:deploy.*prisma:status/);
+  assert.match(rootPackage, /prisma:generate.*backend:recover-migration.*prisma:status/);
+  assert.match(rootPackage, /backend:recover-migration/);
 });
 
 test('preview administrativo é explicitamente bloqueado em produção', async () => {

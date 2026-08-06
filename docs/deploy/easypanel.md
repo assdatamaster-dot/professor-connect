@@ -27,9 +27,10 @@ O estágio final do Dockerfile é `production`, portanto não é necessário inf
 EasyPanel. Consulte o [App Service oficial](https://easypanel.io/docs/services/app) para as opções
 de fonte, Dockerfile, ambiente, domínio e proxy.
 
-O `ENTRYPOINT` executa `npm run backend:prepare`, que regenera o Prisma Client, aplica
-`prisma migrate deploy` e confirma `prisma migrate status`. A API só é iniciada depois que os três
-comandos terminam com sucesso. O entrypoint continua ativo mesmo quando o campo **Command** do
+O `ENTRYPOINT` executa `npm run backend:prepare`, que regenera o Prisma Client, executa a
+recuperação segura de migrations conhecidas, aplica `prisma migrate deploy` e confirma
+`prisma migrate status`. A API só é iniciada depois que todos os comandos terminam com sucesso.
+O entrypoint continua ativo mesmo quando o campo **Command** do
 EasyPanel substitui o `CMD`; ainda assim, prefira deixar **Command** e **Arguments** vazios. Se o
 serviço for criado com Nixpacks em vez do Dockerfile, o `nixpacks.toml` usa `npm run start` e
 preserva a mesma sequência pelo `prestart`.
@@ -62,7 +63,7 @@ Copie host, porta, usuário e **nome do banco** da seção **Credentials** do Po
 Não digite o nome por aproximação: `professorconnect` e `professor_connect` são bancos distintos.
 No primeiro log do backend, o evento `Destino PostgreSQL configurado` mostra host, porta, banco e
 schema efetivos sem revelar usuário ou senha. O evento `Banco de dados validado`, emitido antes de
-`Servidor iniciado`, confirma o nome retornado pelo próprio PostgreSQL, as 10 migrations e as 24
+`Servidor iniciado`, confirma o nome retornado pelo próprio PostgreSQL, todas as migrations e as
 tabelas esperadas.
 
 `REQUEST_TIMEOUT_MS` limita somente solicitações de atendimento ainda não respondidas. Ele não
@@ -96,12 +97,25 @@ própria origem e mantém bloqueadas somente origens externas que não estejam e
 ## 5. Publicar e validar
 
 Clique em **Deploy** e acompanhe os logs. Em um banco novo, antes de `Servidor iniciado`, devem
-aparecer a geração do Prisma Client e a aplicação das 10 migrations. Em deploys seguintes,
+aparecer a geração do Prisma Client e a aplicação de todas as migrations. Em deploys seguintes,
 `prisma migrate deploy` informa que não há migrations pendentes. Somente então abra:
 
 ```text
 https://api.professor-connect.example/health
 ```
+
+Se uma execução anterior da Beta-12B estiver marcada como failed, a nova imagem identifica o erro
+PostgreSQL `55P04`, executa o `resolve --rolled-back` autorizado e continua o deploy
+automaticamente. Para repetir o procedimento de forma idempotente pelo **Console** do backend:
+
+```bash
+cd /app
+npm run backend:recover-migration
+```
+
+O script recusa qualquer migration ou causa que não esteja na allowlist auditada. Consulte o
+[procedimento de recuperação de migrations](./prisma-migration-recovery.md) antes de autorizar uma
+nova regra.
 
 Antes de abrir o painel, use o **Console** do serviço backend para uma auditoria somente leitura:
 
@@ -110,7 +124,8 @@ npm run prisma:status
 npm run prisma:pull:print
 ```
 
-O primeiro comando deve informar que 10 migrations foram encontradas e que o banco está atualizado.
+O primeiro comando deve informar que todas as migrations foram encontradas e que o banco está
+atualizado.
 O segundo imprime o schema introspectado sem sobrescrever `prisma/schema.prisma`. Somente então
 consulte a saúde da aplicação. Resposta esperada:
 

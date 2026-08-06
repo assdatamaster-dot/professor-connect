@@ -65,6 +65,7 @@ COPY --chown=node:node --from=build /app/services/backend/api/dist ./services/ba
 COPY --chown=node:node --from=build /app/services/backend/config/package.json ./services/backend/config/package.json
 COPY --chown=node:node --from=build /app/services/backend/config/dist ./services/backend/config/dist
 COPY --chown=node:node --from=build /app/services/backend/database/package.json ./services/backend/database/package.json
+COPY --chown=node:node --from=build /app/services/backend/database/migration-recovery.mjs ./services/backend/database/migration-recovery.mjs
 COPY --chown=node:node --from=build /app/services/backend/database/dist ./services/backend/database/dist
 COPY --chown=node:node --from=build /app/services/backend/database/prisma ./services/backend/database/prisma
 COPY --chown=node:node --from=build /app/services/backend/services/package.json ./services/backend/services/package.json
