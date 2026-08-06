@@ -18,6 +18,7 @@ const MIGRATIONS = [
   '20260805180000_bootstrap_first_run',
   '20260805220000_cleanup_bootstrap_artifacts',
   '20260806090000_beta_12a_file_transfer_manager',
+  '20260806145900_beta_12b_session_status_values',
   '20260806150000_beta_12b_session_recovery',
   '20260806180000_beta_12c_intelligent_auto_update',
 ] as const;
@@ -221,6 +222,13 @@ test('migration Beta-12A registra métricas profissionais de transferência', as
 });
 
 test('migration Beta-12B preserva sessões e armazena apenas hashes de recuperação', async () => {
+  const enumSql = await readFile(
+    new URL(
+      '../prisma/migrations/20260806145900_beta_12b_session_status_values/migration.sql',
+      import.meta.url,
+    ),
+    'utf8',
+  );
   const sql = await readFile(
     new URL(
       '../prisma/migrations/20260806150000_beta_12b_session_recovery/migration.sql',
@@ -229,6 +237,8 @@ test('migration Beta-12B preserva sessões e armazena apenas hashes de recupera�
     'utf8',
   );
 
+  assert.match(enumSql, /ADD VALUE IF NOT EXISTS 'CONNECTED'/);
+  assert.doesNotMatch(enumSql, /UPDATE\s+"attendance_sessions"/);
   assert.match(sql, /'RECONNECTING'/);
   assert.match(sql, /"teacher_recovery_token_hash"/);
   assert.match(sql, /"student_recovery_token_hash"/);
