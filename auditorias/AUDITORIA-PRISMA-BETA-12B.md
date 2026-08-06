@@ -2,8 +2,9 @@
 
 ## Diagnóstico
 
-A migration `20260806150000_beta_12b_session_recovery` adiciona seis valores ao
-enum existente `AttendanceSessionStatus` e, no mesmo arquivo, usa o novo valor
+A versão que falhou da migration
+`20260806150000_beta_12b_session_recovery` adicionava seis valores ao enum
+existente `AttendanceSessionStatus` e, no mesmo arquivo, usava o novo valor
 `CONNECTED` em um `UPDATE`.
 
 O Prisma 6.19.3 envia o arquivo PostgreSQL inteiro como uma chamada
@@ -53,9 +54,17 @@ Beta-12B. Ela cria os seis valores com `IF NOT EXISTS` e termina, permitindo o
 commit. Quando a Beta-12B é aplicada em seguida, `CONNECTED` já é um valor
 confirmado e pode ser usado pelo `UPDATE`.
 
-A migration original não foi editada. Isso preserva seu checksum em bancos nos
-quais ela já tenha sido aplicada e evita divergência do histórico. Em bancos
-que já possuem os valores, a preparatória é inócua.
+A migration Beta-12B foi reescrita para remover todos os comandos
+`ALTER TYPE ... ADD VALUE`. Ela agora contém somente a evolução da tabela, a
+conversão dos dados, o índice e a auditoria. O `UPDATE` usa um valor confirmado
+pela migration preparatória anterior e, portanto, ocorre em outra transação.
+
+O checksum da Beta-12B muda intencionalmente. Isso é seguro para o banco de
+produção afetado porque a execução anterior não terminou e será marcada como
+revertida antes de uma nova tentativa. Em bancos nos quais a Beta-12B nunca foi
+executada, as duas migrations são aplicadas normalmente. Se algum ambiente já
+tiver a Beta-12B registrada como concluída, não se deve executar `resolve`
+nesse ambiente; a preparatória será apenas uma migration pendente e idempotente.
 
 ## Confirmação no banco de produção
 

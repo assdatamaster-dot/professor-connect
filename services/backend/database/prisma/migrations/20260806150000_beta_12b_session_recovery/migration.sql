@@ -1,10 +1,5 @@
-ALTER TYPE "AttendanceSessionStatus" ADD VALUE IF NOT EXISTS 'WAITING';
-ALTER TYPE "AttendanceSessionStatus" ADD VALUE IF NOT EXISTS 'CONNECTING';
-ALTER TYPE "AttendanceSessionStatus" ADD VALUE IF NOT EXISTS 'CONNECTED';
-ALTER TYPE "AttendanceSessionStatus" ADD VALUE IF NOT EXISTS 'RECONNECTING';
-ALTER TYPE "AttendanceSessionStatus" ADD VALUE IF NOT EXISTS 'RECOVERING';
-ALTER TYPE "AttendanceSessionStatus" ADD VALUE IF NOT EXISTS 'DISCONNECTED';
-
+-- AttendanceSessionStatus values are added and committed by the immediately
+-- preceding 20260806145900_beta_12b_session_status_values migration.
 ALTER TABLE "attendance_sessions"
   ADD COLUMN "state_updated_at" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   ADD COLUMN "recovery_deadline" TIMESTAMPTZ(3),

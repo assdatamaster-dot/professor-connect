@@ -239,7 +239,9 @@ test('migration Beta-12B preserva sess√µes e armazena apenas hashes de recupera√
 
   assert.match(enumSql, /ADD VALUE IF NOT EXISTS 'CONNECTED'/);
   assert.doesNotMatch(enumSql, /UPDATE\s+"attendance_sessions"/);
-  assert.match(sql, /'RECONNECTING'/);
+  assert.doesNotMatch(sql, /ALTER TYPE\s+"AttendanceSessionStatus"\s+ADD VALUE/);
+  assert.match(enumSql, /ADD VALUE IF NOT EXISTS 'RECONNECTING'/);
+  assert.match(sql, /SET "status" = 'CONNECTED'::"AttendanceSessionStatus"/);
   assert.match(sql, /"teacher_recovery_token_hash"/);
   assert.match(sql, /"student_recovery_token_hash"/);
   assert.match(sql, /"reconnecting_milliseconds"/);
