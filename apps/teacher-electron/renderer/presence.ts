@@ -16,6 +16,8 @@ import { toUserFacingErrorMessage } from './error-message.js';
 
 const MAXIMUM_PENDING_ICE_CANDIDATES = 256;
 const WEBRTC_RECOVERY_DELAY_MS = 3_000;
+let promptedRecoverySessionId: string | undefined;
+let mediaRecoverySessionId: string | undefined;
 const loginView = requireElement<HTMLElement>('login-view');
 const onlineView = requireElement<HTMLElement>('online-view');
 const loginForm = requireElement<HTMLFormElement>('login-form');
@@ -39,6 +41,7 @@ const registerButton = requireElement<HTMLButtonElement>('register-button');
 const professorDisplayName = requireElement<HTMLElement>('professor-display-name');
 const presencePill = requireElement<HTMLElement>('presence-pill');
 const presenceStatus = requireElement<HTMLElement>('presence-status');
+const sessionRecoveryOverlay = requireElement<HTMLElement>('session-recovery-overlay');
 const availabilityToggle = requireElement<HTMLButtonElement>('availability-toggle');
 const availabilityToggleText = availabilityToggle.querySelector<HTMLElement>('span');
 const availabilityCopy = requireElement<HTMLElement>('availability-copy');
@@ -127,6 +130,7 @@ let renegotiationQueue = Promise.resolve();
 let webRtcRecoveryTimer: ReturnType<typeof setTimeout> | undefined;
 let webRtcRecoveryInFlight = false;
 let sessionClockTimer: ReturnType<typeof setInterval> | undefined;
+let connectionMetricsTimer: ReturnType<typeof setInterval> | undefined;
 let sessionStartedAt: number | undefined;
 let timedSessionId: string | undefined;
 const remoteControlClient = new RemoteControlClient(
@@ -176,7 +180,14 @@ function render(snapshot: ProfessorPresenceSnapshot): void {
 
   professorDisplayName.textContent = snapshot.professorName ?? '';
   presencePill.dataset.status = snapshot.status;
+  presencePill.title =
+    snapshot.latencyMs === undefined
+      ? 'Latência indisponível'
+      : `Latência: ${snapshot.latencyMs} ms`;
   presenceStatus.textContent = getPresenceLabel(snapshot.status);
+  sessionRecoveryOverlay.hidden =
+    snapshot.status !== ProfessorPresenceStatus.RECONNECTING &&
+    snapshot.status !== ProfessorPresenceStatus.RECOVERING;
   availabilityToggle.setAttribute('aria-pressed', String(snapshot.available));
   if (availabilityToggleText !== null) {
     availabilityToggleText.textContent = snapshot.available ? 'Disponível' : 'Indisponível';
@@ -206,7 +217,26 @@ function render(snapshot: ProfessorPresenceSnapshot): void {
     );
     if (activeWebRtcSessionId !== snapshot.activeSession.sessionId) {
       void startTeacherWebRtc(snapshot.activeSession.sessionId);
+    } else if (
+      snapshot.sessionNotice?.startsWith('Sessão recuperada') === true &&
+      mediaRecoverySessionId !== snapshot.activeSession.sessionId &&
+      peerConnection !== undefined
+    ) {
+      mediaRecoverySessionId = snapshot.activeSession.sessionId;
+      void queueRenegotiation(snapshot.activeSession.sessionId, peerConnection, true);
     }
+  }
+  if (
+    snapshot.recoverableSession !== undefined &&
+    promptedRecoverySessionId !== snapshot.recoverableSession.sessionId
+  ) {
+    promptedRecoverySessionId = snapshot.recoverableSession.sessionId;
+    const resume = window.confirm(
+      `Um atendimento com ${snapshot.recoverableSession.studentName} foi interrompido. Deseja retomar?`,
+    );
+    void (resume
+      ? window.professorConnectPresence.resumeSession()
+      : window.professorConnectPresence.discardRecovery());
   }
   renderRemoteControl(snapshot.remoteControl, snapshot.activeSession !== undefined);
   renderSessionRequest(snapshot);
@@ -294,6 +324,12 @@ function getPresenceLabel(status: ProfessorPresenceStatus): string {
       return 'Online';
     case ProfessorPresenceStatus.CONNECTING:
       return 'Conectando';
+    case ProfessorPresenceStatus.RECONNECTING:
+      return 'Reconectando';
+    case ProfessorPresenceStatus.RECOVERING:
+      return 'Recuperando sessão';
+    case ProfessorPresenceStatus.RECOVERY_AVAILABLE:
+      return 'Sessão interrompida';
     case ProfessorPresenceStatus.ERROR:
       return 'Erro de conexão';
     case ProfessorPresenceStatus.DISCONNECTED:
@@ -921,6 +957,7 @@ function closeWebRtcSession(resetStatus = true): void {
   setFileDrawerOpen(false);
   pendingIceCandidates.clear();
   clearWebRtcRecovery();
+  stopConnectionMetrics();
   fileTransferClient.detachChannel();
   if (peerConnection !== undefined) {
     peerConnection.onicecandidate = null;
@@ -1092,6 +1129,7 @@ function handleWebRtcConnectionState(sessionId: string, connection: RTCPeerConne
   if (connection.connectionState === 'connected') {
     clearWebRtcRecovery();
     setConnectionQuality('good');
+    startConnectionMetrics(connection);
     attendanceState.textContent = 'Aluno conectado';
     return;
   }
@@ -1187,7 +1225,11 @@ screenVideo.addEventListener('resize', () => {
 
 type ConnectionQuality = 'idle' | 'connecting' | 'good' | 'unstable';
 
-function setConnectionQuality(quality: ConnectionQuality): void {
+function setConnectionQuality(
+  quality: ConnectionQuality,
+  latencyMs?: number,
+  packetLoss?: number,
+): void {
   const labels: Record<ConnectionQuality, string> = {
     idle: 'Aguardando',
     connecting: 'Conectando',
@@ -1197,8 +1239,46 @@ function setConnectionQuality(quality: ConnectionQuality): void {
   connectionQuality.dataset.quality = quality;
   const label = connectionQuality.querySelector('span');
   if (label !== null) {
-    label.textContent = labels[quality];
+    label.textContent = [
+      labels[quality],
+      ...(latencyMs === undefined ? [] : [`${latencyMs} ms`]),
+      ...(packetLoss === undefined ? [] : [`${packetLoss.toFixed(1)}% perda`]),
+    ].join(' · ');
   }
+}
+
+function startConnectionMetrics(connection: RTCPeerConnection): void {
+  stopConnectionMetrics();
+  const update = async (): Promise<void> => {
+    if (peerConnection !== connection || connection.connectionState !== 'connected') return;
+    const stats = await connection.getStats();
+    let packetsLost = 0;
+    let packetsReceived = 0;
+    let latencyMs: number | undefined;
+    stats.forEach((report) => {
+      if (report.type === 'inbound-rtp') {
+        packetsLost += typeof report.packetsLost === 'number' ? report.packetsLost : 0;
+        packetsReceived += typeof report.packetsReceived === 'number' ? report.packetsReceived : 0;
+      }
+      if (
+        report.type === 'candidate-pair' &&
+        report.state === 'succeeded' &&
+        typeof report.currentRoundTripTime === 'number'
+      ) {
+        latencyMs = Math.round(report.currentRoundTripTime * 1_000);
+      }
+    });
+    const total = packetsLost + packetsReceived;
+    const packetLoss = total === 0 ? 0 : (packetsLost / total) * 100;
+    setConnectionQuality(packetLoss >= 5 ? 'unstable' : 'good', latencyMs, packetLoss);
+  };
+  void update().catch(() => undefined);
+  connectionMetricsTimer = setInterval(() => void update().catch(() => undefined), 5_000);
+}
+
+function stopConnectionMetrics(): void {
+  if (connectionMetricsTimer !== undefined) clearInterval(connectionMetricsTimer);
+  connectionMetricsTimer = undefined;
 }
 
 function startSessionClock(sessionId: string): void {

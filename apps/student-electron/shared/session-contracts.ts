@@ -19,7 +19,18 @@ export interface AttendanceHistoryItem {
 }
 
 export type StudentSessionRequestStatus =
-  'idle' | 'waiting' | 'accepted' | 'rejected' | 'cancelled' | 'timeout' | 'connected' | 'ended';
+  | 'idle'
+  | 'waiting'
+  | 'accepted'
+  | 'rejected'
+  | 'cancelled'
+  | 'timeout'
+  | 'connected'
+  | 'reconnecting'
+  | 'recovering'
+  | 'recovery-available'
+  | 'disconnected'
+  | 'ended';
 
 export interface StudentSessionSnapshot {
   readonly status: StudentSessionRequestStatus;
@@ -27,6 +38,8 @@ export interface StudentSessionSnapshot {
   readonly activeSessionId: string | undefined;
   readonly activeTeacherName: string | undefined;
   readonly pendingRequestId: string | undefined;
+  readonly recoveryDeadline?: string;
+  readonly latencyMs: number | undefined;
   readonly remoteControl: StudentRemoteControlSnapshot;
 }
 
@@ -40,6 +53,8 @@ export interface StudentSessionApi {
   cancelRequest(): Promise<StudentSessionSnapshot>;
   getState(): Promise<StudentSessionSnapshot>;
   endSession(): Promise<StudentSessionSnapshot>;
+  resumeSession(): Promise<StudentSessionSnapshot>;
+  discardRecovery(): Promise<StudentSessionSnapshot>;
   approveRemoteControl(): Promise<StudentSessionSnapshot>;
   denyRemoteControl(): Promise<StudentSessionSnapshot>;
   stopRemoteControl(): Promise<StudentSessionSnapshot>;

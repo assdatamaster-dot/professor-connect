@@ -57,6 +57,14 @@ export function registerSessionIpc(
     assertSender(event);
     return controller.endSession();
   });
+  ipcMain.handle(SESSION_IPC_CHANNELS.RESUME, (event): StudentSessionSnapshot => {
+    assertSender(event);
+    return controller.resumeSession();
+  });
+  ipcMain.handle(SESSION_IPC_CHANNELS.DISCARD_RECOVERY, (event): StudentSessionSnapshot => {
+    assertSender(event);
+    return controller.discardRecovery();
+  });
   ipcMain.handle(SESSION_IPC_CHANNELS.WEBRTC_SEND_ANSWER, (event, payload: unknown) => {
     assertSender(event);
     controller.sendWebRtcAnswer(requireDescriptionPayload(payload, 'answer'));
@@ -140,6 +148,8 @@ export function registerSessionIpc(
       ipcMain.removeHandler(SESSION_IPC_CHANNELS.CANCEL_REQUEST);
       ipcMain.removeHandler(SESSION_IPC_CHANNELS.GET_STATE);
       ipcMain.removeHandler(SESSION_IPC_CHANNELS.END);
+      ipcMain.removeHandler(SESSION_IPC_CHANNELS.RESUME);
+      ipcMain.removeHandler(SESSION_IPC_CHANNELS.DISCARD_RECOVERY);
       ipcMain.removeHandler(SESSION_IPC_CHANNELS.WEBRTC_SEND_ANSWER);
       ipcMain.removeHandler(SESSION_IPC_CHANNELS.WEBRTC_SEND_OFFER);
       ipcMain.removeHandler(SESSION_IPC_CHANNELS.WEBRTC_SEND_ICE);

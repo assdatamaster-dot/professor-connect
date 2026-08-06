@@ -116,6 +116,12 @@ solicitações. `HEARTBEAT_INTERVAL_MS`, `HEARTBEAT_TIMEOUT_MS` e `RECONNECT_WIN
 respectivamente, o ciclo de verificação, a expiração e a janela de recuperação. Os padrões são
 `30000`, `90000` e `90000` milissegundos.
 
+Os clientes Electron aceitam também `reconnectAttempts`, `reconnectDelayMs`,
+`reconnectDelayMaxMs` e `connectTimeoutMs` em seus respectivos `config.json`. A sessão ativa é
+mantida durante a janela de recuperação; os tokens locais são criptografados pelo Electron e o
+PostgreSQL armazena somente hashes SHA-256. Após reinício inesperado, o aplicativo oferece retomar
+ou encerrar o mesmo atendimento, sem criar um novo `sessionId`.
+
 Para gerar novamente o cliente Prisma após alterações futuras no schema:
 
 ```bash

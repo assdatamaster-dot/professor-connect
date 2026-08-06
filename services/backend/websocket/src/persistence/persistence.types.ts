@@ -26,6 +26,8 @@ export interface SessionRequestPersistence {
 
 export interface AttendanceSessionPersistence {
   saveSession(session: AttendanceSession, endReason?: string): void;
+  saveRecoveryState?(session: AttendanceSession): void;
+  saveConnectionHealth?(session: AttendanceSession): void;
   markFeatureUsed(
     sessionId: string,
     feature: 'screen-share' | 'remote-control' | 'file-transfer',

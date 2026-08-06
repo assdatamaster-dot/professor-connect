@@ -65,6 +65,22 @@ export interface AttendanceSessionRecord {
   readonly studentName: string;
   readonly createdAt: string;
   readonly status: 'active' | 'finished';
+  readonly connectionState?:
+    | 'WAITING'
+    | 'CONNECTING'
+    | 'CONNECTED'
+    | 'RECONNECTING'
+    | 'RECOVERING'
+    | 'DISCONNECTED'
+    | 'FINISHED';
+  readonly stateUpdatedAt?: string;
+  readonly recoveryDeadline?: string;
+  readonly teacherRecoveryTokenHash?: string;
+  readonly studentRecoveryTokenHash?: string;
+  readonly lastHeartbeatAt?: string;
+  readonly connectedMilliseconds?: number;
+  readonly reconnectingMilliseconds?: number;
+  readonly disconnectCount?: number;
   readonly endedAt?: string;
   readonly durationSeconds?: number;
   readonly endReason?: string;
@@ -345,13 +361,24 @@ export class AttendanceSessionRepository {
             requestId: session.requestId,
             professorId: session.teacherId,
             studentId: session.studentId,
-            status: finished ? AttendanceSessionStatus.FINISHED : AttendanceSessionStatus.ACTIVE,
+            status: finished ? AttendanceSessionStatus.FINISHED : AttendanceSessionStatus.CONNECTED,
             startedAt,
+            stateUpdatedAt: new Date(session.stateUpdatedAt ?? session.createdAt),
+            teacherRecoveryTokenHash: session.teacherRecoveryTokenHash ?? null,
+            studentRecoveryTokenHash: session.studentRecoveryTokenHash ?? null,
+            lastHeartbeatAt:
+              session.lastHeartbeatAt === undefined ? null : new Date(session.lastHeartbeatAt),
+            connectedMilliseconds: BigInt(session.connectedMilliseconds ?? 0),
+            reconnectingMilliseconds: BigInt(session.reconnectingMilliseconds ?? 0),
+            disconnectCount: session.disconnectCount ?? 0,
             ...(finished
               ? {
                   endedAt,
                   durationSeconds: persistedDuration,
                   endReason: session.endReason ?? endReason ?? 'participant',
+                  recoveryDeadline: null,
+                  teacherRecoveryTokenHash: null,
+                  studentRecoveryTokenHash: null,
                 }
               : {}),
           },
@@ -361,8 +388,11 @@ export class AttendanceSessionRepository {
                 endedAt,
                 durationSeconds: persistedDuration,
                 endReason: session.endReason ?? endReason ?? 'participant',
+                recoveryDeadline: null,
+                teacherRecoveryTokenHash: null,
+                studentRecoveryTokenHash: null,
               }
-            : { status: AttendanceSessionStatus.ACTIVE },
+            : { status: AttendanceSessionStatus.CONNECTED },
         }),
         this.prisma.domainEvent.create({
           data: {
@@ -377,6 +407,55 @@ export class AttendanceSessionRepository {
           },
         }),
       ]),
+    );
+  }
+
+  public saveRecoveryState(session: AttendanceSessionRecord): void {
+    const status = toAttendanceSessionStatus(session.connectionState);
+    this.queue.enqueue(() =>
+      this.prisma.$transaction([
+        this.prisma.attendanceSession.update({
+          where: { id: session.sessionId },
+          data: {
+            status,
+            stateUpdatedAt: new Date(session.stateUpdatedAt ?? session.createdAt),
+            recoveryDeadline:
+              session.recoveryDeadline === undefined ? null : new Date(session.recoveryDeadline),
+            teacherRecoveryTokenHash: session.teacherRecoveryTokenHash ?? null,
+            studentRecoveryTokenHash: session.studentRecoveryTokenHash ?? null,
+            lastHeartbeatAt:
+              session.lastHeartbeatAt === undefined ? null : new Date(session.lastHeartbeatAt),
+            connectedMilliseconds: BigInt(session.connectedMilliseconds ?? 0),
+            reconnectingMilliseconds: BigInt(session.reconnectingMilliseconds ?? 0),
+            disconnectCount: session.disconnectCount ?? 0,
+          },
+        }),
+        this.prisma.domainEvent.create({
+          data: {
+            sessionId: session.sessionId,
+            type: `session.state.${status.toLowerCase()}`,
+            payload: toJson({
+              recoveryDeadline: session.recoveryDeadline,
+              disconnectCount: session.disconnectCount,
+            }),
+          },
+        }),
+      ]),
+    );
+  }
+
+  public saveConnectionHealth(session: AttendanceSessionRecord): void {
+    this.queue.enqueue(() =>
+      this.prisma.attendanceSession.update({
+        where: { id: session.sessionId },
+        data: {
+          lastHeartbeatAt:
+            session.lastHeartbeatAt === undefined ? null : new Date(session.lastHeartbeatAt),
+          connectedMilliseconds: BigInt(session.connectedMilliseconds ?? 0),
+          reconnectingMilliseconds: BigInt(session.reconnectingMilliseconds ?? 0),
+          disconnectCount: session.disconnectCount ?? 0,
+        },
+      }),
     );
   }
 
@@ -414,7 +493,28 @@ export class AttendanceSessionRepository {
       studentId: session.studentId,
       studentName: session.student.name,
       createdAt: session.startedAt.toISOString(),
-      status: session.status === AttendanceSessionStatus.ACTIVE ? 'active' : 'finished',
+      status:
+        session.status === AttendanceSessionStatus.FINISHED ||
+        session.status === AttendanceSessionStatus.INTERRUPTED
+          ? 'finished'
+          : 'active',
+      connectionState: fromAttendanceSessionStatus(session.status),
+      stateUpdatedAt: session.stateUpdatedAt.toISOString(),
+      ...(session.recoveryDeadline === null
+        ? {}
+        : { recoveryDeadline: session.recoveryDeadline.toISOString() }),
+      ...(session.teacherRecoveryTokenHash === null
+        ? {}
+        : { teacherRecoveryTokenHash: session.teacherRecoveryTokenHash }),
+      ...(session.studentRecoveryTokenHash === null
+        ? {}
+        : { studentRecoveryTokenHash: session.studentRecoveryTokenHash }),
+      ...(session.lastHeartbeatAt === null
+        ? {}
+        : { lastHeartbeatAt: session.lastHeartbeatAt.toISOString() }),
+      connectedMilliseconds: Number(session.connectedMilliseconds),
+      reconnectingMilliseconds: Number(session.reconnectingMilliseconds),
+      disconnectCount: session.disconnectCount,
       ...(session.endedAt === null ? {} : { endedAt: session.endedAt.toISOString() }),
       ...(session.durationSeconds === null ? {} : { durationSeconds: session.durationSeconds }),
       ...(session.endReason === null ? {} : { endReason: session.endReason }),
@@ -542,7 +642,7 @@ export class AuditRepository {
 export class RecoveryRepository {
   public constructor(private readonly prisma: PrismaClient) {}
 
-  public async recoverAfterRestart(now = new Date()): Promise<void> {
+  public async recoverAfterRestart(now = new Date(), recoveryWindowMs = 90_000): Promise<void> {
     await this.prisma.$transaction(async (transaction: Prisma.TransactionClient) => {
       await transaction.presenceConnection.updateMany({
         where: { isOnline: true },
@@ -571,20 +671,29 @@ export class RecoveryRepository {
         },
         data: { status: SupportCallStatus.FAILED, finishedAt: now },
       });
+      const recoveryDeadline = new Date(now.getTime() + recoveryWindowMs);
       await transaction.$executeRaw`
         UPDATE "attendance_sessions"
-        SET "status" = 'INTERRUPTED'::"AttendanceSessionStatus",
-            "ended_at" = ${now},
-            "duration_seconds" = GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (${now} - "started_at")))::integer),
-            "end_reason" = 'server-restart'
-        WHERE "status" = 'ACTIVE'::"AttendanceSessionStatus"
+        SET "status" = 'RECOVERING'::"AttendanceSessionStatus",
+            "state_updated_at" = ${now},
+            "recovery_deadline" = ${recoveryDeadline},
+            "disconnect_count" = "disconnect_count" + 1
+        WHERE "status" IN (
+          'ACTIVE'::"AttendanceSessionStatus",
+          'CONNECTED'::"AttendanceSessionStatus",
+          'RECONNECTING'::"AttendanceSessionStatus",
+          'RECOVERING'::"AttendanceSessionStatus"
+        )
       `;
       await transaction.auditLog.create({
         data: {
           action: 'backend.recovered-after-restart',
           entityType: 'backend',
           severity: AuditSeverity.WARNING,
-          metadata: toJson({ recoveredAt: now.toISOString() }),
+          metadata: toJson({
+            recoveredAt: now.toISOString(),
+            recoveryDeadline: recoveryDeadline.toISOString(),
+          }),
         },
       });
     });
@@ -797,6 +906,21 @@ export class WorkflowSessionRepository {
 
 function durationSeconds(startedAt: Date, endedAt: Date): number {
   return Math.max(0, Math.floor((endedAt.getTime() - startedAt.getTime()) / 1_000));
+}
+
+function toAttendanceSessionStatus(
+  state: AttendanceSessionRecord['connectionState'],
+): AttendanceSessionStatus {
+  if (state === undefined) return AttendanceSessionStatus.CONNECTED;
+  return AttendanceSessionStatus[state];
+}
+
+function fromAttendanceSessionStatus(
+  status: AttendanceSessionStatus,
+): NonNullable<AttendanceSessionRecord['connectionState']> {
+  if (status === AttendanceSessionStatus.ACTIVE) return 'CONNECTED';
+  if (status === AttendanceSessionStatus.INTERRUPTED) return 'DISCONNECTED';
+  return status;
 }
 
 function toJson(value: Readonly<Record<string, unknown>>): JsonObject {

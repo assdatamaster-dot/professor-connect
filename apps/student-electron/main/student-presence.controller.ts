@@ -13,6 +13,11 @@ import {
 } from '@professor-connect/protocol';
 import { io, type Socket } from 'socket.io-client';
 import type { FileTransferAuditEntry } from '@professor-connect/engine/file-transfer-node';
+import type {
+  SessionRecoveryStore,
+  StoredSessionRecovery,
+} from '@professor-connect/shared/electron';
+import { ReconnectService } from '@professor-connect/shared';
 
 import type {
   AvailableTeachersListener,
@@ -46,12 +51,16 @@ interface StudentPresenceClientEvents {
   ) => void;
   'file-transfer:audit': (payload: FileTransferAuditEntry & { readonly sessionId: string }) => void;
   'student:disconnect': (acknowledge: () => void) => void;
-  'student:heartbeat': () => void;
+  'student:heartbeat': (acknowledge?: (payload: { readonly serverTime: string }) => void) => void;
   'student:register': (payload: StudentIdentity) => void;
   'request:session': (payload: { readonly teacherId: string }) => void;
   'session:cancel': (payload: { readonly requestId: string }) => void;
   'professor:availability:get': () => void;
-  'session:end': (payload: { readonly sessionId: string }) => void;
+  'session:end': (payload: { readonly sessionId: string; readonly recoveryToken?: string }) => void;
+  'session:recover': (
+    payload: { readonly sessionId: string; readonly recoveryToken: string },
+    acknowledge?: (result: { readonly ok: boolean; readonly message?: string }) => void,
+  ) => void;
   'webrtc:answer': (payload: WebRtcDescriptionPayload) => void;
   'webrtc:offer': (payload: WebRtcDescriptionPayload) => void;
   'webrtc:ice-candidate': (payload: WebRtcIceCandidatePayload) => void;
@@ -71,6 +80,8 @@ interface StudentPresenceServerEvents {
   'session:timeout': (payload: SessionResponsePayload) => void;
   'session:started': (payload: SessionLifecyclePayload) => void;
   'session:ended': (payload: SessionLifecyclePayload) => void;
+  'session:reconnecting': (payload: SessionLifecyclePayload) => void;
+  'session:recovered': (payload: SessionLifecyclePayload) => void;
   'webrtc:offer': (payload: WebRtcDescriptionPayload) => void;
   'webrtc:answer': (payload: WebRtcDescriptionPayload) => void;
   'webrtc:ice-candidate': (payload: WebRtcIceCandidatePayload) => void;
@@ -92,10 +103,17 @@ interface SessionLifecyclePayload {
   readonly teacherName: string;
   readonly studentId: string;
   readonly studentName: string;
+  readonly state?: 'CONNECTED' | 'RECONNECTING' | 'RECOVERING' | 'FINISHED';
+  readonly recoveryDeadline?: string;
+  readonly recoveryToken?: string;
 }
 
 interface StudentConnectConfig {
   readonly serverUrl: string;
+  readonly reconnectAttempts?: number;
+  readonly reconnectDelayMs?: number;
+  readonly reconnectDelayMaxMs?: number;
+  readonly connectTimeoutMs?: number;
 }
 
 type StudentPresenceSocket = Socket<StudentPresenceServerEvents, StudentPresenceClientEvents>;
@@ -117,7 +135,10 @@ export class StudentPresenceController {
   private authRefreshTimer: NodeJS.Timeout | undefined;
   private socket: StudentPresenceSocket | undefined;
   private availableTeachers: readonly OnlineTeacher[] = [];
-  private sessionState: Omit<StudentSessionSnapshot, 'remoteControl'> = {
+  private storedRecovery: StoredSessionRecovery | undefined;
+  private startupRecoveryPending = false;
+  private latencyMs: number | undefined;
+  private sessionState: Omit<StudentSessionSnapshot, 'remoteControl' | 'latencyMs'> = {
     status: 'idle',
     message: 'Pronto para solicitar atendimento.',
     activeSessionId: undefined,
@@ -131,6 +152,7 @@ export class StudentPresenceController {
     private readonly heartbeatIntervalMs = HEARTBEAT_INTERVAL_MS,
     remoteControlReceiver = new RemoteControlReceiver(),
     private readonly authenticatedTransport?: AuthenticatedTransport,
+    private readonly recoveryStore?: SessionRecoveryStore,
   ) {
     this.remoteControlReceiver = remoteControlReceiver;
     this.unsubscribeRemoteControl = this.remoteControlReceiver.onStateChanged(() => {
@@ -141,10 +163,32 @@ export class StudentPresenceController {
   public async connect(): Promise<void> {
     this.disconnectSocket();
 
-    const { serverUrl } = await this.loadConfig();
+    if (this.sessionState.activeSessionId === undefined) {
+      this.storedRecovery = await this.recoveryStore?.load();
+      if (this.storedRecovery !== undefined) {
+        this.startupRecoveryPending = true;
+        this.updateSessionState(
+          'recovery-available',
+          `Há um atendimento interrompido com ${this.storedRecovery.peerName}.`,
+          this.storedRecovery.sessionId,
+          this.storedRecovery.peerName,
+          undefined,
+          this.storedRecovery.recoveryDeadline,
+        );
+      }
+    }
+
+    const config = await this.loadConfig();
+    const { serverUrl } = config;
+    const reconnect = new ReconnectService(config).settings;
     const accessToken = await this.authenticatedTransport?.getAccessToken();
     const socket: StudentPresenceSocket = io(serverUrl, {
       autoConnect: false,
+      reconnection: true,
+      reconnectionAttempts: reconnect.attempts,
+      reconnectionDelay: reconnect.initialDelayMs,
+      reconnectionDelayMax: reconnect.maximumDelayMs,
+      timeout: reconnect.connectTimeoutMs,
       ...(accessToken === undefined ? {} : { auth: { token: accessToken } }),
     });
 
@@ -154,6 +198,7 @@ export class StudentPresenceController {
       socket.emit('professor:availability:get');
       this.startHeartbeat(socket);
       this.startAuthRefresh(socket);
+      if (!this.startupRecoveryPending) this.recoverCurrentSession(socket);
     });
     socket.on('professors:available:list', (teachers) => {
       this.availableTeachers = teachers.filter(isOnlineTeacher);
@@ -172,11 +217,20 @@ export class StudentPresenceController {
       this.stopHeartbeat();
       this.stopAuthRefresh();
       this.remoteControlReceiver.handleTransportLoss();
+      if (this.sessionState.activeSessionId !== undefined) {
+        this.updateSessionState('reconnecting', 'Conexão perdida. Tentando reconectar…');
+      }
     });
     socket.on('connect_error', () => {
       this.stopHeartbeat();
       this.stopAuthRefresh();
       this.remoteControlReceiver.handleTransportLoss();
+      if (this.sessionState.activeSessionId !== undefined) {
+        this.updateSessionState(
+          'reconnecting',
+          'Servidor indisponível. Nova tentativa em instantes…',
+        );
+      }
     });
     socket.on('session:accepted', () => {
       this.updateSessionState(
@@ -217,11 +271,40 @@ export class StudentPresenceController {
         session.teacherName,
         undefined,
       );
+      this.saveRecovery(session);
+    });
+    socket.on('session:reconnecting', (session) => {
+      if (this.sessionState.activeSessionId === session.sessionId) {
+        this.updateSessionState(
+          'recovering',
+          'O professor perdeu a conexão. Aguardando recuperação…',
+          session.sessionId,
+          session.teacherName,
+          undefined,
+          session.recoveryDeadline,
+        );
+      }
+    });
+    socket.on('session:recovered', (session) => {
+      if (this.sessionState.activeSessionId !== session.sessionId) return;
+      if (session.recoveryToken !== undefined) this.saveRecovery(session);
+      this.remoteControlReceiver.handleTransportRestored();
+      this.updateSessionState(
+        session.state === 'CONNECTED' ? 'connected' : 'recovering',
+        session.state === 'CONNECTED'
+          ? 'Sessão recuperada. Reconectando áudio e vídeo…'
+          : 'Sua conexão voltou. Aguardando o professor…',
+        session.sessionId,
+        session.teacherName,
+        undefined,
+        session.recoveryDeadline,
+      );
     });
     socket.on('session:ended', (session) => {
       if (this.sessionState.activeSessionId === session.sessionId) {
         this.remoteControlReceiver.endSession(session.sessionId);
         this.updateSessionState('ended', 'Atendimento encerrado', undefined, undefined, undefined);
+        void this.clearRecovery();
       }
     });
     socket.on('webrtc:offer', (payload) => {
@@ -262,6 +345,22 @@ export class StudentPresenceController {
     });
     socket.on(REMOTE_CONTROL_CHANNEL_EVENTS.STOP, (payload) => {
       this.remoteControlReceiver.receiveStop(payload);
+    });
+    socket.io.on('reconnect_attempt', (attempt) => {
+      if (this.sessionState.activeSessionId !== undefined) {
+        this.updateSessionState(
+          'reconnecting',
+          `Reconectando… tentativa ${attempt} de ${reconnect.attempts}`,
+        );
+      }
+    });
+    socket.io.on('reconnect_failed', () => {
+      if (this.sessionState.activeSessionId !== undefined) {
+        this.updateSessionState(
+          'disconnected',
+          'Não foi possível reconectar automaticamente. Verifique sua internet.',
+        );
+      }
     });
     socket.connect();
   }
@@ -350,6 +449,7 @@ export class StudentPresenceController {
     return {
       ...this.sessionState,
       remoteControl: this.remoteControlReceiver.getSnapshot(),
+      latencyMs: this.latencyMs,
     };
   }
 
@@ -359,6 +459,35 @@ export class StudentPresenceController {
       throw new Error('Não há atendimento ativo.');
     }
     this.socket.emit('session:end', { sessionId });
+    return this.getSessionSnapshot();
+  }
+
+  public resumeSession(): StudentSessionSnapshot {
+    if (this.storedRecovery === undefined || this.socket?.connected !== true) {
+      throw new Error('Nenhuma sessão pode ser retomada agora.');
+    }
+    this.startupRecoveryPending = false;
+    this.updateSessionState('recovering', 'Recuperando atendimento…');
+    this.recoverCurrentSession(this.socket);
+    return this.getSessionSnapshot();
+  }
+
+  public discardRecovery(): StudentSessionSnapshot {
+    if (this.socket?.connected === true && this.storedRecovery !== undefined) {
+      this.socket.emit('session:end', {
+        sessionId: this.storedRecovery.sessionId,
+        recoveryToken: this.storedRecovery.recoveryToken,
+      });
+    }
+    this.startupRecoveryPending = false;
+    void this.clearRecovery();
+    this.updateSessionState(
+      'ended',
+      'Atendimento anterior encerrado.',
+      undefined,
+      undefined,
+      undefined,
+    );
     return this.getSessionSnapshot();
   }
 
@@ -460,6 +589,7 @@ export class StudentPresenceController {
   public disconnect(): void {
     this.disconnectSocket();
     this.updateSessionState('idle', 'Autenticação necessária.', undefined, undefined, undefined);
+    void this.clearRecovery();
   }
 
   private updateSessionState(
@@ -468,6 +598,7 @@ export class StudentPresenceController {
     activeSessionId = this.sessionState.activeSessionId,
     activeTeacherName = this.sessionState.activeTeacherName,
     pendingRequestId = this.sessionState.pendingRequestId,
+    recoveryDeadline?: string,
   ): void {
     this.sessionState = {
       status,
@@ -475,6 +606,7 @@ export class StudentPresenceController {
       activeSessionId,
       activeTeacherName,
       pendingRequestId,
+      ...(recoveryDeadline === undefined ? {} : { recoveryDeadline }),
     };
     this.notifySessionListeners();
   }
@@ -530,14 +662,18 @@ export class StudentPresenceController {
       throw new Error('config.json inválido: serverUrl deve usar HTTP ou HTTPS.');
     }
 
-    return { serverUrl: url.toString() };
+    return { serverUrl: url.toString(), ...readOptionalReconnectConfig(parsed) };
   }
 
   private startHeartbeat(socket: StudentPresenceSocket): void {
     this.stopHeartbeat();
     this.heartbeatTimer = setInterval(() => {
       if (socket.connected) {
-        socket.emit('student:heartbeat');
+        const sentAt = Date.now();
+        socket.emit('student:heartbeat', () => {
+          this.latencyMs = Math.max(0, Date.now() - sentAt);
+          this.notifySessionListeners();
+        });
       }
     }, this.heartbeatIntervalMs);
   }
@@ -574,6 +710,63 @@ export class StudentPresenceController {
     disconnectTimer = setTimeout(finishDisconnect, 250);
     socket.emit('student:disconnect', finishDisconnect);
   }
+
+  private recoverCurrentSession(socket: StudentPresenceSocket): void {
+    const recovery = this.storedRecovery;
+    if (recovery === undefined || !socket.connected) return;
+    socket.emit(
+      'session:recover',
+      { sessionId: recovery.sessionId, recoveryToken: recovery.recoveryToken },
+      (result) => {
+        if (!result.ok) {
+          this.updateSessionState(
+            'disconnected',
+            result.message ?? 'Não foi possível recuperar a sessão.',
+          );
+          void this.clearRecovery();
+        }
+      },
+    );
+  }
+
+  private saveRecovery(session: SessionLifecyclePayload): void {
+    if (session.recoveryToken === undefined) return;
+    const recovery: StoredSessionRecovery = {
+      sessionId: session.sessionId,
+      recoveryToken: session.recoveryToken,
+      peerName: session.teacherName,
+      savedAt: new Date().toISOString(),
+      ...(session.recoveryDeadline === undefined
+        ? {}
+        : { recoveryDeadline: session.recoveryDeadline }),
+    };
+    this.storedRecovery = recovery;
+    void this.recoveryStore?.save(recovery).catch((error: unknown) => {
+      remoteControlLogger.error('recovery-token-save-failed', error);
+    });
+  }
+
+  private async clearRecovery(): Promise<void> {
+    this.storedRecovery = undefined;
+    await this.recoveryStore?.clear();
+  }
+}
+
+function readOptionalReconnectConfig(value: object): Omit<StudentConnectConfig, 'serverUrl'> {
+  const record = value as Record<string, unknown>;
+  const result: Omit<StudentConnectConfig, 'serverUrl'> = {};
+  for (const key of [
+    'reconnectAttempts',
+    'reconnectDelayMs',
+    'reconnectDelayMaxMs',
+    'connectTimeoutMs',
+  ] as const) {
+    const candidate = record[key];
+    if (typeof candidate === 'number' && Number.isInteger(candidate) && candidate > 0) {
+      Object.assign(result, { [key]: candidate });
+    }
+  }
+  return result;
 }
 
 function isOnlineTeacher(value: unknown): value is OnlineTeacher {

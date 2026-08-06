@@ -198,6 +198,7 @@ export function initializeWebSocket(
     logger,
     heartbeatSettings.timeoutMs,
     heartbeatSettings.intervalMs,
+    (socketId) => activeSessionManager.recordHeartbeat(socketId),
   );
   professorPresenceGateway.registerEvents();
   const studentPresenceGateway = new StudentPresenceGateway(
@@ -206,6 +207,7 @@ export function initializeWebSocket(
     logger,
     heartbeatSettings.timeoutMs,
     heartbeatSettings.intervalMs,
+    (socketId) => activeSessionManager.recordHeartbeat(socketId),
   );
   studentPresenceGateway.registerEvents();
   const activeSessionGateway = new SessionGateway(socketServer, activeSessionManager, logger);
@@ -241,6 +243,7 @@ export function initializeWebSocket(
     studentPresenceGateway.dispose();
     sessionRequestGateway.dispose();
     remoteControlGateway.dispose();
+    activeSessionGateway.dispose();
   });
 
   return communicationGateway;

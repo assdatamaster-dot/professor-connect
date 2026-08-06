@@ -18,6 +18,7 @@ const MIGRATIONS = [
   '20260805180000_bootstrap_first_run',
   '20260805220000_cleanup_bootstrap_artifacts',
   '20260806090000_beta_12a_file_transfer_manager',
+  '20260806150000_beta_12b_session_recovery',
 ] as const;
 const TABLES = [
   'organizations',
@@ -99,10 +100,7 @@ test('rejects startup when a bundled migration is pending', async () => {
     })),
   ]);
 
-  await assert.rejects(
-    assertMigrationsApplied(prisma),
-    /20260806090000_beta_12a_file_transfer_manager/,
-  );
+  await assert.rejects(assertMigrationsApplied(prisma), /20260806150000_beta_12b_session_recovery/);
 });
 
 test('rejects startup when migrations are recorded but a domain table is absent', async () => {
@@ -213,6 +211,22 @@ test('migration Beta-12A registra métricas profissionais de transferência', as
   assert.match(sql, /ADD COLUMN "duration_milliseconds" BIGINT/);
   assert.match(sql, /file_transfers_average_speed_check/);
   assert.match(sql, /file_transfers_duration_check/);
+});
+
+test('migration Beta-12B preserva sessões e armazena apenas hashes de recuperação', async () => {
+  const sql = await readFile(
+    new URL(
+      '../prisma/migrations/20260806150000_beta_12b_session_recovery/migration.sql',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+
+  assert.match(sql, /'RECONNECTING'/);
+  assert.match(sql, /"teacher_recovery_token_hash"/);
+  assert.match(sql, /"student_recovery_token_hash"/);
+  assert.match(sql, /"reconnecting_milliseconds"/);
+  assert.doesNotMatch(sql, /"recovery_token"\s+TEXT/);
 });
 
 test('seed sincroniza somente referências e preserva o estado de primeiro acesso', async () => {

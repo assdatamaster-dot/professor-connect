@@ -5,6 +5,8 @@ export const SESSION_IPC_CHANNELS = {
   CANCEL_REQUEST: 'student:session:cancel-request',
   GET_STATE: 'student:session:get-state',
   END: 'student:session:end',
+  RESUME: 'student:session:resume',
+  DISCARD_RECOVERY: 'student:session:discard-recovery',
   STATE_CHANGED: 'student:session:state-changed',
   TEACHERS_CHANGED: 'student:session:teachers-changed',
   WEBRTC_SEND_ANSWER: 'student:webrtc:send-answer',

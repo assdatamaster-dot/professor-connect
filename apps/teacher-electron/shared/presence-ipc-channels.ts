@@ -7,6 +7,8 @@ export const PRESENCE_IPC_CHANNELS = {
   ACCEPT_SESSION: 'teacher:presence:accept-session',
   REJECT_SESSION: 'teacher:presence:reject-session',
   END_SESSION: 'teacher:presence:end-session',
+  RESUME_SESSION: 'teacher:presence:resume-session',
+  DISCARD_RECOVERY: 'teacher:presence:discard-recovery',
   STATE_CHANGED: 'teacher:presence:state-changed',
   WEBRTC_SEND_OFFER: 'teacher:webrtc:send-offer',
   WEBRTC_SEND_ANSWER: 'teacher:webrtc:send-answer',

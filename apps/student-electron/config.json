@@ -1,3 +1,7 @@
 {
-  "serverUrl": "https://professorconnect-professoread.lwf5hh.easypanel.host"
+  "serverUrl": "https://professorconnect-professoread.lwf5hh.easypanel.host",
+  "reconnectAttempts": 10,
+  "reconnectDelayMs": 1000,
+  "reconnectDelayMaxMs": 30000,
+  "connectTimeoutMs": 10000
 }

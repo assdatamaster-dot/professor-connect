@@ -24,6 +24,7 @@ const connectionBadge = requireElement<HTMLElement>('connection-badge');
 const connectionText = requireElement<HTMLElement>('connection-text');
 const attendanceText = requireElement<HTMLElement>('attendance-text');
 const statusMessage = requireElement<HTMLElement>('status-message');
+const sessionRecoveryOverlay = requireElement<HTMLElement>('session-recovery-overlay');
 const remoteControlText = requireElement<HTMLElement>('remote-control-text');
 const callButton = requireElement<HTMLButtonElement>('call-professor');
 const teacherSelect = requireElement<HTMLSelectElement>('teacher-select');
@@ -133,6 +134,7 @@ const teacherAvailabilityTimer = window.setInterval(() => {
   renderAvailableTeachers(availableTeachers);
 }, 60_000);
 let sessionClockTimer: ReturnType<typeof setInterval> | undefined;
+let connectionMetricsTimer: ReturnType<typeof setInterval> | undefined;
 let sessionStartedAt: number | undefined;
 let timedSessionId: string | undefined;
 let remoteControlSnapshot: StudentRemoteControlSnapshot = {
@@ -450,15 +452,25 @@ remoteControlDialog.addEventListener('cancel', (event) => {
   event.preventDefault();
 });
 
+let promptedRecoverySessionId: string | undefined;
 const unsubscribe = window.professorConnect.onStateChanged(render);
 const unsubscribeSession = window.professorConnectSession.onStateChanged((snapshot) => {
   statusMessage.textContent = snapshot.message;
+  sessionRecoveryOverlay.hidden =
+    snapshot.status !== 'reconnecting' && snapshot.status !== 'recovering';
+  connectionBadge.title =
+    snapshot.latencyMs === undefined
+      ? 'Latência indisponível'
+      : `Latência: ${snapshot.latencyMs} ms`;
   activeTeacherName = snapshot.activeTeacherName;
   renderRemoteControl(snapshot.remoteControl);
   const isSessionBusy =
     snapshot.status === 'waiting' ||
     snapshot.status === 'accepted' ||
-    snapshot.status === 'connected';
+    snapshot.status === 'connected' ||
+    snapshot.status === 'reconnecting' ||
+    snapshot.status === 'recovering' ||
+    snapshot.status === 'recovery-available';
   callButton.disabled = isSessionBusy || teacherSelect.value.length === 0;
   teacherSelect.disabled = isSessionBusy;
   cancelRequestButton.hidden = snapshot.status !== 'waiting';
@@ -473,6 +485,19 @@ const unsubscribeSession = window.professorConnectSession.onStateChanged((snapsh
     endButton.disabled = false;
     mediaSection.hidden = false;
     callSection.hidden = true;
+  }
+  if (
+    snapshot.status === 'recovery-available' &&
+    snapshot.activeSessionId !== undefined &&
+    promptedRecoverySessionId !== snapshot.activeSessionId
+  ) {
+    promptedRecoverySessionId = snapshot.activeSessionId;
+    const resume = window.confirm(
+      `Um atendimento com ${snapshot.activeTeacherName ?? 'o professor'} foi interrompido. Deseja retomar?`,
+    );
+    void (resume
+      ? window.professorConnectSession.resumeSession()
+      : window.professorConnectSession.discardRecovery());
   }
   if (snapshot.status === 'ended') {
     fileTransferClient.endSession();
@@ -985,6 +1010,7 @@ async function createStudentPeerConnection(sessionId: string): Promise<void> {
     }
     if (connection.connectionState === 'connected') {
       setConnectionQuality('good');
+      startConnectionMetrics(connection);
       statusMessage.textContent = 'Conectado ao professor';
     } else if (
       connection.connectionState === 'disconnected' ||
@@ -1206,6 +1232,7 @@ function closeWebRtcSession(): void {
   activeWebRtcSessionId = undefined;
   stopSessionClock();
   setConnectionQuality('idle');
+  stopConnectionMetrics();
   setFileDrawerOpen(false);
   dockFilesButton.disabled = true;
   pendingIceCandidates.clear();
@@ -1404,7 +1431,11 @@ localVideo.addEventListener('emptied', () => {
 
 type ConnectionQuality = 'idle' | 'connecting' | 'good' | 'unstable';
 
-function setConnectionQuality(quality: ConnectionQuality): void {
+function setConnectionQuality(
+  quality: ConnectionQuality,
+  latencyMs?: number,
+  packetLoss?: number,
+): void {
   const labels: Record<ConnectionQuality, string> = {
     idle: 'Aguardando',
     connecting: 'Conectando',
@@ -1414,8 +1445,46 @@ function setConnectionQuality(quality: ConnectionQuality): void {
   connectionQuality.dataset.quality = quality;
   const label = connectionQuality.querySelector('span');
   if (label !== null) {
-    label.textContent = labels[quality];
+    label.textContent = [
+      labels[quality],
+      ...(latencyMs === undefined ? [] : [`${latencyMs} ms`]),
+      ...(packetLoss === undefined ? [] : [`${packetLoss.toFixed(1)}% perda`]),
+    ].join(' · ');
   }
+}
+
+function startConnectionMetrics(connection: RTCPeerConnection): void {
+  stopConnectionMetrics();
+  const update = async (): Promise<void> => {
+    if (peerConnection !== connection || connection.connectionState !== 'connected') return;
+    const stats = await connection.getStats();
+    let packetsLost = 0;
+    let packetsReceived = 0;
+    let latencyMs: number | undefined;
+    stats.forEach((report) => {
+      if (report.type === 'inbound-rtp') {
+        packetsLost += typeof report.packetsLost === 'number' ? report.packetsLost : 0;
+        packetsReceived += typeof report.packetsReceived === 'number' ? report.packetsReceived : 0;
+      }
+      if (
+        report.type === 'candidate-pair' &&
+        report.state === 'succeeded' &&
+        typeof report.currentRoundTripTime === 'number'
+      ) {
+        latencyMs = Math.round(report.currentRoundTripTime * 1_000);
+      }
+    });
+    const total = packetsLost + packetsReceived;
+    const packetLoss = total === 0 ? 0 : (packetsLost / total) * 100;
+    setConnectionQuality(packetLoss >= 5 ? 'unstable' : 'good', latencyMs, packetLoss);
+  };
+  void update().catch(() => undefined);
+  connectionMetricsTimer = setInterval(() => void update().catch(() => undefined), 5_000);
+}
+
+function stopConnectionMetrics(): void {
+  if (connectionMetricsTimer !== undefined) clearInterval(connectionMetricsTimer);
+  connectionMetricsTimer = undefined;
 }
 
 function startSessionClock(sessionId: string): void {

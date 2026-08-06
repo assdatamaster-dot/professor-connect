@@ -145,7 +145,21 @@ export class RemoteControlReceiver {
 
   public handleTransportLoss(): void {
     if (this.snapshot.status !== 'inactive') {
-      this.stopLocally();
+      this.snapshot = {
+        ...this.snapshot,
+        logs: this.appendLog('Transporte interrompido; autorização preservada'),
+      };
+      this.notifyListeners();
+    }
+  }
+
+  public handleTransportRestored(): void {
+    if (this.snapshot.status !== 'inactive') {
+      this.snapshot = {
+        ...this.snapshot,
+        logs: this.appendLog('Transporte restabelecido'),
+      };
+      this.notifyListeners();
     }
   }
 

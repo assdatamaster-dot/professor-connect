@@ -15,6 +15,7 @@ import { createStructuredLogger } from '@professor-connect/engine';
 import { FileTransferStorage } from '@professor-connect/engine/file-transfer-node';
 import { DesktopAuthClient } from '@professor-connect/shared';
 import {
+  ElectronSessionRecoveryStore,
   ElectronSecureTokenStore,
   registerDesktopAuthIpc,
 } from '@professor-connect/shared/electron';
@@ -96,6 +97,7 @@ async function createMainWindow(): Promise<void> {
     undefined,
     remoteControlReceiver,
     authClient,
+    new ElectronSessionRecoveryStore(app.getPath('userData')),
   );
   sessionIpcRegistration = registerSessionIpc(presenceController, mainWindow.webContents, {
     onScreenShareStopped: () => captureCoordinator.clear(),

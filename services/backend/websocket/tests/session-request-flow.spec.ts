@@ -33,6 +33,8 @@ interface ServerEvents {
   'session:rejected': (payload: SessionResponsePayload) => void;
   'session:timeout': (payload: SessionResponsePayload) => void;
   'session:started': (payload: SessionLifecyclePayload) => void;
+  'session:reconnecting': (payload: SessionLifecyclePayload) => void;
+  'session:recovered': (payload: SessionLifecyclePayload) => void;
   'session:ended': (payload: SessionLifecyclePayload) => void;
   'webrtc:offer': (payload: WebRtcDescriptionPayload) => void;
   'webrtc:answer': (payload: WebRtcDescriptionPayload) => void;
@@ -52,6 +54,10 @@ interface ClientEvents {
   'session:accept': (payload: { readonly requestId: string }) => void;
   'session:reject': (payload: { readonly requestId: string }) => void;
   'session:end': (payload: { readonly sessionId: string }) => void;
+  'session:recover': (
+    payload: { readonly sessionId: string; readonly recoveryToken: string },
+    acknowledge?: (result: { readonly ok: boolean; readonly message?: string }) => void,
+  ) => void;
   'webrtc:offer': (payload: WebRtcDescriptionPayload) => void;
   'webrtc:answer': (payload: WebRtcDescriptionPayload) => void;
   'webrtc:ice-candidate': (payload: WebRtcIceCandidatePayload) => void;
@@ -148,7 +154,11 @@ test('entrega aceite, recusa e timeout em tempo real', async () => {
     assert.equal((await accepted).requestId, firstRequest.requestId);
     const [teacherSession, studentSession] = await Promise.all([teacherStarted, studentStarted]);
     assert.equal(teacherSession.sessionId, 'session-1');
-    assert.deepEqual(teacherSession, studentSession);
+    assert.deepEqual(
+      { ...teacherSession, recoveryToken: undefined },
+      { ...studentSession, recoveryToken: undefined },
+    );
+    assert.notEqual(teacherSession.recoveryToken, studentSession.recoveryToken);
     assert.equal(activeSessions.listActiveSessions().length, 1);
 
     const offerPayload: WebRtcDescriptionPayload = {
@@ -242,11 +252,37 @@ test('entrega aceite, recusa e timeout em tempo real', async () => {
     const teacherStartedBeforeDisconnect = waitForStarted(teacher);
     const studentStartedBeforeDisconnect = waitForStarted(student);
     teacher.emit('session:accept', { requestId: disconnectRequest.requestId });
-    await Promise.all([teacherStartedBeforeDisconnect, studentStartedBeforeDisconnect]);
-    const teacherEndedAfterDisconnect = waitForEnded(teacher);
+    const [, studentRecoverySession] = await Promise.all([
+      teacherStartedBeforeDisconnect,
+      studentStartedBeforeDisconnect,
+    ]);
     student.disconnect();
-    assert.equal((await teacherEndedAfterDisconnect).sessionId, 'session-2');
-    assert.deepEqual(activeSessions.listActiveSessions(), []);
+    await waitUntil(
+      () => activeSessions.findSession('session-2')?.connectionState === 'RECONNECTING',
+    );
+    assert.equal(activeSessions.listActiveSessions()[0]?.sessionId, 'session-2');
+    assert.equal(activeSessions.listHistory().length, 1);
+    const teacherRecovered = waitForRecovered(teacher);
+    student.connect();
+    await waitForConnect(student);
+    student.emit('student:register', { id: 'student-id', name: 'Ana' });
+    const studentRecovered = waitForRecovered(student);
+    const recoveryResult = await recoverSession(student, {
+      sessionId: studentRecoverySession.sessionId,
+      recoveryToken: studentRecoverySession.recoveryToken ?? '',
+    });
+    assert.deepEqual(recoveryResult, { ok: true });
+    const [recoveredForTeacher, recoveredForStudent] = await Promise.all([
+      teacherRecovered,
+      studentRecovered,
+    ]);
+    assert.equal(recoveredForTeacher.sessionId, 'session-2');
+    assert.equal(recoveredForStudent.sessionId, 'session-2');
+    assert.equal(recoveredForStudent.state, 'CONNECTED');
+    assert.equal(activeSessions.findSession('session-2')?.connectionState, 'CONNECTED');
+    const teacherEndedRecovered = waitForEnded(teacher);
+    student.emit('session:end', { sessionId: 'session-2' });
+    assert.equal((await teacherEndedRecovered).sessionId, 'session-2');
     assert.equal(activeSessions.listHistory().length, 2);
   } finally {
     teacher.disconnect();
@@ -305,6 +341,17 @@ function waitForStarted(client: TestClient): Promise<SessionLifecyclePayload> {
 
 function waitForEnded(client: TestClient): Promise<SessionLifecyclePayload> {
   return new Promise((resolve) => client.once('session:ended', resolve));
+}
+
+function waitForRecovered(client: TestClient): Promise<SessionLifecyclePayload> {
+  return new Promise((resolve) => client.once('session:recovered', resolve));
+}
+
+function recoverSession(
+  client: TestClient,
+  payload: { readonly sessionId: string; readonly recoveryToken: string },
+): Promise<{ readonly ok: boolean; readonly message?: string }> {
+  return new Promise((resolve) => client.emit('session:recover', payload, resolve));
 }
 
 function waitForWebRtcOffer(client: TestClient): Promise<WebRtcDescriptionPayload> {

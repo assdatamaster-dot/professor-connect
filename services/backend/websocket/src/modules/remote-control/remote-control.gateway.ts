@@ -216,10 +216,6 @@ export class RemoteControlGateway {
         });
       });
     });
-
-    socket.on('disconnect', () => {
-      this.handleParticipantDisconnected(socket.id);
-    });
   }
 
   private requireRoute(
@@ -280,34 +276,6 @@ export class RemoteControlGateway {
     });
   }
 
-  private handleParticipantDisconnected(socketId: string): void {
-    for (const authorization of this.authorizations.values()) {
-      if (
-        authorization.teacherSocketId !== socketId &&
-        authorization.studentSocketId !== socketId
-      ) {
-        continue;
-      }
-
-      this.deleteAuthorization(authorization.sessionId);
-      const recipientSocketId =
-        authorization.teacherSocketId === socketId
-          ? authorization.studentSocketId
-          : authorization.teacherSocketId;
-      const payload: RemoteControlStopPayload = {
-        sessionId: authorization.sessionId,
-        requestId: authorization.requestId,
-        reason: 'disconnect',
-      };
-      this.socketServer.to(recipientSocketId).emit(REMOTE_CONTROL_CHANNEL_EVENTS.STOP, payload);
-      this.logger.info('Controle encerrado', {
-        sessionId: payload.sessionId,
-        requestId: payload.requestId,
-        reason: payload.reason,
-      });
-    }
-  }
-
   private logReceivedEvent(sessionId: string, requestId: string, eventType: string): void {
     if (eventType === 'mousemove') {
       const now = this.clock();
@@ -340,10 +308,13 @@ export class RemoteControlGateway {
         requestId,
         reason: 'timeout',
       };
-      for (const socketId of new Set([
-        authorization.teacherSocketId,
-        authorization.studentSocketId,
-      ])) {
+      const delivery = this.sessionManager.getDelivery(sessionId);
+      const socketIds =
+        delivery === undefined
+          ? [authorization.teacherSocketId, authorization.studentSocketId]
+          : [delivery.teacherSocketId, delivery.studentSocketId];
+      for (const socketId of new Set(socketIds)) {
+        if (socketId === undefined) continue;
         this.socketServer.to(socketId).emit(REMOTE_CONTROL_CHANNEL_EVENTS.STOP, payload);
       }
       this.logger.info('Controle encerrado', {

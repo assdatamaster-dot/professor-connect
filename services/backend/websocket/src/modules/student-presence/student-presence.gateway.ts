@@ -17,7 +17,9 @@ export interface StudentRegisterPayload {
 
 interface StudentPresenceClientEvents {
   [STUDENT_PRESENCE_EVENTS.DISCONNECT]: (acknowledge?: () => void) => void;
-  [STUDENT_PRESENCE_EVENTS.HEARTBEAT]: () => void;
+  [STUDENT_PRESENCE_EVENTS.HEARTBEAT]: (
+    acknowledge?: (payload: { readonly serverTime: string }) => void,
+  ) => void;
   [STUDENT_PRESENCE_EVENTS.REGISTER]: (payload: StudentRegisterPayload) => void;
 }
 
@@ -33,6 +35,7 @@ export class StudentPresenceGateway {
     private readonly logger: CommunicationLogger,
     private readonly heartbeatTimeoutMs = 90_000,
     private readonly cleanupIntervalMs = 30_000,
+    private readonly onHeartbeat?: (socketId: string) => void,
   ) {}
 
   public registerEvents(): void {
@@ -76,12 +79,14 @@ export class StudentPresenceGateway {
       this.logger.info(`Aluno ${name} conectado`);
     });
 
-    socket.on(STUDENT_PRESENCE_EVENTS.HEARTBEAT, () => {
+    socket.on(STUDENT_PRESENCE_EVENTS.HEARTBEAT, (acknowledge) => {
       const student = this.presenceManager.updateHeartbeat(socket.id);
 
       if (student !== undefined) {
         this.logger.info(`Aluno ${student.name} heartbeat recebido`);
       }
+      acknowledge?.({ serverTime: new Date().toISOString() });
+      this.onHeartbeat?.(socket.id);
     });
 
     socket.on(STUDENT_PRESENCE_EVENTS.DISCONNECT, (acknowledge) => {

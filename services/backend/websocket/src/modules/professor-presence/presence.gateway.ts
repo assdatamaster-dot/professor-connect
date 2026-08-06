@@ -18,7 +18,9 @@ export interface ProfessorOnlinePayload {
 }
 
 interface ProfessorPresenceClientEvents {
-  [PROFESSOR_PRESENCE_EVENTS.HEARTBEAT]: () => void;
+  [PROFESSOR_PRESENCE_EVENTS.HEARTBEAT]: (
+    acknowledge?: (payload: { readonly serverTime: string }) => void,
+  ) => void;
   [PROFESSOR_PRESENCE_EVENTS.ONLINE]: (payload: ProfessorOnlinePayload) => void;
   [PROFESSOR_PRESENCE_EVENTS.AVAILABILITY_GET]: () => void;
   [PROFESSOR_PRESENCE_EVENTS.AVAILABILITY_SET]: (
@@ -58,6 +60,7 @@ export class ProfessorPresenceGateway {
     private readonly logger: CommunicationLogger,
     private readonly heartbeatTimeoutMs = 90_000,
     private readonly cleanupIntervalMs = 30_000,
+    private readonly onHeartbeat?: (socketId: string) => void,
   ) {
     this.stopListeningForChanges = presenceManager.onChanged(() => {
       this.broadcastAvailableProfessors();
@@ -135,12 +138,14 @@ export class ProfessorPresenceGateway {
       }
     });
 
-    socket.on(PROFESSOR_PRESENCE_EVENTS.HEARTBEAT, () => {
+    socket.on(PROFESSOR_PRESENCE_EVENTS.HEARTBEAT, (acknowledge) => {
       const professor = this.presenceManager.updateHeartbeat(socket.id);
 
       if (professor !== undefined) {
         this.logger.info(`Professor ${professor.name} heartbeat`);
       }
+      acknowledge?.({ serverTime: new Date().toISOString() });
+      this.onHeartbeat?.(socket.id);
     });
 
     socket.on('disconnect', () => {

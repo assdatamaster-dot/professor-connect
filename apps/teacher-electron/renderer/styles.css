@@ -568,3 +568,41 @@ button {
     transition: none;
   }
 }
+
+.session-recovery-overlay {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(8 18 33 / 68%);
+  backdrop-filter: blur(4px);
+}
+.session-recovery-overlay[hidden] {
+  display: none;
+}
+.session-recovery-overlay__card {
+  display: grid;
+  max-width: 420px;
+  gap: 10px;
+  justify-items: center;
+  padding: 28px;
+  border-radius: 18px;
+  background: var(--surface, #fff);
+  color: var(--ink-primary, #10233f);
+  text-align: center;
+}
+.session-recovery-spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid #c9d8e8;
+  border-top-color: #1677ff;
+  border-radius: 50%;
+  animation: recovery-spin 0.9s linear infinite;
+}
+@keyframes recovery-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

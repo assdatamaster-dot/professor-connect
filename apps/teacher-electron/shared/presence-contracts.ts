@@ -8,6 +8,9 @@ export enum ProfessorPresenceStatus {
   DISCONNECTED = 'DISCONNECTED',
   CONNECTING = 'CONNECTING',
   CONNECTED = 'CONNECTED',
+  RECONNECTING = 'RECONNECTING',
+  RECOVERING = 'RECOVERING',
+  RECOVERY_AVAILABLE = 'RECOVERY_AVAILABLE',
   ERROR = 'ERROR',
 }
 
@@ -21,6 +24,12 @@ export interface ProfessorPresenceSnapshot {
   readonly activeSession: ProfessorActiveSession | undefined;
   readonly sessionNotice: string | undefined;
   readonly remoteControl: TeacherRemoteControlSnapshot;
+  readonly recoverableSession?: {
+    readonly sessionId: string;
+    readonly studentName: string;
+    readonly recoveryDeadline?: string;
+  };
+  readonly latencyMs: number | undefined;
 }
 
 export interface ProfessorSessionRequest {
@@ -35,6 +44,9 @@ export interface ProfessorActiveSession {
   readonly teacherName: string;
   readonly studentId: string;
   readonly studentName: string;
+  readonly state?: 'CONNECTED' | 'RECONNECTING' | 'RECOVERING' | 'FINISHED';
+  readonly recoveryDeadline?: string;
+  readonly recoveryToken?: string;
 }
 
 export interface AttendanceHistoryItem {
@@ -60,6 +72,8 @@ export interface ProfessorPresenceApi {
   acceptSession(requestId: string): Promise<ProfessorPresenceSnapshot>;
   rejectSession(requestId: string): Promise<ProfessorPresenceSnapshot>;
   endSession(): Promise<ProfessorPresenceSnapshot>;
+  resumeSession(): Promise<ProfessorPresenceSnapshot>;
+  discardRecovery(): Promise<ProfessorPresenceSnapshot>;
   requestRemoteControl(): Promise<ProfessorPresenceSnapshot>;
   sendRemoteControlMouse(event: RemoteControlMouseEvent): Promise<void>;
   sendRemoteControlKeyboard(event: RemoteControlKeyboardEvent): Promise<void>;

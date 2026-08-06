@@ -26,16 +26,12 @@ test('cria, localiza, lista e encerra uma sessão ativa', () => {
     status: 'accepted',
   });
 
-  assert.deepEqual(created.session, {
-    sessionId: 'session-id',
-    requestId: 'request-id',
-    teacherId: 'teacher-id',
-    teacherName: 'Carlos',
-    studentId: 'student-id',
-    studentName: 'Ana',
-    createdAt: '2026-07-23T12:00:00.000Z',
-    status: 'active',
-  });
+  assert.equal(created.session.sessionId, 'session-id');
+  assert.equal(created.session.connectionState, 'CONNECTED');
+  assert.equal(created.session.disconnectCount, 0);
+  assert.equal(created.teacherRecoveryToken?.length, 43);
+  assert.equal(created.studentRecoveryToken?.length, 43);
+  assert.notEqual(created.teacherRecoveryToken, created.studentRecoveryToken);
   assert.equal(manager.findSession('session-id')?.status, 'active');
   assert.equal(professors.findProfessorById('teacher-id')?.availability, 'busy');
   assert.equal(manager.listActiveSessions().length, 1);
@@ -90,13 +86,13 @@ test('somente professor ou aluno participantes podem encerrar', () => {
   assert.equal(manager.listActiveSessions().length, 1);
 });
 
-test('encerra sessões do participante desconectado e preserva os sockets da entrega', () => {
+test('preserva e recupera a mesma sessão após queda transitória', () => {
   const professors = new PresenceManager(undefined, () => 'teacher-id');
   const students = new StudentPresenceManager();
   professors.registerProfessor({ name: 'Carlos', socketId: 'teacher-socket' });
   students.registerStudent({ id: 'student-id', name: 'Ana', socketId: 'student-socket' });
   const manager = new SessionManager(professors, students, { idFactory: () => 'session-id' });
-  manager.createSession({
+  const created = manager.createSession({
     requestId: 'request-id',
     teacherId: 'teacher-id',
     teacherName: 'Carlos',
@@ -107,12 +103,115 @@ test('encerra sessões do participante desconectado e preserva os sockets da ent
   });
 
   students.removeStudent('student-socket');
-  const [finished] = manager.endSessionsForParticipant('student-socket');
+  const [recovering] = manager.markParticipantDisconnected('student-socket');
 
-  assert.equal(finished?.session.status, 'finished');
-  assert.equal(finished?.teacherSocketId, 'teacher-socket');
-  assert.equal(finished?.studentSocketId, 'student-socket');
-  assert.deepEqual(manager.listActiveSessions(), []);
-  assert.equal(manager.listHistory()[0]?.status, 'finished');
+  assert.equal(recovering?.session.status, 'active');
+  assert.equal(recovering?.session.connectionState, 'RECONNECTING');
+  assert.equal(recovering?.teacherSocketId, 'teacher-socket');
+  assert.equal(recovering?.studentSocketId, undefined);
+  assert.equal(manager.listActiveSessions().length, 1);
+  assert.throws(
+    () =>
+      manager.recoverSession(
+        'session-id',
+        'invalid-token-that-cannot-authorize-a-session',
+        'attacker-socket',
+        socketIdentity('STUDENT', 'student-id', 'Ana'),
+      ),
+    /Token de recuperação inválido/,
+  );
+  assert.throws(
+    () =>
+      manager.recoverSession(
+        'session-id',
+        created.studentRecoveryToken ?? '',
+        'attacker-socket',
+        socketIdentity('STUDENT', 'another-student', 'Intruso'),
+      ),
+    /Identidade não pertence/,
+  );
+  const recovered = manager.recoverSession(
+    'session-id',
+    created.studentRecoveryToken ?? '',
+    'student-socket-reconnected',
+    {
+      userId: 'student-user',
+      organizationId: 'organization-id',
+      displayName: 'Ana',
+      roles: ['STUDENT'],
+      permissions: ['socket.connect'],
+      profileId: 'student-id',
+      sessionFamilyId: 'family-id',
+    },
+  );
+  assert.equal(recovered.session.sessionId, 'session-id');
+  assert.equal(recovered.session.connectionState, 'CONNECTED');
+  assert.equal(recovered.studentSocketId, 'student-socket-reconnected');
+  assert.equal(recovered.fullyRecovered, true);
+  manager.markParticipantDisconnected('student-socket-reconnected');
+  const recoveredAgain = manager.recoverSession(
+    'session-id',
+    recovered.recoveryToken,
+    'student-socket-third',
+    socketIdentity('STUDENT', 'student-id', 'Ana'),
+  );
+  assert.equal(recoveredAgain.session.disconnectCount, 2);
+  assert.equal(recoveredAgain.session.connectionState, 'CONNECTED');
   assert.deepEqual(manager.endSessionsForParticipant('unknown-socket'), []);
 });
+
+test('recupera a mesma sessão depois de reiniciar o backend', () => {
+  const firstProfessors = new PresenceManager(undefined, () => 'teacher-id');
+  const firstStudents = new StudentPresenceManager();
+  firstProfessors.registerProfessor({ name: 'Carlos', socketId: 'teacher-old' });
+  firstStudents.registerStudent({ id: 'student-id', name: 'Ana', socketId: 'student-old' });
+  const firstManager = new SessionManager(firstProfessors, firstStudents, {
+    idFactory: () => 'stable-session-id',
+  });
+  const created = firstManager.createSession({
+    requestId: 'request-restart',
+    teacherId: 'teacher-id',
+    teacherName: 'Carlos',
+    studentId: 'student-id',
+    studentName: 'Ana',
+    createdAt: new Date().toISOString(),
+    status: 'accepted',
+  });
+
+  const restoredProfessors = new PresenceManager(undefined, () => 'teacher-id');
+  const restoredStudents = new StudentPresenceManager();
+  restoredProfessors.registerProfessor({ name: 'Carlos', socketId: 'teacher-new' });
+  restoredStudents.registerStudent({ id: 'student-id', name: 'Ana', socketId: 'student-new' });
+  const restoredManager = new SessionManager(restoredProfessors, restoredStudents, {
+    initialHistory: [created.session],
+  });
+
+  assert.equal(restoredManager.findSession('stable-session-id')?.connectionState, 'RECOVERING');
+  const teacherRecovery = restoredManager.recoverSession(
+    'stable-session-id',
+    created.teacherRecoveryToken ?? '',
+    'teacher-new',
+    socketIdentity('TEACHER', 'teacher-id', 'Carlos'),
+  );
+  assert.equal(teacherRecovery.fullyRecovered, false);
+  const studentRecovery = restoredManager.recoverSession(
+    'stable-session-id',
+    created.studentRecoveryToken ?? '',
+    'student-new',
+    socketIdentity('STUDENT', 'student-id', 'Ana'),
+  );
+  assert.equal(studentRecovery.fullyRecovered, true);
+  assert.equal(studentRecovery.session.sessionId, 'stable-session-id');
+});
+
+function socketIdentity(role: 'TEACHER' | 'STUDENT', profileId: string, displayName: string) {
+  return {
+    userId: `${profileId}-user`,
+    organizationId: 'organization-id',
+    displayName,
+    roles: [role],
+    permissions: ['socket.connect'],
+    profileId,
+    sessionFamilyId: `${profileId}-family`,
+  } as const;
+}

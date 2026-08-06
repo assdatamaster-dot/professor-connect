@@ -81,6 +81,8 @@ const presenceChannels = {
   remoteControlMouse: 'teacher:remote-control:mouse',
   remoteControlKeyboard: 'teacher:remote-control:keyboard',
   remoteControlStop: 'teacher:remote-control:stop',
+  resumeSession: 'teacher:presence:resume-session',
+  discardRecovery: 'teacher:presence:discard-recovery',
 } as const;
 
 const presenceApi: ProfessorPresenceApi = {
@@ -109,6 +111,10 @@ const presenceApi: ProfessorPresenceApi = {
     ) as Promise<ProfessorPresenceSnapshot>,
   endSession: () =>
     ipcRenderer.invoke('teacher:presence:end-session') as Promise<ProfessorPresenceSnapshot>,
+  resumeSession: () =>
+    ipcRenderer.invoke(presenceChannels.resumeSession) as Promise<ProfessorPresenceSnapshot>,
+  discardRecovery: () =>
+    ipcRenderer.invoke(presenceChannels.discardRecovery) as Promise<ProfessorPresenceSnapshot>,
   requestRemoteControl: () =>
     ipcRenderer.invoke(presenceChannels.remoteControlRequest) as Promise<ProfessorPresenceSnapshot>,
   sendRemoteControlMouse: (event) =>

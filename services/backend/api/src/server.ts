@@ -26,7 +26,7 @@ const bootstrapService = new BootstrapService(authService);
 
 const databaseReadiness = await persistence.assertMigrationsApplied();
 const bootstrapStatus = await bootstrapService.initialize();
-await persistence.recovery.recoverAfterRestart();
+await persistence.recovery.recoverAfterRestart(new Date(), environment.reconnectWindowMs);
 const [requestHistory, sessionHistory] = await Promise.all([
   persistence.sessionRequest.listHistory(),
   persistence.attendanceSession.listHistory(),
@@ -48,6 +48,7 @@ const activeSessionManager = new SessionManager(professorPresenceManager, studen
   persistence: persistence.attendanceSession,
   audit: persistence.audit,
   initialHistory: sessionHistory,
+  recoveryWindowMs: environment.reconnectWindowMs,
 });
 const realtimeUserRevoker: { disconnect(userId: string): void } = {
   disconnect(): void {},

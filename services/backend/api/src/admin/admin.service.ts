@@ -67,7 +67,12 @@ export class AdminService implements AdminServiceContract {
         this.countUsers(organizationId, 'TEACHER'),
         this.countUsers(organizationId, 'STUDENT'),
         prismaClient.attendanceSession.count({
-          where: { status: 'ACTIVE', professor: { organizationId } },
+          where: {
+            status: {
+              in: ['ACTIVE', 'WAITING', 'CONNECTING', 'CONNECTED', 'RECONNECTING', 'RECOVERING'],
+            },
+            professor: { organizationId },
+          },
         }),
         prismaClient.attendanceSession.count({
           where: { status: 'FINISHED', professor: { organizationId } },

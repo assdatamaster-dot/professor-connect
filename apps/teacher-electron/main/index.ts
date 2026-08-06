@@ -6,6 +6,7 @@ import { readFile } from 'node:fs/promises';
 import { FileTransferStorage } from '@professor-connect/engine/file-transfer-node';
 import { DesktopAuthClient } from '@professor-connect/shared';
 import {
+  ElectronSessionRecoveryStore,
   ElectronSecureTokenStore,
   registerDesktopAuthIpc,
 } from '@professor-connect/shared/electron';
@@ -41,7 +42,12 @@ async function createMainWindow(): Promise<void> {
   );
 
   workflowController = new TeacherWorkflowController(manager);
-  presenceController = new ProfessorPresenceController(configPath, undefined, authClient);
+  presenceController = new ProfessorPresenceController(
+    configPath,
+    undefined,
+    authClient,
+    new ElectronSessionRecoveryStore(app.getPath('userData')),
+  );
   mainWindow = new BrowserWindow(createWindowOptions(preloadPath, iconPath));
   const window = mainWindow;
   ipcRegistration = registerTeacherIpc(workflowController, mainWindow.webContents);

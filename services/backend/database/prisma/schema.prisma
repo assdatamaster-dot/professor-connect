@@ -40,6 +40,12 @@ enum RequestStatus {
 
 enum AttendanceSessionStatus {
   ACTIVE
+  WAITING
+  CONNECTING
+  CONNECTED
+  RECONNECTING
+  RECOVERING
+  DISCONNECTED
   FINISHED
   INTERRUPTED
 }
@@ -329,27 +335,36 @@ model SessionRequestRecipient {
 }
 
 model AttendanceSession {
-  id                String                  @id @db.Uuid
-  requestId         String                  @unique @map("request_id") @db.Uuid
-  professorId       String                  @map("professor_id")
-  studentId         String                  @map("student_id")
-  status            AttendanceSessionStatus @default(ACTIVE)
-  startedAt         DateTime                @map("started_at") @db.Timestamptz(3)
-  endedAt           DateTime?               @map("ended_at") @db.Timestamptz(3)
-  durationSeconds   Int?                    @map("duration_seconds")
-  endReason         String?                 @map("end_reason")
-  usedScreenShare   Boolean                 @default(false) @map("used_screen_share")
-  usedRemoteControl Boolean                 @default(false) @map("used_remote_control")
-  usedFileTransfer  Boolean                 @default(false) @map("used_file_transfer")
-  request           SessionRequest          @relation(fields: [requestId], references: [id], onDelete: Restrict)
-  professor         Professor               @relation(fields: [professorId], references: [id], onDelete: Restrict)
-  student           Student                 @relation(fields: [studentId], references: [id], onDelete: Restrict)
-  fileTransfers     FileTransfer[]
-  events            DomainEvent[]
+  id                       String                  @id @db.Uuid
+  requestId                String                  @unique @map("request_id") @db.Uuid
+  professorId              String                  @map("professor_id")
+  studentId                String                  @map("student_id")
+  status                   AttendanceSessionStatus @default(CONNECTED)
+  startedAt                DateTime                @map("started_at") @db.Timestamptz(3)
+  endedAt                  DateTime?               @map("ended_at") @db.Timestamptz(3)
+  durationSeconds          Int?                    @map("duration_seconds")
+  endReason                String?                 @map("end_reason")
+  usedScreenShare          Boolean                 @default(false) @map("used_screen_share")
+  usedRemoteControl        Boolean                 @default(false) @map("used_remote_control")
+  usedFileTransfer         Boolean                 @default(false) @map("used_file_transfer")
+  stateUpdatedAt           DateTime                @default(now()) @map("state_updated_at") @db.Timestamptz(3)
+  recoveryDeadline         DateTime?               @map("recovery_deadline") @db.Timestamptz(3)
+  teacherRecoveryTokenHash String?                 @map("teacher_recovery_token_hash")
+  studentRecoveryTokenHash String?                 @map("student_recovery_token_hash")
+  lastHeartbeatAt          DateTime?               @map("last_heartbeat_at") @db.Timestamptz(3)
+  connectedMilliseconds    BigInt                  @default(0) @map("connected_milliseconds")
+  reconnectingMilliseconds BigInt                  @default(0) @map("reconnecting_milliseconds")
+  disconnectCount          Int                     @default(0) @map("disconnect_count")
+  request                  SessionRequest          @relation(fields: [requestId], references: [id], onDelete: Restrict)
+  professor                Professor               @relation(fields: [professorId], references: [id], onDelete: Restrict)
+  student                  Student                 @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  fileTransfers            FileTransfer[]
+  events                   DomainEvent[]
 
   @@index([status, startedAt])
   @@index([professorId, startedAt])
   @@index([studentId, startedAt])
+  @@index([status, recoveryDeadline])
   @@map("attendance_sessions")
 }
 
@@ -396,20 +411,20 @@ model SupportCall {
 }
 
 model FileTransfer {
-  id            String                @id @db.Uuid
-  sessionId     String                @map("session_id") @db.Uuid
-  direction     FileTransferDirection
-  fileName      String                @map("file_name")
-  mimeType      String?               @map("mime_type")
-  byteSize      BigInt                @map("byte_size")
-  checksum      String?
-  status        FileTransferStatus
-  failureReason String?               @map("failure_reason")
-  averageBytesPerSecond BigInt?       @map("average_bytes_per_second")
-  durationMilliseconds BigInt?        @map("duration_milliseconds")
-  startedAt     DateTime              @map("started_at") @db.Timestamptz(3)
-  completedAt   DateTime?             @map("completed_at") @db.Timestamptz(3)
-  session       AttendanceSession     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  id                    String                @id @db.Uuid
+  sessionId             String                @map("session_id") @db.Uuid
+  direction             FileTransferDirection
+  fileName              String                @map("file_name")
+  mimeType              String?               @map("mime_type")
+  byteSize              BigInt                @map("byte_size")
+  checksum              String?
+  status                FileTransferStatus
+  failureReason         String?               @map("failure_reason")
+  averageBytesPerSecond BigInt?               @map("average_bytes_per_second")
+  durationMilliseconds  BigInt?               @map("duration_milliseconds")
+  startedAt             DateTime              @map("started_at") @db.Timestamptz(3)
+  completedAt           DateTime?             @map("completed_at") @db.Timestamptz(3)
+  session               AttendanceSession     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId, startedAt])
   @@index([status, startedAt])

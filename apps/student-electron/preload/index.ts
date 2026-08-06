@@ -63,6 +63,8 @@ const sessionChannels = {
   cancelRequest: 'student:session:cancel-request',
   getState: 'student:session:get-state',
   end: 'student:session:end',
+  resume: 'student:session:resume',
+  discardRecovery: 'student:session:discard-recovery',
   stateChanged: 'student:session:state-changed',
   teachersChanged: 'student:session:teachers-changed',
   remoteControlApprove: 'student:remote-control:approve',
@@ -80,6 +82,10 @@ const sessionApi: StudentSessionApi = {
     ipcRenderer.invoke(sessionChannels.cancelRequest) as Promise<StudentSessionSnapshot>,
   getState: () => ipcRenderer.invoke(sessionChannels.getState) as Promise<StudentSessionSnapshot>,
   endSession: () => ipcRenderer.invoke(sessionChannels.end) as Promise<StudentSessionSnapshot>,
+  resumeSession: () =>
+    ipcRenderer.invoke(sessionChannels.resume) as Promise<StudentSessionSnapshot>,
+  discardRecovery: () =>
+    ipcRenderer.invoke(sessionChannels.discardRecovery) as Promise<StudentSessionSnapshot>,
   approveRemoteControl: () =>
     ipcRenderer.invoke(sessionChannels.remoteControlApprove) as Promise<StudentSessionSnapshot>,
   denyRemoteControl: () =>

@@ -264,3 +264,8 @@ export class DesktopAuthClient {
     };
   }
 }
+export {
+  ReconnectService,
+  type ReconnectSettings,
+  type ResolvedReconnectSettings,
+} from './reconnect-service.js';

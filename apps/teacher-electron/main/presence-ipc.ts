@@ -68,6 +68,14 @@ export function registerPresenceIpc(
     assertSender(event);
     return controller.endSession();
   });
+  ipcMain.handle(PRESENCE_IPC_CHANNELS.RESUME_SESSION, (event) => {
+    assertSender(event);
+    return controller.resumeSession();
+  });
+  ipcMain.handle(PRESENCE_IPC_CHANNELS.DISCARD_RECOVERY, (event) => {
+    assertSender(event);
+    return controller.discardRecovery();
+  });
   ipcMain.handle(PRESENCE_IPC_CHANNELS.WEBRTC_SEND_OFFER, (event, payload: unknown) => {
     assertSender(event);
     controller.sendWebRtcOffer(requireDescriptionPayload(payload));
@@ -144,6 +152,8 @@ export function registerPresenceIpc(
       ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.ACCEPT_SESSION);
       ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.REJECT_SESSION);
       ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.END_SESSION);
+      ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.RESUME_SESSION);
+      ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.DISCARD_RECOVERY);
       ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.WEBRTC_SEND_OFFER);
       ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.WEBRTC_SEND_ANSWER);
       ipcMain.removeHandler(PRESENCE_IPC_CHANNELS.WEBRTC_SEND_ICE);

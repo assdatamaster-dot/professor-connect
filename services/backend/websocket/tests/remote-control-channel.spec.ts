@@ -274,8 +274,11 @@ test('autoriza, isola e transporta eventos sem executá-los', async () => {
     student.emit(REMOTE_CONTROL_CHANNEL_EVENTS.APPROVED, disconnectRequest);
     await waitUntil(() => approvals.length === 3);
     student.disconnect();
+    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    assert.equal(teacherStops.length, 3);
+    teacher.emit('session:end', { sessionId: 'session-id' });
     await waitUntil(() => teacherStops.length === 4);
-    assert.equal(teacherStops.at(-1)?.reason, 'disconnect');
+    assert.equal(teacherStops.at(-1)?.reason, 'session-ended');
 
     assert(logs.includes('Solicitação enviada'));
     assert(logs.includes('Solicitação aceita'));
