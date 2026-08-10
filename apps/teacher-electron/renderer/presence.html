@@ -209,6 +209,22 @@
             </div>
           </section>
 
+          <aside
+            id="attendance-queue"
+            class="attendance-queue"
+            aria-labelledby="queue-title"
+            hidden
+          >
+            <header>
+              <div>
+                <span class="overline">Fila de atendimento</span>
+                <h2 id="queue-title">Alunos aguardando</h2>
+              </div>
+              <strong id="queue-count" class="attendance-queue__count">0</strong>
+            </header>
+            <ol id="queue-list" class="attendance-queue__list"></ol>
+          </aside>
+
           <section id="active-attendance" class="active-attendance" hidden>
             <header class="session-header">
               <div class="session-identity">

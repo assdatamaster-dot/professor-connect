@@ -51,6 +51,9 @@ const teacherHistoryList = requireElement<HTMLUListElement>('teacher-history-lis
 const teacherHistoryClose = requireElement<HTMLButtonElement>('teacher-history-close');
 const serverStatus = requireElement<HTMLElement>('server-status');
 const sessionNotice = requireElement<HTMLElement>('session-notice');
+const attendanceQueue = requireElement<HTMLElement>('attendance-queue');
+const queueCount = requireElement<HTMLElement>('queue-count');
+const queueList = requireElement<HTMLOListElement>('queue-list');
 const logoutButton = requireElement<HTMLButtonElement>('logout-button');
 const profileButton = requireElement<HTMLButtonElement>('profile-button');
 const profileDialog = requireElement<HTMLDialogElement>('profile-dialog');
@@ -194,7 +197,7 @@ function render(snapshot: ProfessorPresenceSnapshot): void {
   }
   const isReserved = snapshot.sessionRequests.length > 0;
   availabilityCopy.textContent = isReserved
-    ? 'Solicitação aguardando sua resposta'
+    ? `${snapshot.sessionRequests.length} ${snapshot.sessionRequests.length === 1 ? 'aluno aguardando' : 'alunos aguardando'}`
     : snapshot.available
       ? 'Você está disponível'
       : 'Você está indisponível';
@@ -239,7 +242,54 @@ function render(snapshot: ProfessorPresenceSnapshot): void {
       : window.professorConnectPresence.discardRecovery());
   }
   renderRemoteControl(snapshot.remoteControl, snapshot.activeSession !== undefined);
+  renderAttendanceQueue(snapshot);
   renderSessionRequest(snapshot);
+}
+
+let latestQueueSnapshot: ProfessorPresenceSnapshot | undefined;
+setInterval(() => {
+  if (latestQueueSnapshot !== undefined) renderAttendanceQueue(latestQueueSnapshot);
+}, 1_000);
+
+function renderAttendanceQueue(snapshot: ProfessorPresenceSnapshot): void {
+  latestQueueSnapshot = snapshot;
+  const requests = [...snapshot.sessionRequests].sort(
+    (left, right) => left.position - right.position,
+  );
+  attendanceQueue.hidden = requests.length === 0;
+  queueCount.textContent = String(requests.length);
+  queueCount.setAttribute(
+    'aria-label',
+    `${requests.length} ${requests.length === 1 ? 'aluno aguardando' : 'alunos aguardando'}`,
+  );
+  const items = requests.map((request) => {
+    const item = document.createElement('li');
+    const identity = document.createElement('span');
+    const position = document.createElement('span');
+    const copy = document.createElement('span');
+    const name = document.createElement('strong');
+    const status = document.createElement('small');
+    const wait = document.createElement('time');
+    item.className = 'attendance-queue__item';
+    identity.className = 'attendance-queue__identity';
+    position.className = 'attendance-queue__position';
+    copy.className = 'attendance-queue__copy';
+    wait.className = 'attendance-queue__wait';
+    position.textContent = String(request.position);
+    name.textContent = request.studentName;
+    status.textContent = request.mode === 'direct' ? 'Aguardando resposta' : 'Na fila';
+    const startedAt = Date.parse(request.queuedAt ?? request.createdAt);
+    const seconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1_000));
+    const minutes = Math.floor(seconds / 60);
+    const remainder = seconds % 60;
+    wait.textContent = `${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`;
+    wait.dateTime = `PT${seconds}S`;
+    copy.append(name, status);
+    identity.append(position, copy);
+    item.append(identity, wait);
+    return item;
+  });
+  queueList.replaceChildren(...items);
 }
 
 function renderRemoteControl(
@@ -302,7 +352,7 @@ function formatRemoteControlTime(timestamp: string): string {
 }
 
 function renderSessionRequest(snapshot: ProfessorPresenceSnapshot): void {
-  const request = snapshot.sessionRequests[0];
+  const request = snapshot.activeSession === undefined ? snapshot.sessionRequests[0] : undefined;
   activeRequestId = request?.requestId;
 
   if (request === undefined) {

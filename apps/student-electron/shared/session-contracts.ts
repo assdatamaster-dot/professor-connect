@@ -1,7 +1,7 @@
 export interface OnlineTeacher {
   readonly id: string;
   readonly name: string;
-  readonly status: 'available';
+  readonly status: 'available' | 'busy';
   readonly availableSince: string;
   readonly avatarUrl?: string;
 }
@@ -38,6 +38,12 @@ export interface StudentSessionSnapshot {
   readonly activeSessionId: string | undefined;
   readonly activeTeacherName: string | undefined;
   readonly pendingRequestId: string | undefined;
+  readonly queuePosition: number | undefined;
+  readonly studentsAhead: number | undefined;
+  readonly totalWaiting: number | undefined;
+  readonly queuedAt: string | undefined;
+  readonly teacherOnline: boolean | undefined;
+  readonly queueMode: 'direct' | 'queued' | undefined;
   readonly recoveryDeadline?: string;
   readonly latencyMs: number | undefined;
   readonly remoteControl: StudentRemoteControlSnapshot;

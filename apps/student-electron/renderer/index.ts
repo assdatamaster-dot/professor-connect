@@ -11,7 +11,11 @@ import {
   type DesktopWorkflowSnapshot,
 } from '../shared/contracts.js';
 import type { StudentRemoteControlSnapshot } from '../shared/remote-control-contracts.js';
-import type { AttendanceHistoryItem, OnlineTeacher } from '../shared/session-contracts.js';
+import type {
+  AttendanceHistoryItem,
+  OnlineTeacher,
+  StudentSessionSnapshot,
+} from '../shared/session-contracts.js';
 import { AllScreensCompositeCapture } from './all-screens-composer.js';
 import { getTranslations } from './i18n.js';
 import { approveRemoteControlWithScreen } from './remote-control-permission-flow.js';
@@ -30,6 +34,12 @@ const callButton = requireElement<HTMLButtonElement>('call-professor');
 const teacherSelect = requireElement<HTMLSelectElement>('teacher-select');
 const teacherList = requireElement<HTMLElement>('teacher-list');
 const cancelRequestButton = requireElement<HTMLButtonElement>('cancel-request');
+const queueStatus = requireElement<HTMLElement>('queue-status');
+const queueStatusKicker = requireElement<HTMLElement>('queue-status-kicker');
+const queueStatusPosition = requireElement<HTMLElement>('queue-status-position');
+const queueStatusAhead = requireElement<HTMLElement>('queue-status-ahead');
+const queueWaitTime = requireElement<HTMLTimeElement>('queue-wait-time');
+const queueTeacherPresence = requireElement<HTMLElement>('queue-teacher-presence');
 const requestConfirmationDialog = requireElement<HTMLDialogElement>('request-confirmation-dialog');
 const requestTeacherName = requireElement<HTMLElement>('request-teacher-name');
 const confirmRequestButton = requireElement<HTMLButtonElement>('confirm-request');
@@ -130,6 +140,8 @@ let renegotiationQueue = Promise.resolve();
 let lastWorkflowSnapshot: DesktopWorkflowSnapshot | undefined;
 let activeTeacherName: string | undefined;
 let availableTeachers: readonly OnlineTeacher[] = [];
+let queueWaitStartedAt: number | undefined;
+let queueWaitTimer: ReturnType<typeof setInterval> | undefined;
 const teacherAvailabilityTimer = window.setInterval(() => {
   renderAvailableTeachers(availableTeachers);
 }, 60_000);
@@ -464,6 +476,7 @@ const unsubscribeSession = window.professorConnectSession.onStateChanged((snapsh
       : `Latência: ${snapshot.latencyMs} ms`;
   activeTeacherName = snapshot.activeTeacherName;
   renderRemoteControl(snapshot.remoteControl);
+  renderQueueStatus(snapshot);
   const isSessionBusy =
     snapshot.status === 'waiting' ||
     snapshot.status === 'accepted' ||
@@ -504,6 +517,59 @@ const unsubscribeSession = window.professorConnectSession.onStateChanged((snapsh
     closeWebRtcSession();
   }
 });
+
+function renderQueueStatus(snapshot: StudentSessionSnapshot): void {
+  const isQueued = snapshot.status === 'waiting' && snapshot.queueMode === 'queued';
+  const isCalled = snapshot.status === 'accepted';
+  queueStatus.hidden = !isQueued && !isCalled;
+  queueStatus.dataset.state = isCalled ? 'called' : 'waiting';
+  if (isCalled) {
+    queueStatusKicker.textContent = 'Sua vez chegou';
+    queueStatusPosition.textContent = 'O professor está disponível para atender você';
+    queueStatusAhead.textContent = 'Entrando no atendimento…';
+    stopQueueWaitClock();
+    return;
+  }
+  if (!isQueued || snapshot.queuePosition === undefined) {
+    stopQueueWaitClock();
+    return;
+  }
+  queueStatusKicker.textContent = 'Você está na fila de atendimento';
+  queueStatusPosition.textContent = `${snapshot.queuePosition}º da fila`;
+  const ahead = snapshot.studentsAhead ?? 0;
+  queueStatusAhead.textContent =
+    ahead === 0
+      ? 'Você é o próximo aluno.'
+      : `${ahead} ${ahead === 1 ? 'aluno' : 'alunos'} à sua frente.`;
+  queueTeacherPresence.textContent = snapshot.teacherOnline
+    ? 'O professor atenderá você assim que estiver disponível.'
+    : 'O professor está temporariamente offline. Sua posição foi preservada.';
+  startQueueWaitClock(snapshot.queuedAt);
+}
+
+function startQueueWaitClock(timestamp: string | undefined): void {
+  const startedAt = timestamp === undefined ? Date.now() : Date.parse(timestamp);
+  if (queueWaitStartedAt === startedAt && queueWaitTimer !== undefined) return;
+  stopQueueWaitClock();
+  queueWaitStartedAt = Number.isFinite(startedAt) ? startedAt : Date.now();
+  updateQueueWaitClock();
+  queueWaitTimer = setInterval(updateQueueWaitClock, 1_000);
+}
+
+function stopQueueWaitClock(): void {
+  if (queueWaitTimer !== undefined) clearInterval(queueWaitTimer);
+  queueWaitTimer = undefined;
+  queueWaitStartedAt = undefined;
+}
+
+function updateQueueWaitClock(): void {
+  if (queueWaitStartedAt === undefined) return;
+  const seconds = Math.max(0, Math.floor((Date.now() - queueWaitStartedAt) / 1_000));
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  queueWaitTime.textContent = `Aguardando há ${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`;
+  queueWaitTime.dateTime = `PT${seconds}S`;
+}
 const unsubscribeTeachers = window.professorConnectSession.onAvailableTeachersChanged(
   (teachers) => {
     renderAvailableTeachers(teachers);
@@ -577,7 +643,8 @@ function renderAvailableTeachers(teachers: readonly OnlineTeacher[]): void {
   const options = teachers.map((teacher) => {
     const option = document.createElement('option');
     option.value = teacher.id;
-    option.textContent = teacher.name;
+    option.textContent =
+      teacher.status === 'busy' ? `${teacher.name} (em atendimento)` : teacher.name;
     option.selected = teacher.id === selectedId;
     return option;
   });
@@ -615,10 +682,14 @@ function createTeacherCard(teacher: OnlineTeacher): HTMLButtonElement {
   }
   copy.className = 'teacher-card__copy';
   name.textContent = teacher.name;
-  since.textContent = formatAvailableSince(teacher.availableSince);
+  since.textContent =
+    teacher.status === 'busy'
+      ? 'Em atendimento · fila disponível'
+      : formatAvailableSince(teacher.availableSince);
   copy.append(name, since);
   status.className = 'teacher-card__status';
-  status.textContent = '● Online';
+  status.textContent = teacher.status === 'busy' ? '● Ocupado' : '● Disponível';
+  status.dataset.status = teacher.status;
   button.append(avatar, copy, status);
   button.addEventListener('click', () => {
     teacherSelect.value = teacher.id;

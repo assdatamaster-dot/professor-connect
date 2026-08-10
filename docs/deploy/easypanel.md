@@ -140,7 +140,12 @@ As migrations embarcadas, na ordem, são:
 7. `20260805090000_administrative_panel`;
 8. `20260805150000_intelligent_attendance_flow`;
 9. `20260805180000_bootstrap_first_run`;
-10. `20260805220000_cleanup_bootstrap_artifacts`.
+10. `20260805220000_cleanup_bootstrap_artifacts`;
+11. `20260806090000_beta_12a_file_transfer_manager`;
+12. `20260806145900_beta_12b_session_status_values`;
+13. `20260806150000_beta_12b_session_recovery`;
+14. `20260806180000_beta_12c_intelligent_auto_update`;
+15. `20260810120000_professor_attendance_queue`.
 
 ```json
 {

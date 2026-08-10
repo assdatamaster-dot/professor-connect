@@ -1,4 +1,5 @@
-import { Prisma, prismaClient } from '@professor-connect/database';
+import { prismaClient } from '@professor-connect/database';
+import type { Prisma } from '@professor-connect/database';
 
 import type {
   PublishReleaseInput,

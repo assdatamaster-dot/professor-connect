@@ -23,6 +23,7 @@ export interface SessionEndPayload {
 
 export interface SessionLifecyclePayload {
   readonly sessionId: string;
+  readonly requestId: string;
   readonly teacherId: string;
   readonly teacherName: string;
   readonly studentId: string;
@@ -229,6 +230,7 @@ function toLifecyclePayload(delivery: SessionDelivery): SessionLifecyclePayload 
   const { session } = delivery;
   return {
     sessionId: session.sessionId,
+    requestId: session.requestId,
     teacherId: session.teacherId,
     teacherName: session.teacherName,
     studentId: session.studentId,

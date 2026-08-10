@@ -21,6 +21,7 @@ const MIGRATIONS = [
   '20260806145900_beta_12b_session_status_values',
   '20260806150000_beta_12b_session_recovery',
   '20260806180000_beta_12c_intelligent_auto_update',
+  '20260810120000_professor_attendance_queue',
 ] as const;
 const TABLES = [
   'organizations',
@@ -107,7 +108,7 @@ test('rejects startup when a bundled migration is pending', async () => {
 
   await assert.rejects(
     assertMigrationsApplied(prisma),
-    /20260806180000_beta_12c_intelligent_auto_update/,
+    /20260810120000_professor_attendance_queue/,
   );
 });
 
@@ -262,6 +263,24 @@ test('migration Beta-12C persiste releases, instalações e auditoria de atualiz
   assert.match(sql, /CREATE TABLE "update_audit_events"/);
   assert.match(sql, /"sha512" TEXT NOT NULL/);
   assert.match(sql, /client_id_application_key/);
+});
+
+test('migration da fila é aditiva e protege FIFO e atendimentos concorrentes', async () => {
+  const sql = await readFile(
+    new URL(
+      '../prisma/migrations/20260810120000_professor_attendance_queue/migration.sql',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+
+  assert.match(sql, /ADD COLUMN "queued_at" TIMESTAMPTZ\(3\)/);
+  assert.match(sql, /professor_id_status_created_at_id_idx/);
+  assert.match(sql, /one_pending_per_student_idx/);
+  assert.match(sql, /one_active_per_professor_idx/);
+  assert.match(sql, /WHERE "status" = 'PENDING'::"RequestStatus"/);
+  assert.doesNotMatch(sql, /ALTER TYPE[\s\S]*ADD VALUE/);
+  assert.doesNotMatch(sql, /DROP TABLE|DELETE FROM|TRUNCATE/i);
 });
 
 test('seed sincroniza somente referências e preserva o estado de primeiro acesso', async () => {

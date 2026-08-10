@@ -54,6 +54,7 @@ interface StudentPresenceClientEvents {
   'student:heartbeat': (acknowledge?: (payload: { readonly serverTime: string }) => void) => void;
   'student:register': (payload: StudentIdentity) => void;
   'request:session': (payload: { readonly teacherId: string }) => void;
+  'session:queue:get': () => void;
   'session:cancel': (payload: { readonly requestId: string }) => void;
   'professor:availability:get': () => void;
   'session:end': (payload: { readonly sessionId: string; readonly recoveryToken?: string }) => void;
@@ -74,6 +75,8 @@ interface StudentPresenceClientEvents {
 interface StudentPresenceServerEvents {
   'professors:available:list': (payload: readonly OnlineTeacher[]) => void;
   'session:pending': (payload: SessionResponsePayload) => void;
+  'session:queue:updated': (payload: StudentQueuePayload) => void;
+  'session:queue:cleared': () => void;
   'session:accepted': (payload: SessionResponsePayload) => void;
   'session:rejected': (payload: SessionResponsePayload) => void;
   'session:cancelled': (payload: SessionResponsePayload) => void;
@@ -95,6 +98,19 @@ interface SessionResponsePayload {
   readonly requestId: string;
   readonly teacherId: string;
   readonly teacherName: string;
+}
+
+interface StudentQueuePayload {
+  readonly requestId: string;
+  readonly teacherId: string;
+  readonly teacherName: string;
+  readonly position: number;
+  readonly studentsAhead: number;
+  readonly totalWaiting: number;
+  readonly createdAt: string;
+  readonly queuedAt?: string;
+  readonly mode: 'direct' | 'queued';
+  readonly teacherOnline: boolean;
 }
 
 interface SessionLifecyclePayload {
@@ -144,6 +160,12 @@ export class StudentPresenceController {
     activeSessionId: undefined,
     activeTeacherName: undefined,
     pendingRequestId: undefined,
+    queuePosition: undefined,
+    studentsAhead: undefined,
+    totalWaiting: undefined,
+    queuedAt: undefined,
+    teacherOnline: undefined,
+    queueMode: undefined,
   };
 
   public constructor(
@@ -195,6 +217,7 @@ export class StudentPresenceController {
     this.socket = socket;
     socket.on('connect', () => {
       socket.emit('student:register', this.identity);
+      socket.emit('session:queue:get');
       socket.emit('professor:availability:get');
       this.startHeartbeat(socket);
       this.startAuthRefresh(socket);
@@ -211,6 +234,40 @@ export class StudentPresenceController {
         undefined,
         payload.teacherName,
         payload.requestId,
+      );
+    });
+    socket.on('session:queue:updated', (payload) => {
+      const waitingMessage =
+        payload.mode === 'direct'
+          ? `Atendimento solicitado a ${payload.teacherName}. Aguardando resposta.`
+          : payload.teacherOnline
+            ? `Você é o ${payload.position}º da fila de ${payload.teacherName}.`
+            : `Você continua na fila. ${payload.teacherName} está temporariamente offline.`;
+      this.sessionState = {
+        ...this.sessionState,
+        status: 'waiting',
+        message: waitingMessage,
+        activeSessionId: undefined,
+        activeTeacherName: payload.teacherName,
+        pendingRequestId: payload.requestId,
+        queuePosition: payload.position,
+        studentsAhead: payload.studentsAhead,
+        totalWaiting: payload.totalWaiting,
+        queuedAt: payload.queuedAt ?? payload.createdAt,
+        teacherOnline: payload.teacherOnline,
+        queueMode: payload.mode,
+      };
+      this.notifySessionListeners();
+    });
+    socket.on('session:queue:cleared', () => {
+      if (this.sessionState.status !== 'waiting') return;
+      this.clearQueueMetadata();
+      this.updateSessionState(
+        'idle',
+        'Sua solicitação não está mais ativa.',
+        undefined,
+        undefined,
+        undefined,
       );
     });
     socket.on('disconnect', () => {
@@ -233,15 +290,17 @@ export class StudentPresenceController {
       }
     });
     socket.on('session:accepted', () => {
+      this.clearQueueMetadata();
       this.updateSessionState(
         'accepted',
-        'Professor aceitou. Preparando áudio e vídeo…',
+        'Sua vez chegou! Preparando o atendimento…',
         undefined,
         this.sessionState.activeTeacherName,
         undefined,
       );
     });
     socket.on('session:rejected', () => {
+      this.clearQueueMetadata();
       this.updateSessionState(
         'rejected',
         'Professor indisponível. Escolha outro professor.',
@@ -251,6 +310,7 @@ export class StudentPresenceController {
       );
     });
     socket.on('session:cancelled', () => {
+      this.clearQueueMetadata();
       this.updateSessionState(
         'cancelled',
         'Solicitação cancelada.',
@@ -260,9 +320,11 @@ export class StudentPresenceController {
       );
     });
     socket.on('session:timeout', () => {
+      this.clearQueueMetadata();
       this.updateSessionState('timeout', 'Tempo esgotado', undefined, undefined, undefined);
     });
     socket.on('session:started', (session) => {
+      this.clearQueueMetadata();
       this.remoteControlReceiver.reset();
       this.updateSessionState(
         'connected',
@@ -601,6 +663,7 @@ export class StudentPresenceController {
     recoveryDeadline?: string,
   ): void {
     this.sessionState = {
+      ...this.sessionState,
       status,
       message,
       activeSessionId,
@@ -609,6 +672,18 @@ export class StudentPresenceController {
       ...(recoveryDeadline === undefined ? {} : { recoveryDeadline }),
     };
     this.notifySessionListeners();
+  }
+
+  private clearQueueMetadata(): void {
+    this.sessionState = {
+      ...this.sessionState,
+      queuePosition: undefined,
+      studentsAhead: undefined,
+      totalWaiting: undefined,
+      queuedAt: undefined,
+      teacherOnline: undefined,
+      queueMode: undefined,
+    };
   }
 
   private notifySessionListeners(): void {

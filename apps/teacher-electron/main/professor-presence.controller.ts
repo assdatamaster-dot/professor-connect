@@ -59,6 +59,7 @@ interface ProfessorPresenceClientEvents {
   ) => void;
   'session:accept': (payload: { readonly requestId: string }) => void;
   'session:reject': (payload: { readonly requestId: string }) => void;
+  'session:queue:get': () => void;
   'session:end': (payload: { readonly sessionId: string; readonly recoveryToken?: string }) => void;
   'session:recover': (
     payload: { readonly sessionId: string; readonly recoveryToken: string },
@@ -79,6 +80,7 @@ interface ProfessorPresenceServerEvents {
     readonly availableSince?: string;
   }) => void;
   'session:requested': (payload: ProfessorSessionRequest) => void;
+  'session:queue:changed': (payload: TeacherQueuePayload) => void;
   'session:timeout': (payload: SessionRequestTimeoutPayload) => void;
   'session:cancelled': (payload: SessionRequestTimeoutPayload) => void;
   'session:started': (payload: ProfessorActiveSession) => void;
@@ -105,6 +107,12 @@ interface ProfessorConnectConfig {
 
 interface SessionRequestTimeoutPayload {
   readonly requestId: string;
+}
+
+interface TeacherQueuePayload {
+  readonly teacherId: string;
+  readonly totalWaiting: number;
+  readonly requests: readonly ProfessorSessionRequest[];
 }
 
 type PresenceListener = (snapshot: ProfessorPresenceSnapshot) => void;
@@ -141,10 +149,12 @@ export class ProfessorPresenceController {
 
   public constructor(
     private readonly configPath: string,
-    private readonly sessionRequestTimeoutMs = SESSION_REQUEST_TIMEOUT_MS,
+    _sessionRequestTimeoutMs = SESSION_REQUEST_TIMEOUT_MS,
     private readonly authenticatedTransport?: AuthenticatedTransport,
     private readonly recoveryStore?: SessionRecoveryStore,
-  ) {}
+  ) {
+    void _sessionRequestTimeoutMs;
+  }
 
   public async connect(nameInput: string): Promise<ProfessorPresenceSnapshot> {
     const name = nameInput.trim();
@@ -198,6 +208,7 @@ export class ProfessorPresenceController {
         ? ProfessorPresenceStatus.RECOVERY_AVAILABLE
         : ProfessorPresenceStatus.CONNECTED;
       socket.emit('professor:online', { name });
+      socket.emit('session:queue:get');
       this.startHeartbeat(socket);
       this.startAuthRefresh(socket);
       if (!this.startupRecoveryPending) this.recoverCurrentSession(socket);
@@ -235,7 +246,13 @@ export class ProfessorPresenceController {
       }
       this.sessionRequests = [...this.sessionRequests, request];
       this.sessionNotice = undefined;
-      this.scheduleSessionRequestExpiration(request.requestId);
+      this.notifyListeners();
+    });
+    socket.on('session:queue:changed', (payload) => {
+      this.clearSessionRequestExpirationTimers();
+      this.sessionRequests = [...payload.requests].sort(
+        (left, right) => left.position - right.position,
+      );
       this.notifyListeners();
     });
     socket.on('session:timeout', (payload) => {
@@ -250,8 +267,12 @@ export class ProfessorPresenceController {
       this.notifyListeners();
     });
     socket.on('session:started', (session) => {
-      this.clearSessionRequestExpirationTimers();
-      this.sessionRequests = [];
+      if (session.requestId !== undefined)
+        this.clearSessionRequestExpirationTimer(session.requestId);
+      this.sessionRequests = this.sessionRequests.filter(
+        (request) =>
+          request.requestId !== session.requestId && request.studentId !== session.studentId,
+      );
       this.activeSession = session;
       this.sessionNotice = undefined;
       this.remoteControl = createInitialRemoteControlSnapshot();
@@ -723,15 +744,6 @@ export class ProfessorPresenceController {
     }
     this.notifyListeners();
     return this.getSnapshot();
-  }
-
-  private scheduleSessionRequestExpiration(requestId: string): void {
-    this.clearSessionRequestExpirationTimer(requestId);
-    const timer = setTimeout(() => {
-      this.expireSessionRequest(requestId);
-    }, this.sessionRequestTimeoutMs);
-    timer.unref?.();
-    this.sessionRequestExpirationTimers.set(requestId, timer);
   }
 
   private expireSessionRequest(requestId: string): void {

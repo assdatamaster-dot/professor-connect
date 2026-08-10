@@ -76,6 +76,15 @@ export class SessionManager {
       throw new Error(`Já existe uma sessão para a solicitação: ${request.requestId}`);
     }
 
+    if (this.hasActiveSessionForProfessor(request.teacherId)) {
+      throw new Error('O professor já possui um atendimento ativo');
+    }
+    if (
+      [...this.activeSessions.values()].some((session) => session.studentId === request.studentId)
+    ) {
+      throw new Error('O aluno já possui um atendimento ativo');
+    }
+
     const teacherCredentials = this.recoveryManager.issueCredentials();
     const studentCredentials = this.recoveryManager.issueCredentials();
     const now = this.clock().toISOString();
@@ -133,6 +142,10 @@ export class SessionManager {
 
   public listActiveSessions(): readonly AttendanceSession[] {
     return [...this.activeSessions.values()];
+  }
+
+  public hasActiveSessionForProfessor(teacherId: string): boolean {
+    return this.listActiveSessions().some((session) => session.teacherId === teacherId);
   }
 
   public listHistory(): readonly AttendanceSession[] {

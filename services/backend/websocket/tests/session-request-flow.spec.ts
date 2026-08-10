@@ -12,6 +12,8 @@ import {
   StudentPresenceManager,
   type SessionRequestedPayload,
   type SessionResponsePayload,
+  type StudentQueuePayload,
+  type TeacherQueuePayload,
   type SessionLifecyclePayload,
   type ScreenSharePayload,
   type WebRtcDescriptionPayload,
@@ -32,6 +34,10 @@ interface ServerEvents {
   'session:accepted': (payload: SessionResponsePayload) => void;
   'session:rejected': (payload: SessionResponsePayload) => void;
   'session:timeout': (payload: SessionResponsePayload) => void;
+  'session:cancelled': (payload: SessionResponsePayload) => void;
+  'session:queue:updated': (payload: StudentQueuePayload) => void;
+  'session:queue:changed': (payload: TeacherQueuePayload) => void;
+  'session:queue:cleared': () => void;
   'session:started': (payload: SessionLifecyclePayload) => void;
   'session:reconnecting': (payload: SessionLifecyclePayload) => void;
   'session:recovered': (payload: SessionLifecyclePayload) => void;
@@ -53,6 +59,8 @@ interface ClientEvents {
   'request:session': (payload: { readonly teacherId: string }) => void;
   'session:accept': (payload: { readonly requestId: string }) => void;
   'session:reject': (payload: { readonly requestId: string }) => void;
+  'session:cancel': (payload: { readonly requestId: string }) => void;
+  'session:queue:get': () => void;
   'session:end': (payload: { readonly sessionId: string }) => void;
   'session:recover': (
     payload: { readonly sessionId: string; readonly recoveryToken: string },
@@ -66,6 +74,105 @@ interface ClientEvents {
 }
 
 type TestClient = Socket<ServerEvents, ClientEvents>;
+
+test('atualiza posições e chama automaticamente o próximo aluno em tempo real', async () => {
+  const httpServer = createServer();
+  const professors = new PresenceManager(undefined, () => 'teacher-id');
+  const students = new StudentPresenceManager();
+  let requestSequence = 0;
+  const requests = new SessionRequestManager(professors, students, {
+    idFactory: () => `queue-request-${++requestSequence}`,
+    timeoutMs: 5_000,
+  });
+  let sessionSequence = 0;
+  const sessions = new SessionManager(professors, students, {
+    idFactory: () => `queue-session-${++sessionSequence}`,
+  });
+  const gateway = initializeTestWebSocket(
+    httpServer,
+    {
+      info(): void {},
+      error(message, error): void {
+        throw new Error(message, { cause: error });
+      },
+    },
+    {
+      requestTimeout: 60_000,
+      heartbeat: { intervalMs: 30_000, timeoutMs: 90_000, reconnectWindowMs: 90_000 },
+      professors,
+      students,
+      requests,
+      sessions,
+    },
+  );
+  await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve));
+  const address = httpServer.address();
+  assert(address !== null && typeof address === 'object');
+  const url = `http://127.0.0.1:${address.port}`;
+  const teacher: TestClient = io(
+    url,
+    authenticatedSocketOptions('TEACHER', 'teacher-id', 'Carlos'),
+  );
+  const ana: TestClient = io(url, authenticatedSocketOptions('STUDENT', 'student-a', 'Ana'));
+  const bia: TestClient = io(url, authenticatedSocketOptions('STUDENT', 'student-b', 'Bia'));
+  const caio: TestClient = io(url, authenticatedSocketOptions('STUDENT', 'student-c', 'Caio'));
+
+  try {
+    await Promise.all([teacher, ana, bia, caio].map(waitForConnect));
+    teacher.emit('professor:online', { name: 'Carlos' });
+    ana.emit('student:register', { id: 'student-a', name: 'Ana' });
+    bia.emit('student:register', { id: 'student-b', name: 'Bia' });
+    caio.emit('student:register', { id: 'student-c', name: 'Caio' });
+    await waitUntil(
+      () =>
+        students.getOnlineStudents().length === 3 && professors.getOnlineProfessors().length === 1,
+    );
+
+    const firstRequested = waitForRequested(teacher);
+    ana.emit('request:session', { teacherId: 'teacher-id' });
+    const first = await firstRequested;
+    const anaStarted = waitForStarted(ana);
+    teacher.emit('session:accept', { requestId: first.requestId });
+    const firstSession = await anaStarted;
+
+    const biaPosition = waitForQueueUpdate(bia);
+    bia.emit('request:session', { teacherId: 'teacher-id' });
+    assert.equal((await biaPosition).position, 1);
+    const caioPosition = waitForQueueUpdate(caio);
+    const teacherQueue = waitForTeacherQueue(teacher, 2);
+    caio.emit('request:session', { teacherId: 'teacher-id' });
+    assert.equal((await caioPosition).position, 2);
+    assert.deepEqual(
+      (await teacherQueue).requests.map(({ studentName, position }) => ({ studentName, position })),
+      [
+        { studentName: 'Bia', position: 1 },
+        { studentName: 'Caio', position: 2 },
+      ],
+    );
+
+    const caioPromoted = waitForQueueUpdate(caio);
+    const biaCancelled = new Promise<SessionResponsePayload>((resolve) =>
+      bia.once('session:cancelled', resolve),
+    );
+    bia.emit('session:cancel', { requestId: 'queue-request-2' });
+    assert.equal((await biaCancelled).requestId, 'queue-request-2');
+    assert.equal((await caioPromoted).position, 1);
+
+    const caioAccepted = waitForAccepted(caio);
+    const caioStarted = waitForStarted(caio);
+    teacher.emit('session:end', { sessionId: firstSession.sessionId });
+    assert.equal((await caioAccepted).requestId, 'queue-request-3');
+    const nextSession = await caioStarted;
+    assert.equal(nextSession.studentId, 'student-c');
+    assert.equal(sessions.listActiveSessions()[0]?.studentId, 'student-c');
+  } finally {
+    teacher.disconnect();
+    ana.disconnect();
+    bia.disconnect();
+    caio.disconnect();
+    await new Promise<void>((resolve) => gateway.close(resolve));
+  }
+});
 
 test('entrega aceite, recusa e timeout em tempo real', async () => {
   const httpServer = createServer();
@@ -146,7 +253,14 @@ test('entrega aceite, recusa e timeout em tempo real', async () => {
     student.emit('request:session', { teacherId: 'teacher-id' });
     const firstRequest = await requestedForAccept;
     assert.equal(firstRequest.studentName, 'Ana');
-    assert.deepEqual(await reservedAvailableList, []);
+    assert.deepEqual(await reservedAvailableList, [
+      {
+        id: 'teacher-id',
+        name: 'Carlos',
+        status: 'busy',
+        availableSince: professors.getOnlineProfessors()[0]?.onlineSince.toISOString(),
+      },
+    ]);
     const accepted = waitForAccepted(student);
     const teacherStarted = waitForStarted(teacher);
     const studentStarted = waitForStarted(student);
@@ -325,6 +439,24 @@ function setTeacherAvailability(
 
 function waitForAccepted(client: TestClient): Promise<SessionResponsePayload> {
   return new Promise((resolve) => client.once('session:accepted', resolve));
+}
+
+function waitForQueueUpdate(client: TestClient): Promise<StudentQueuePayload> {
+  return new Promise((resolve) => client.once('session:queue:updated', resolve));
+}
+
+function waitForTeacherQueue(
+  client: TestClient,
+  totalWaiting: number,
+): Promise<TeacherQueuePayload> {
+  return new Promise((resolve) => {
+    const listener = (payload: TeacherQueuePayload): void => {
+      if (payload.totalWaiting !== totalWaiting) return;
+      client.off('session:queue:changed', listener);
+      resolve(payload);
+    };
+    client.on('session:queue:changed', listener);
+  });
 }
 
 function waitForRejected(client: TestClient): Promise<SessionResponsePayload> {

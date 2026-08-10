@@ -67,6 +67,8 @@ export {
   type SessionRequestedPayload,
   type SessionRequestReferencePayload,
   type SessionResponsePayload,
+  type StudentQueuePayload,
+  type TeacherQueuePayload,
 } from './modules/session-request/session-request.gateway.js';
 export { SessionRequestManager } from './modules/session-request/session-request.manager.js';
 export type {
@@ -75,6 +77,8 @@ export type {
   SessionRequestExpirationHandler,
   SessionRequestManagerOptions,
   SessionRequestStatus,
+  SessionQueueEntry,
+  SessionQueueChangedHandler,
 } from './modules/session-request/session-request.types.js';
 export {
   SESSION_EVENTS,

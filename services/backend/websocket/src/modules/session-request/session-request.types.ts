@@ -8,13 +8,31 @@ export interface SessionRequest {
   readonly teacherName: string;
   readonly status: SessionRequestStatus;
   readonly createdAt: string;
+  readonly queuedAt?: string;
   readonly respondedAt?: string;
+}
+
+export interface SessionQueueEntry {
+  readonly requestId: string;
+  readonly studentId: string;
+  readonly studentName: string;
+  readonly teacherId: string;
+  readonly teacherName: string;
+  readonly status: 'waiting';
+  readonly position: number;
+  readonly studentsAhead: number;
+  readonly totalWaiting: number;
+  readonly createdAt: string;
+  readonly queuedAt?: string;
+  readonly mode: 'direct' | 'queued';
+  readonly teacherOnline: boolean;
 }
 
 export interface SessionRequestDelivery {
   readonly request: SessionRequest;
   readonly studentSocketId: string | undefined;
   readonly teacherSocketId: string | undefined;
+  readonly queue?: SessionQueueEntry;
 }
 
 export interface SessionRequestManagerOptions {
@@ -28,6 +46,10 @@ export interface SessionRequestManagerOptions {
 }
 
 export type SessionRequestExpirationHandler = (delivery: SessionRequestDelivery) => void;
+export type SessionQueueChangedHandler = (
+  teacherId: string,
+  queue: readonly SessionQueueEntry[],
+) => void;
 import type {
   AuditPersistence,
   SessionRequestPersistence,

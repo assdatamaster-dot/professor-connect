@@ -251,6 +251,52 @@ button svg,
   padding: 34px clamp(30px, 4vw, 54px) clamp(36px, 4vw, 56px);
 }
 
+.queue-status {
+  margin-top: 1.25rem;
+  padding: 1rem 1.125rem;
+  border: 1px solid color-mix(in srgb, #d29a00 38%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, #fff4c2 58%, transparent);
+}
+
+.queue-status__kicker,
+.queue-status__ahead,
+.queue-status__time,
+.queue-status small {
+  display: block;
+}
+
+.queue-status__kicker {
+  color: #8a6200;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.queue-status__position {
+  display: block;
+  margin: 0.35rem 0 0.2rem;
+  color: var(--text-strong, #172033);
+  font-size: clamp(1.5rem, 3vw, 2.15rem);
+}
+
+.queue-status__time {
+  margin-top: 0.55rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.queue-status small {
+  margin-top: 0.35rem;
+  color: var(--text-muted, #657086);
+}
+
+.queue-status[data-state='called'] {
+  border-color: color-mix(in srgb, #2478ff 42%, transparent);
+  background: color-mix(in srgb, #dceaff 64%, transparent);
+}
+
 .call-message {
   max-width: 480px;
 }
@@ -2016,6 +2062,9 @@ button svg,
   color: #08724a;
   font-size: 0.78rem;
   font-weight: 750;
+}
+.teacher-card__status[data-status='busy'] {
+  color: #a66b00;
 }
 .teacher-list__empty {
   color: #627184;

@@ -313,6 +313,7 @@ test('lê config.json, registra o professor e desconecta pelo Socket.IO', async 
       studentName: 'Ana',
     });
     await waitUntil(() => controller.getSnapshot().sessionRequests.length === 1);
+    socketServer.emit('session:timeout', { requestId: 'request-4' });
     await waitUntil(() => controller.getSnapshot().sessionRequests.length === 0);
     assert.equal(
       controller.getSnapshot().sessionNotice,

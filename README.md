@@ -1,5 +1,8 @@
 # Professor Connect
 
+> A fila FIFO de atendimento, atualização em tempo real e regras de concorrência estão documentadas
+> em [Sprint — Fila de atendimento](docs/sprints/SPR-ATTENDANCE-QUEUE.md).
+
 > O fluxo inteligente de disponibilidade, solicitação, atendimento em tempo real e histórico está
 > documentado em [Sprint BETA-11C](docs/sprints/SPR-BETA-11C.md).
 

@@ -235,6 +235,7 @@ export function initializeWebSocket(
     sessionRequestManager,
     logger,
     activeSessionGateway,
+    activeSessionManager,
   );
   sessionRequestGateway.registerEvents();
 

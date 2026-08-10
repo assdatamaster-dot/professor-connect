@@ -36,10 +36,15 @@ export interface ProfessorSessionRequest {
   readonly requestId: string;
   readonly studentId: string;
   readonly studentName: string;
+  readonly createdAt: string;
+  readonly queuedAt?: string;
+  readonly position: number;
+  readonly mode: 'direct' | 'queued';
 }
 
 export interface ProfessorActiveSession {
   readonly sessionId: string;
+  readonly requestId?: string;
   readonly teacherId: string;
   readonly teacherName: string;
   readonly studentId: string;

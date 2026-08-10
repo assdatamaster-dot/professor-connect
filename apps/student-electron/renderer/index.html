@@ -65,9 +65,18 @@
                 Escolha um professor e envie uma solicitação. A conversa começa por áudio e vídeo;
                 outros recursos só são usados com sua permissão.
               </p>
+              <section id="queue-status" class="queue-status" aria-live="polite" hidden>
+                <span id="queue-status-kicker" class="queue-status__kicker"
+                  >Atendimento solicitado</span
+                >
+                <strong id="queue-status-position" class="queue-status__position"></strong>
+                <span id="queue-status-ahead" class="queue-status__ahead"></span>
+                <time id="queue-wait-time" class="queue-status__time" datetime="PT0S">00:00</time>
+                <small id="queue-teacher-presence"></small>
+              </section>
             </div>
             <div class="call-form">
-              <span class="teacher-list-label">Professores disponíveis</span>
+              <span class="teacher-list-label">Professores online</span>
               <div id="teacher-list" class="teacher-list" aria-live="polite">
                 <p class="teacher-list__empty">Carregando professores…</p>
               </div>
@@ -76,11 +85,7 @@
                   <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
                   <path d="M4 21a8 8 0 0 1 16 0" />
                 </svg>
-                <select
-                  id="teacher-select"
-                  class="teacher-select"
-                  aria-label="Professor disponível"
-                >
+                <select id="teacher-select" class="teacher-select" aria-label="Professor online">
                   <option value="">Carregando professores...</option>
                 </select>
                 <svg class="select-chevron" viewBox="0 0 24 24" aria-hidden="true">

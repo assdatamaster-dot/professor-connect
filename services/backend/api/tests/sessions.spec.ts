@@ -11,6 +11,8 @@ import {
 
 import { createApp } from '../src/app.js';
 import { AUTHORIZATION_HEADERS, TestAuthService } from './auth-fixture.js';
+import type { AuthenticatedIdentity } from '../src/auth/auth.types.js';
+import { TEST_IDENTITY } from './auth-fixture.js';
 
 test('expõe solicitações pendentes e o histórico completo', async () => {
   const professors = new PresenceManager(
@@ -89,3 +91,75 @@ test('expõe solicitações pendentes e o histórico completo', async () => {
     });
   }
 });
+
+test('fila expõe somente a posição do aluno e a fila do professor autenticado', async () => {
+  const professors = new PresenceManager(undefined, () => 'teacher-id');
+  const students = new StudentPresenceManager();
+  professors.registerProfessor({ id: 'teacher-id', name: 'Carlos', socketId: 'teacher-socket' });
+  students.registerStudent({ id: 'student-a', name: 'Ana', socketId: 'student-a-socket' });
+  students.registerStudent({ id: 'student-b', name: 'Bia', socketId: 'student-b-socket' });
+  let sequence = 0;
+  const manager = new SessionRequestManager(professors, students, {
+    idFactory: () => `request-${++sequence}`,
+    timeoutMs: 30_000,
+  });
+  manager.createRequest('student-a-socket', 'teacher-id');
+  manager.createRequest('student-b-socket', 'teacher-id');
+  const auth = new MutableIdentityAuthService({
+    ...TEST_IDENTITY,
+    roles: ['STUDENT'],
+    profileId: 'student-b',
+  });
+  const server = createServer(
+    createApp(professors, students, manager, new SessionManager(professors, students), auth),
+  );
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+
+  try {
+    const address = server.address();
+    assert(address !== null && typeof address === 'object');
+    const url = `http://127.0.0.1:${address.port}/api/sessions/queue`;
+    const studentPayload = (await (
+      await fetch(url, { headers: AUTHORIZATION_HEADERS })
+    ).json()) as Record<string, unknown>;
+    assert.equal(JSON.stringify(studentPayload).includes('Ana'), false);
+    const ownRequest = studentPayload.request as Record<string, unknown>;
+    assert.equal(ownRequest.requestId, 'request-2');
+    assert.deepEqual(ownRequest.teacher, { id: 'teacher-id', name: 'Carlos' });
+    assert.equal(ownRequest.status, 'WAITING');
+    assert.equal(ownRequest.position, 2);
+    assert.equal(ownRequest.studentsAhead, 1);
+    assert.equal(ownRequest.totalWaiting, 2);
+    assert.equal(ownRequest.teacherOnline, true);
+    assert.equal(ownRequest.nextExpected, 'AUTOMATIC_CALL');
+    assert.equal(typeof ownRequest.waitingSeconds, 'number');
+
+    auth.identity = { ...TEST_IDENTITY, roles: ['TEACHER'], profileId: 'teacher-id' };
+    const teacherPayload = (await (
+      await fetch(url, { headers: AUTHORIZATION_HEADERS })
+    ).json()) as { totalWaiting: number; requests: readonly unknown[] };
+    assert.equal(teacherPayload.totalWaiting, 2);
+    assert.equal(teacherPayload.requests.length, 2);
+
+    auth.identity = { ...TEST_IDENTITY, roles: ['TEACHER'], profileId: 'other-teacher' };
+    assert.deepEqual(
+      await (await fetch(`${url}?teacherId=teacher-id`, { headers: AUTHORIZATION_HEADERS })).json(),
+      { totalWaiting: 0, requests: [] },
+    );
+  } finally {
+    manager.close();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error === undefined ? resolve() : reject(error))),
+    );
+  }
+});
+
+class MutableIdentityAuthService extends TestAuthService {
+  public constructor(public identity: AuthenticatedIdentity) {
+    super();
+  }
+
+  public override verifyAccessToken(): Promise<AuthenticatedIdentity> {
+    return Promise.resolve(this.identity);
+  }
+}

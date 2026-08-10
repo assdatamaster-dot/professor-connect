@@ -7,6 +7,7 @@ import {
   createActiveSessionsController,
   createSessionDetailsController,
   createSessionHistoryController,
+  createAttendanceQueueController,
 } from '../controllers/sessions-controller.js';
 
 export function createSessionsRouter(
@@ -16,6 +17,7 @@ export function createSessionsRouter(
   const router = Router();
 
   router.get('/pending', createPendingSessionsController(requestManager));
+  router.get('/queue', createAttendanceQueueController(requestManager));
   router.get('/history', createSessionHistoryController(requestManager, sessionManager));
   router.get('/active', createActiveSessionsController(sessionManager));
   router.get('/:sessionId', createSessionDetailsController(sessionManager));

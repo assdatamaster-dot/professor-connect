@@ -32,7 +32,7 @@ interface ProfessorPresenceClientEvents {
 export interface AvailableProfessorPayload {
   readonly id: string;
   readonly name: string;
-  readonly status: 'available';
+  readonly status: 'available' | 'busy';
   readonly availableSince: string;
   readonly avatarUrl?: string;
 }
@@ -186,11 +186,16 @@ export class ProfessorPresenceGateway {
     const identity = readIdentity(socket);
     if (identity === undefined) return;
     const professors = this.presenceManager
-      .getAvailableProfessors(identity.organizationId)
+      .getOnlineProfessors()
+      .filter(
+        (professor) =>
+          professor.organizationId === identity.organizationId &&
+          professor.availability !== 'unavailable',
+      )
       .map((professor) => ({
         id: professor.id,
         name: professor.name,
-        status: 'available' as const,
+        status: professor.availability === 'busy' ? ('busy' as const) : ('available' as const),
         availableSince: (professor.availableSince ?? professor.onlineSince).toISOString(),
         ...(professor.avatarUrl === undefined ? {} : { avatarUrl: professor.avatarUrl }),
       }));

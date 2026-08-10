@@ -53,6 +53,7 @@ export interface SessionRequestRecord {
   readonly teacherName: string;
   readonly status: 'pending' | 'accepted' | 'rejected' | 'expired' | 'cancelled';
   readonly createdAt: string;
+  readonly queuedAt?: string;
   readonly respondedAt?: string;
 }
 
@@ -295,9 +296,11 @@ export class SessionRequestRepository {
             studentId: request.studentId,
             status,
             createdAt: new Date(request.createdAt),
+            queuedAt: request.queuedAt === undefined ? null : new Date(request.queuedAt),
           },
           update: {
             status,
+            queuedAt: request.queuedAt === undefined ? null : new Date(request.queuedAt),
             ...(status === RequestStatus.PENDING ? {} : { respondedAt: occurredAt }),
           },
         }),
@@ -331,6 +334,7 @@ export class SessionRequestRepository {
           teacherName: request.professor.name,
           status: fromRequestStatus(request.status),
           createdAt: request.createdAt.toISOString(),
+          ...(request.queuedAt === null ? {} : { queuedAt: request.queuedAt.toISOString() }),
           ...(request.respondedAt === null
             ? {}
             : { respondedAt: request.respondedAt.toISOString() }),
