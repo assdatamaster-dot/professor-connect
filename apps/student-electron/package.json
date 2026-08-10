@@ -1,6 +1,6 @@
 {
   "name": "@professor-connect/student-electron",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "description": "Aplicativo desktop do aluno para atendimentos no Professor Connect.",
   "author": {
@@ -10,11 +10,10 @@
   "type": "module",
   "main": "dist/main/index.js",
   "scripts": {
-    "build": "tsc -p preload/tsconfig.json && tsc -p tsconfig.json && node scripts/copy-static.mjs && node ../../scripts/validate-renderer-esm.mjs dist/renderer/index.js",
+    "build": "tsc -p preload/tsconfig.json && tsc -p tsconfig.json && node scripts/copy-static.mjs && node ../../scripts/generate-build-info.mjs student && node ../../scripts/validate-renderer-esm.mjs dist/renderer/index.js",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "dev": "npm run build && electron .",
-    "dist:win": "npx turbo run build --filter=@professor-connect/student-electron... && electron-builder --win nsis --x64",
-    "publish:win": "npx turbo run build --filter=@professor-connect/student-electron... && electron-builder --win nsis --x64 --publish always",
+    "dist:win": "npx turbo run build --filter=@professor-connect/student-electron... && electron-builder --win nsis --x64 && node ../../scripts/write-release-info.mjs student",
     "lint": "eslint main preload renderer shared tests --max-warnings=0",
     "start": "electron .",
     "test": "tsx --test tests/*.spec.ts",

@@ -1,6 +1,6 @@
 {
   "name": "professor-connect",
-  "version": "0.1.0",
+  "version": "0.1.3",
   "private": true,
   "description": "Monorepo do Professor Connect.",
   "license": "UNLICENSED",
@@ -21,6 +21,8 @@
     "build-backend": "turbo run build --filter=@professor-connect/api... --filter=@professor-connect/admin-web",
     "build-student": "npm run dist:win --workspace=@professor-connect/student-electron",
     "build-teacher": "npm run dist:win --workspace=@professor-connect/teacher-electron",
+    "release:validate": "node scripts/validate-release-context.mjs",
+    "release:qa": "npm run release:validate -- --mode qa && npm run prisma:validate && npm run check && npm run build-all && npm run updates:verify && npm run updates:stage && npm run updates:release:validate",
     "admin:test-preview": "npm run preview:admin --workspace=@professor-connect/api",
     "check": "npm run lint && npm run typecheck && npm run test && npm run format:check",
     "clean": "turbo run clean",
@@ -40,7 +42,7 @@
     "prisma:generate": "npm run prisma:generate --workspace=@professor-connect/database",
     "prisma:pull:print": "npm run prisma:pull:print --workspace=@professor-connect/database",
     "prisma:status": "npm run prisma:status --workspace=@professor-connect/database",
-    "prisma:validate": "npm run prisma:validate --workspace=@professor-connect/database",
+    "prisma:validate": "node scripts/validate-prisma-schema.mjs",
     "presence:client": "npm run presence:client --workspace=@professor-connect/websocket",
     "request:client": "npm run request:client --workspace=@professor-connect/websocket",
     "start": "npm run start --workspace=@professor-connect/api",
@@ -48,9 +50,12 @@
     "typecheck": "turbo run typecheck",
     "verify-admin-publication": "node scripts/verify-admin-publication.mjs",
     "updates:stage": "node scripts/stage-update-artifacts.mjs",
-    "updates:verify": "node scripts/stage-update-artifacts.mjs --verify-only"
+    "updates:verify": "node scripts/stage-update-artifacts.mjs --verify-only",
+    "updates:diagnose": "node scripts/diagnose-updates.mjs",
+    "updates:release:validate": "node scripts/validate-windows-release.mjs"
   },
   "devDependencies": {
+    "@electron/asar": "3.4.1",
     "@eslint/js": "10.0.1",
     "electron-builder": "26.15.3",
     "eslint": "10.0.0",

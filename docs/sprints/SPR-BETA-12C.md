@@ -64,6 +64,11 @@ npm run updates:stage
 O último comando prepara `release-updates/teacher` e `release-updates/student`. Em CI, publique ou
 monte esse diretório no volume de artefatos antes de promover a release. O backend expõe:
 
+O deploy Git do EasyPanel não transporta esse diretório ignorado. O serviço precisa de um mount
+persistente em `/app/release-updates`, e o upload dos artefatos é uma etapa explícita e separada do
+deploy do backend. O procedimento atual, os headers de cache e o teste real A → B estão em
+[Auto Update](../deploy/auto-update.md).
+
 - `GET /api/version/latest?application=teacher&channel=stable`;
 - `GET /api/version/check?currentVersion=1.0.0&application=teacher&channel=stable`;
 - `POST /api/version/events` para auditoria/inventário;

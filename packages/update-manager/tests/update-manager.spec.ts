@@ -9,6 +9,7 @@ import type { AppUpdaterLike, UpdateInfoLike } from '../src/contracts.js';
 import { ReleaseNotesService } from '../src/release-notes-service.js';
 import { RollbackManager } from '../src/rollback-manager.js';
 import { UpdateManager } from '../src/update-manager.js';
+import { redactSensitive } from '../src/update-file-logger.js';
 import { VersionService } from '../src/version-service.js';
 
 class FakeUpdater extends EventEmitter implements AppUpdaterLike {
@@ -65,6 +66,15 @@ async function fixture(): Promise<{
     isPackaged: true,
     quitApplication: () => undefined,
     webContents: () => undefined,
+    buildIdentity: {
+      application: 'teacher',
+      version: '1.0.0',
+      gitSha: '006d84f006d84f006d84f006d84f006d84f006d8',
+      buildDate: '2026-08-10T12:00:00.000Z',
+      buildId: '1.0.0+006d84f',
+      dirty: false,
+    },
+    updateUrl: 'https://updates.example.test/updates/teacher',
     startupDelayMilliseconds: 3_600_000,
   });
   await manager.start();
@@ -73,6 +83,7 @@ async function fixture(): Promise<{
 
 async function cleanup(value: Awaited<ReturnType<typeof fixture>>): Promise<void> {
   value.manager.dispose();
+  await value.manager.flushLogs();
   await rm(value.directory, { recursive: true, force: true });
 }
 
@@ -191,6 +202,14 @@ test('serviços de versão e changelog tratam canais e categorias', () => {
   assert.deepEqual(notes.improvements, ['C']);
   assert.equal(VersionService.compare('1.2.0', '1.1.9'), 1);
   assert.equal(VersionService.compare('1.2.0-beta.1', '1.2.0'), -1);
+});
+
+test('logger remove credenciais e tokens antes de persistir', () => {
+  const value = redactSensitive(
+    'Bearer abc.def token=secret https://usuario:senha@example.test/update',
+  );
+  assert.doesNotMatch(value, /abc\.def|token=secret|usuario:senha/);
+  assert.match(value, /\[REDACTED]/);
 });
 
 async function waitFor(predicate: () => boolean, timeout = 1_000): Promise<void> {

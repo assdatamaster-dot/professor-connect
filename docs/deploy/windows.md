@@ -1,89 +1,130 @@
-# Instaladores Windows
+# Release dos aplicativos Windows
 
-Este guia descreve como gerar e distribuir os dois instaladores Windows x64 do Professor Connect.
-O empacotamento não altera o comportamento dos clientes: ele compila os mesmos processos
-main/preload/renderer e os entrega em instaladores NSIS separados.
+Este é o procedimento aprovado para compilar, identificar e preparar os instaladores NSIS x64 do
+Professor Connect. Deploy do backend e publicação dos aplicativos Windows são operações separadas.
 
-## Pré-requisitos
+## Fontes de versão
 
-- Windows 10 ou 11 x64;
-- Node.js 22.12 ou superior;
-- npm 10 ou superior;
-- acesso à internet no primeiro build para baixar os binários do Electron e do NSIS.
+A versão de release deve ser idêntica nestes quatro arquivos:
 
-Na raiz do repositório, instale exatamente as dependências do lockfile:
+- `package.json` (versão coordenadora do produto);
+- `services/backend/api/package.json` (versão exposta pelo health);
+- `apps/teacher-electron/package.json` (Teacher, instalador e updater);
+- `apps/student-electron/package.json` (Student, instalador e updater).
+
+Os demais workspaces `0.1.0` são pacotes internos e têm ciclo próprio. Antes de uma release, altere
+os quatro campos acima e sincronize o lockfile:
 
 ```powershell
-npm ci
+npm install --package-lock-only --ignore-scripts
+npm run updates:diagnose -- --local-only
 ```
+
+O segundo comando deve acusar os artefatos antigos até que um novo build seja produzido. Nunca
+republique o mesmo número: `electron-updater` só oferece uma versão semanticamente superior.
+
+## Identidade do build
+
+Cada build gera `dist/build-info.json` antes do empacotamento, contendo:
+
+```json
+{
+  "application": "teacher",
+  "version": "0.1.3",
+  "gitSha": "<SHA completo>",
+  "buildDate": "<data ISO>",
+  "dirty": false,
+  "buildId": "0.1.3+<SHA curto>"
+}
+```
+
+O arquivo entra no ASAR e esses dados aparecem em **Atualizações** dentro do aplicativo. Um build
+feito com alterações não commitadas recebe `dirty: true`; ele serve para QA local, mas
+`updates:verify` e `updates:stage` recusam promovê-lo.
 
 ## Gerar os instaladores
 
-Aluno:
+Pré-requisitos: Windows 10/11 x64, Node.js 22.12+, npm 10+ e worktree limpo no commit aprovado.
 
 ```powershell
-npm run build-student
-```
-
-Professor:
-
-```powershell
-npm run build-teacher
-```
-
-Os dois, em sequência:
-
-```powershell
+npm ci
+npm run check
 npm run build-all
 ```
 
-Os artefatos finais são:
+Comandos individuais:
 
-```text
-release/student/Professor-Connect-Aluno-Setup-0.1.0-x64.exe
-release/teacher/Professor-Connect-Professor-Setup-0.1.0-x64.exe
+```powershell
+npm run build-student
+npm run build-teacher
 ```
 
-`release/` é uma saída local de build e não deve ser versionada. Os arquivos `.blockmap` e os
-diretórios `win-unpacked` são artefatos auxiliares; a distribuição ao usuário final usa o `.exe`.
+`dist:win` recompila dependências e processos main/preload/renderer, executa Electron Builder e
+gera `release-info.json`. Os artefatos finais são:
 
-## Metadados configurados
+```text
+release/student/Professor-Connect-Aluno-Setup-<version>-x64.exe
+release/student/Professor-Connect-Aluno-Setup-<version>-x64.exe.blockmap
+release/student/{latest,beta,alpha}.yml
+release/student/release-info.json
+release/teacher/Professor-Connect-Professor-Setup-<version>-x64.exe
+release/teacher/Professor-Connect-Professor-Setup-<version>-x64.exe.blockmap
+release/teacher/{latest,beta,alpha}.yml
+release/teacher/release-info.json
+```
 
-| Item       | Aluno                                   | Professor                               |
-| ---------- | --------------------------------------- | --------------------------------------- |
-| Nome       | Professor Connect - Aluno               | Professor Connect - Professor           |
-| Versão     | 0.1.0                                   | 0.1.0                                   |
-| Fabricante | Professor Connect                       | Professor Connect                       |
-| App ID     | `br.com.professorconnect.student`       | `br.com.professorconnect.teacher`       |
-| Executável | `Professor Connect Aluno.exe`           | `Professor Connect Professor.exe`       |
-| Ícone      | `apps/student-electron/assets/icon.svg` | `apps/teacher-electron/assets/icon.svg` |
+`release/` é saída local ignorada pelo Git. O `.exe`, o `.blockmap`, os YAML e
+`release-info.json` devem sempre vir do mesmo build.
 
-O Electron Builder converte o SVG para os formatos do Windows. O NSIS cria um atalho na Área de
-Trabalho, outro no Menu Iniciar e uma entrada de desinstalação em **Configurações > Aplicativos**.
-O instalador é assistido, permite escolher o diretório e instala apenas para o usuário atual.
+## Provar o conteúdo do executável
 
-## Alterar a versão
+Não use apenas nome ou data do arquivo. Valide:
 
-Antes de uma nova entrega, atualize o campo `version` dos dois `package.json` dos clientes e o
-campo `version` da raiz. Execute `npm install --package-lock-only` para sincronizar o lockfile e
-gere novamente os instaladores. O nome do arquivo recebe a versão automaticamente.
+```powershell
+npm run updates:verify
+npm run updates:diagnose -- --local-only
+Get-FileHash release\teacher\Professor-Connect-Professor-Setup-<version>-x64.exe -Algorithm SHA256
+Get-FileHash release\student\Professor-Connect-Aluno-Setup-<version>-x64.exe -Algorithm SHA256
+Get-AuthenticodeSignature release\teacher\Professor-Connect-Professor-Setup-<version>-x64.exe
+Get-AuthenticodeSignature release\student\Professor-Connect-Aluno-Setup-<version>-x64.exe
+```
 
-## Assinatura de código
+`release-info.json` liga versão, SHA-256/SHA-512, tamanho e Git SHA. Para auditoria adicional, abra
+`release/<app>/win-unpacked/resources/app.asar` com `npx asar list`/`extract-file` e confirme
+`dist/build-info.json` e os módulos esperados.
 
-Os instaladores Beta-1A não são assinados porque o repositório não contém certificado de assinatura.
-O Windows pode exibir o SmartScreen. Para distribuição pública, configure um certificado de Code
-Signing por variáveis seguras do CI; nunca versione o arquivo do certificado ou sua senha.
+## Preparar, publicar e validar
 
-## Checklist de validação
+```powershell
+npm run updates:stage
+```
 
-Em uma máquina Windows de teste:
+Isso cria `release-updates/{teacher,student}`. O comando local não publica na internet. Em QA, o
+workflow guarda esse diretório como GitHub Actions Artifact. Em uma tag oficial, o job protegido
+transfere e promove o pacote no mount persistente `/app/release-updates` conforme
+[Pipeline de release](./release-pipeline.md), [Auto Update](./auto-update.md) e
+[EasyPanel](./easypanel.md). Depois valide sem cache:
 
-1. confira se os dois `.exe` existem e possuem tamanho maior que zero;
-2. instale cada perfil e confirme o nome, o ícone e a versão em **Aplicativos instalados**;
-3. confirme os atalhos da Área de Trabalho e do Menu Iniciar;
-4. abra cada cliente e valide que a janela local é carregada;
-5. desinstale em **Configurações > Aplicativos** e confirme a remoção dos atalhos;
-6. execute `npm run check` no repositório antes de publicar os binários.
+```powershell
+npm run updates:diagnose
+npm run updates:diagnose -- --download
+```
 
-Referência: [Electron Builder — NSIS](https://www.electron.build/docs/nsis/) e
-[Electron Builder — ícones](https://www.electron.build/docs/features/icons-and-images/).
+O primeiro compara versões, manifestos, Git SHA, tamanhos e hashes anunciados. `--download` baixa
+os dois instaladores publicados e compara SHA-256 byte a byte; use-o na promoção final.
+
+## Assinatura e dados do usuário
+
+Os builds locais auditados não possuem certificado Authenticode e não devem ser promovidos como
+release pública. Para produção, forneça `WIN_CSC_LINK` e `WIN_CSC_KEY_PASSWORD` somente pelo
+environment `desktop-production`. O workflow exige `Status: Valid` no instalador e no executável
+empacotado; sem certificado ele falha antes da publicação. Azure Trusted Signing pode substituir
+o PFX no futuro, mas requer configurar conta, endpoint e metadados específicos antes de alterar o
+workflow.
+
+NSIS instala por usuário e preserva `%APPDATA%\Professor Connect - Professor` e
+`%APPDATA%\Professor Connect - Aluno`, onde ficam autenticação segura, preferências, recuperação
+de sessão e estado do updater. Nunca apague esses diretórios durante um teste de atualização.
+
+O teste real A → B, primeira instalação, atualização e rollback está descrito em
+[Auto Update](./auto-update.md).

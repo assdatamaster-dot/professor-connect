@@ -106,15 +106,30 @@ export function createApp(
     express.static(environment.updateArtifactsPath, {
       index: false,
       immutable: false,
-      maxAge: '5m',
-      fallthrough: false,
+      maxAge: 0,
+      fallthrough: true,
       setHeaders(response, filePath) {
-        if (filePath.endsWith('.yml'))
+        if (filePath.endsWith('.yml')) {
           response.setHeader('Content-Type', 'text/yaml; charset=utf-8');
+          response.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+          response.setHeader('Pragma', 'no-cache');
+          response.setHeader('Expires', '0');
+        } else if (filePath.endsWith('release-info.json')) {
+          response.setHeader('Content-Type', 'application/json; charset=utf-8');
+          response.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+        } else {
+          response.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        }
         response.setHeader('X-Content-Type-Options', 'nosniff');
       },
     }),
   );
+  app.use('/updates', (_request, response) => {
+    response.setHeader('Cache-Control', 'no-store');
+    response
+      .status(404)
+      .json({ code: 'update_artifact_not_found', message: 'Artefato não encontrado' });
+  });
   app.use(
     cors((request, callback) => {
       const origin = request.header('Origin');
@@ -137,7 +152,7 @@ export function createApp(
   app.use(
     rateLimit({ windowMs: 60_000, limit: 300, standardHeaders: 'draft-8', legacyHeaders: false }),
   );
-  app.use('/health', healthRouter);
+  app.use(['/health', '/api/health'], healthRouter);
   app.use('/api/bootstrap', createBootstrapRouter(bootstrapService));
   app.use('/api/version', createVersionRouter());
   const authRouter = createAuthRouter(authService);

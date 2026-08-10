@@ -47,14 +47,22 @@ RUN npm ci --omit=dev && npm run prisma:generate && npm cache clean --force
 
 FROM base AS production
 
+ARG APP_VERSION=0.1.3
+ARG GIT_SHA=unknown
+ARG BUILD_DATE=unknown
+
 LABEL org.opencontainers.image.title="Professor Connect Backend" \
       org.opencontainers.image.description="API HTTP e servidor Socket.IO do Professor Connect" \
-      org.opencontainers.image.version="0.1.0" \
+      org.opencontainers.image.version="${APP_VERSION}" \
+      org.opencontainers.image.revision="${GIT_SHA}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.vendor="Professor Connect"
 
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
-    PORT=3000
+    PORT=3000 \
+    APP_GIT_SHA=${GIT_SHA} \
+    APP_BUILD_DATE=${BUILD_DATE}
 
 COPY --chown=node:node --from=production-dependencies /app/node_modules ./node_modules
 COPY --chown=node:node --from=build /app/package.json ./package.json

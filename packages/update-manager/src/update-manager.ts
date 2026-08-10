@@ -3,6 +3,7 @@ import type { WebContents } from 'electron';
 import { UpdateAuditReporter } from './audit-reporter.js';
 import type {
   AppUpdaterLike,
+  BuildIdentity,
   DownloadedUpdateInfoLike,
   ProgressInfoLike,
   UpdateApplication,
@@ -29,6 +30,8 @@ export interface UpdateManagerOptions {
   readonly isPackaged: boolean;
   readonly quitApplication: () => void;
   readonly webContents: () => WebContents | undefined;
+  readonly buildIdentity: BuildIdentity;
+  readonly updateUrl: string;
   readonly startupDelayMilliseconds?: number;
   readonly healthCheckMilliseconds?: number;
 }
@@ -43,6 +46,7 @@ export class UpdateManager {
   private readonly rollback: RollbackManager;
   private readonly settingsStore: UpdateSettingsStore;
   private readonly versions: VersionService;
+  private readonly logger: UpdateFileLogger;
   private readonly listeners = new Set<StateListener>();
   private audit: UpdateAuditReporter | undefined;
   private settings: UpdateSettings | undefined;
@@ -57,6 +61,9 @@ export class UpdateManager {
   private state: UpdateState;
 
   public constructor(private readonly options: UpdateManagerOptions) {
+    if (options.buildIdentity.version !== options.currentVersion) {
+      throw new Error('Versão do aplicativo diverge da identidade do build');
+    }
     this.versions = new VersionService(options.currentVersion, options.userDataPath);
     this.checker = new UpdateChecker(options.updater, this.versions);
     this.downloads = new DownloadManager(options.updater);
@@ -74,8 +81,11 @@ export class UpdateManager {
       message: 'Atualizações automáticas ativas',
       errorCode: undefined,
       lastCheckedAt: undefined,
+      buildIdentity: options.buildIdentity,
+      updateUrl: options.updateUrl,
     };
-    options.updater.logger = new UpdateFileLogger(options.userDataPath);
+    this.logger = new UpdateFileLogger(options.userDataPath);
+    options.updater.logger = this.logger;
     options.updater.autoDownload = false;
     this.registerUpdaterEvents();
   }
@@ -83,6 +93,13 @@ export class UpdateManager {
   public async start(): Promise<void> {
     this.settings = await this.settingsStore.get();
     this.checker.configure(this.settings.channel);
+    this.logger.info(
+      `[UPDATE] versão instalada=${this.options.currentVersion} app=${this.options.application} gitSha=${this.options.buildIdentity.gitSha} buildId=${this.options.buildIdentity.buildId} dirty=${this.options.buildIdentity.dirty}`,
+    );
+    this.logger.info(
+      `[UPDATE] URL=${this.options.updateUrl} canal=${this.settings.channel} packaged=${this.options.isPackaged}`,
+    );
+    this.logger.info(`[UPDATE] versão final=${this.options.currentVersion}`);
     this.installer.configureInstallOnQuit(
       this.settings.installOnAppQuit,
       this.state.attendanceActive,
@@ -151,6 +168,9 @@ export class UpdateManager {
 
   public async check(): Promise<UpdateState> {
     if (!this.options.isPackaged) return this.state;
+    this.logger.info(
+      `[UPDATE] verificando atualização versão=${this.options.currentVersion} URL=${this.options.updateUrl} canal=${this.requireSettings().channel}`,
+    );
     await this.audit?.report({
       event: 'check_started',
       previousVersion: this.options.currentVersion,
@@ -166,6 +186,7 @@ export class UpdateManager {
   public async download(): Promise<UpdateState> {
     if (this.state.phase !== 'available' && this.state.phase !== 'error') return this.state;
     this.patch({ phase: 'downloading', message: 'Baixando atualização em segundo plano…' });
+    this.logger.info(`[UPDATE] download iniciado versão=${this.state.newVersion ?? 'unknown'}`);
     await this.audit?.report({
       event: 'download_started',
       previousVersion: this.options.currentVersion,
@@ -198,6 +219,7 @@ export class UpdateManager {
       newVersion,
     });
     this.patch({ phase: 'installing', message: 'Instalando atualização com segurança…' });
+    this.logger.info(`[UPDATE] instalação versão=${newVersion}; reinício solicitado`);
     this.installer.install(false);
     return this.state;
   }
@@ -251,12 +273,18 @@ export class UpdateManager {
     this.listeners.clear();
   }
 
+  public flushLogs(): Promise<void> {
+    return this.logger.flush();
+  }
+
   private registerUpdaterEvents(): void {
     this.options.updater.on('checking-for-update', () => {
+      this.logger.info('[UPDATE] electron-updater iniciou consulta ao feed');
       this.patch({ phase: 'checking', message: 'Verificando atualizações…', errorCode: undefined });
     });
     this.options.updater.on('update-available', (info) => void this.onUpdateAvailable(info));
     this.options.updater.on('update-not-available', () => {
+      this.logger.info(`[UPDATE] nenhuma versão nova; instalada=${this.options.currentVersion}`);
       const checkedAt = new Date().toISOString();
       this.patch({
         phase: 'up-to-date',
@@ -275,6 +303,9 @@ export class UpdateManager {
   }
 
   private async onUpdateAvailable(info: UpdateInfoLike): Promise<void> {
+    this.logger.info(
+      `[UPDATE] versão encontrada=${info.version} instalada=${this.options.currentVersion}`,
+    );
     this.updateAvailableAt = Date.now();
     this.patch({
       phase: 'available',
@@ -319,6 +350,7 @@ export class UpdateManager {
         info.downloadedFile,
         info.files?.[0]?.sha512,
       );
+      this.logger.info(`[UPDATE] download concluído versão=${info.version}; integridade validada`);
       const deferred = this.state.attendanceActive;
       this.installPendingAfterAttendance = deferred;
       this.patch({
@@ -344,6 +376,7 @@ export class UpdateManager {
 
   private handleError(error: unknown, code = 'update_failed'): void {
     const message = error instanceof Error ? error.message : 'Falha desconhecida na atualização';
+    this.logger.error(`[UPDATE] falha code=${code} message=${message}`);
     this.patch({
       phase: 'error',
       message: 'Não foi possível atualizar agora. Tentaremos novamente.',

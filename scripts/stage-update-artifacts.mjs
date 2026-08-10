@@ -12,10 +12,31 @@ for (const application of ['teacher', 'student']) {
   const metadata = await readFile(path.join(sourceDirectory, 'latest.yml'), 'utf8');
   const artifactName = requireMatch(metadata, /^path:\s*(.+)$/m, `${application}: path`);
   const expectedSha512 = requireMatch(metadata, /^sha512:\s*(.+)$/m, `${application}: sha512`);
+  const expectedSize = Number(
+    requireMatch(metadata, /^\s+size:\s*(\d+)$/m, `${application}: size`),
+  );
   const artifactPath = path.join(sourceDirectory, artifactName);
-  if (!(await stat(artifactPath)).isFile()) throw new Error(`${application}: instalador ausente`);
-  if ((await hashFile(artifactPath)) !== expectedSha512) {
+  const releaseInfo = JSON.parse(
+    await readFile(path.join(sourceDirectory, 'release-info.json'), 'utf8'),
+  );
+  const artifactStat = await stat(artifactPath);
+  if (!artifactStat.isFile()) throw new Error(`${application}: instalador ausente`);
+  if (artifactStat.size !== expectedSize) throw new Error(`${application}: tamanho divergente`);
+  if ((await hashFile(artifactPath, 'sha512', 'base64')) !== expectedSha512) {
     throw new Error(`${application}: SHA-512 divergente`);
+  }
+  const actualSha256 = await hashFile(artifactPath, 'sha256', 'hex');
+  if (
+    releaseInfo.application !== application ||
+    releaseInfo.version !==
+      requireMatch(metadata, /^version:\s*(.+)$/m, `${application}: version`) ||
+    releaseInfo.artifact !== artifactName ||
+    releaseInfo.sha512 !== expectedSha512 ||
+    releaseInfo.sha256 !== actualSha256 ||
+    releaseInfo.size !== expectedSize ||
+    releaseInfo.dirty !== false
+  ) {
+    throw new Error(`${application}: release-info.json inválido ou build não commitado`);
   }
   const blockmapPath = `${artifactPath}.blockmap`;
   if (!(await stat(blockmapPath)).isFile()) throw new Error(`${application}: blockmap ausente`);
@@ -34,6 +55,7 @@ for (const application of ['teacher', 'student']) {
       'latest.yml',
       'beta.yml',
       'alpha.yml',
+      'release-info.json',
     ]) {
       await copyFile(path.join(sourceDirectory, fileName), path.join(destination, fileName));
     }
@@ -43,10 +65,10 @@ for (const application of ['teacher', 'student']) {
   );
 }
 
-async function hashFile(filePath) {
-  const hash = createHash('sha512');
+async function hashFile(filePath, algorithm, encoding) {
+  const hash = createHash(algorithm);
   for await (const chunk of createReadStream(filePath)) hash.update(chunk);
-  return hash.digest('base64');
+  return hash.digest(encoding);
 }
 
 function requireMatch(value, pattern, label) {

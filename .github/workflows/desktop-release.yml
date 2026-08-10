@@ -1,0 +1,291 @@
+name: Desktop CI and Release
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: ['**']
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+
+env:
+  NODE_VERSION: 22.12.0
+
+jobs:
+  quality:
+    name: 01-06 · Checkout, Node, install, Prisma and checks
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: 01 · Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: 02 · Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: 03 · Install locked dependencies
+        run: npm ci
+
+      - name: 04 · Validate Prisma schema without connecting to PostgreSQL
+        run: npm run prisma:validate
+
+      - name: 05 · Check monorepo
+        run: npm run check
+
+      - name: 06 · Validate atomic promotion scripts
+        shell: bash
+        run: bash -n scripts/promote-update-release.sh scripts/rollback-update-release.sh
+
+  qa:
+    name: 06-13 · Windows QA artifacts
+    if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+    needs: quality
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: 01 · Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: 02 · Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: 03 · Install locked dependencies
+        run: npm ci
+
+      - name: 04 · Validate version and clean Git identity
+        id: release_context
+        run: npm run release:validate -- --mode qa
+
+      - name: 05 · Set one reproducible build date
+        shell: pwsh
+        run: '"BUILD_DATE=$([DateTime]::UtcNow.ToString("o"))" >> $env:GITHUB_ENV'
+
+      - name: 06 · Build Teacher and Student x64
+        run: npm run build-all
+
+      - name: 07 · Verify installers, manifests and hashes
+        run: npm run updates:verify
+
+      - name: 08 · Stage update artifacts
+        run: npm run updates:stage
+
+      - name: 09 · Validate ASAR and create QA report
+        run: >-
+          npm run updates:release:validate --
+          --version "${{ steps.release_context.outputs.version }}"
+          --git-sha "${{ steps.release_context.outputs.git_sha }}"
+
+      - name: 10 · Keep QA artifacts outside production
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-qa-${{ steps.release_context.outputs.version }}-${{ github.sha }}
+          path: release-updates/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: 11 · Publish QA report in the job summary
+        shell: pwsh
+        run: Get-Content release-updates/release-report.md >> $env:GITHUB_STEP_SUMMARY
+
+  release:
+    name: 06-13 · Signed and promoted Windows release
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    needs: quality
+    runs-on: windows-latest
+    timeout-minutes: 60
+    environment:
+      name: desktop-production
+      url: https://professorconnect-professoread.lwf5hh.easypanel.host/updates
+    permissions:
+      contents: write
+    steps:
+      - name: 01 · Checkout official tag
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: 02 · Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: 03 · Install locked dependencies
+        run: npm ci
+
+      - name: 04 · Validate tag, version and clean Git identity
+        id: release_context
+        run: >-
+          npm run release:validate --
+          --mode release
+          --tag "${{ github.ref_name }}"
+
+      - name: 05 · Require signing and deployment secrets
+        shell: pwsh
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          UPDATE_DEPLOY_HOST: ${{ secrets.UPDATE_DEPLOY_HOST }}
+          UPDATE_DEPLOY_USER: ${{ secrets.UPDATE_DEPLOY_USER }}
+          UPDATE_DEPLOY_PATH: ${{ secrets.UPDATE_DEPLOY_PATH }}
+          UPDATE_DEPLOY_PRIVATE_KEY: ${{ secrets.UPDATE_DEPLOY_PRIVATE_KEY }}
+          UPDATE_DEPLOY_HOST_KEY: ${{ secrets.UPDATE_DEPLOY_HOST_KEY }}
+        run: |
+          $required = @(
+            'WIN_CSC_LINK',
+            'WIN_CSC_KEY_PASSWORD',
+            'UPDATE_DEPLOY_HOST',
+            'UPDATE_DEPLOY_USER',
+            'UPDATE_DEPLOY_PATH',
+            'UPDATE_DEPLOY_PRIVATE_KEY',
+            'UPDATE_DEPLOY_HOST_KEY'
+          )
+          $missing = $required | Where-Object {
+            [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_))
+          }
+          if ($missing.Count -gt 0) {
+            throw "Release bloqueada: configure todos os secrets obrigatórios no environment desktop-production."
+          }
+          "BUILD_DATE=$([DateTime]::UtcNow.ToString('o'))" >> $env:GITHUB_ENV
+
+      - name: 06 · Validate versioned backend health before promotion
+        shell: pwsh
+        run: |
+          $baseUrl = node -e "process.stdout.write(require('./apps/teacher-electron/config.json').serverUrl)"
+          $health = Invoke-RestMethod -Uri "$baseUrl/api/health?releasePreflight=$env:GITHUB_RUN_ID" -Headers @{ 'Cache-Control' = 'no-cache' }
+          if ($health.status -ne 'ok' -or [string]::IsNullOrWhiteSpace($health.version) -or [string]::IsNullOrWhiteSpace($health.gitSha)) {
+            throw 'Backend remoto não expõe identidade suficiente para uma release compatível.'
+          }
+
+      - name: 07 · Build and sign Teacher and Student x64
+        run: npm run build-all
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+
+      - name: 08 · Verify installers, manifests and hashes
+        run: npm run updates:verify
+
+      - name: 09 · Stage update artifacts
+        run: npm run updates:stage
+
+      - name: 10 · Require valid Authenticode and create release report
+        run: >-
+          npm run updates:release:validate --
+          --require-signature
+          --version "${{ steps.release_context.outputs.version }}"
+          --git-sha "${{ steps.release_context.outputs.git_sha }}"
+
+      - name: 11 · Package the immutable promotion payload
+        id: package
+        shell: pwsh
+        run: |
+          $archive = "desktop-release-${{ steps.release_context.outputs.version }}.tgz"
+          tar -czf $archive -C release-updates teacher student release-report.json release-report.md SHA256SUMS.txt
+          $sha256 = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          "archive=$archive" >> $env:GITHUB_OUTPUT
+          "sha256=$sha256" >> $env:GITHUB_OUTPUT
+
+      - name: 12 · Preserve signed release artifacts before promotion
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-release-${{ steps.release_context.outputs.version }}-${{ github.sha }}
+          path: |
+            release-updates/
+            ${{ steps.package.outputs.archive }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: 13 · Configure pinned SSH transport
+        id: ssh
+        shell: pwsh
+        env:
+          UPDATE_DEPLOY_PRIVATE_KEY: ${{ secrets.UPDATE_DEPLOY_PRIVATE_KEY }}
+          UPDATE_DEPLOY_HOST_KEY: ${{ secrets.UPDATE_DEPLOY_HOST_KEY }}
+        run: |
+          $sshDirectory = Join-Path $env:RUNNER_TEMP '.ssh'
+          New-Item -ItemType Directory -Path $sshDirectory -Force | Out-Null
+          $privateKey = Join-Path $sshDirectory 'update-deploy-key'
+          $knownHosts = Join-Path $sshDirectory 'known_hosts'
+          [IO.File]::WriteAllText($privateKey, $env:UPDATE_DEPLOY_PRIVATE_KEY.Replace("`r", ''))
+          [IO.File]::WriteAllText($knownHosts, $env:UPDATE_DEPLOY_HOST_KEY.Replace("`r", ''))
+          icacls $privateKey /inheritance:r | Out-Null
+          icacls $privateKey /grant:r "$($env:USERNAME):(R)" | Out-Null
+          "private_key=$privateKey" >> $env:GITHUB_OUTPUT
+          "known_hosts=$knownHosts" >> $env:GITHUB_OUTPUT
+
+      - name: 14 · Promote atomically, validate endpoints and rollback on failure
+        shell: pwsh
+        env:
+          UPDATE_DEPLOY_HOST: ${{ secrets.UPDATE_DEPLOY_HOST }}
+          UPDATE_DEPLOY_USER: ${{ secrets.UPDATE_DEPLOY_USER }}
+          UPDATE_DEPLOY_PATH: ${{ secrets.UPDATE_DEPLOY_PATH }}
+          UPDATE_DEPLOY_PORT: ${{ secrets.UPDATE_DEPLOY_PORT }}
+          UPDATE_RELEASE_RETENTION: ${{ vars.UPDATE_RELEASE_RETENTION || '3' }}
+        run: |
+          $hostName = $env:UPDATE_DEPLOY_HOST
+          $userName = $env:UPDATE_DEPLOY_USER
+          $deployPath = $env:UPDATE_DEPLOY_PATH
+          $port = if ([string]::IsNullOrWhiteSpace($env:UPDATE_DEPLOY_PORT)) { '22' } else { $env:UPDATE_DEPLOY_PORT }
+          $retention = $env:UPDATE_RELEASE_RETENTION
+          if ($hostName -notmatch '^[A-Za-z0-9.-]+$') { throw 'UPDATE_DEPLOY_HOST inválido' }
+          if ($userName -notmatch '^[A-Za-z0-9._-]+$') { throw 'UPDATE_DEPLOY_USER inválido' }
+          if ($deployPath -notmatch '^/[A-Za-z0-9._/-]+$' -or $deployPath.Contains('..')) { throw 'UPDATE_DEPLOY_PATH inválido' }
+          if ($port -notmatch '^\d{1,5}$') { throw 'UPDATE_DEPLOY_PORT inválido' }
+          if ($retention -notmatch '^\d+$' -or [int]$retention -lt 2) { throw 'UPDATE_RELEASE_RETENTION inválido' }
+
+          $target = "$userName@$hostName"
+          $remoteArchive = "/tmp/professor-connect-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT.tgz"
+          $sshOptions = @('-p', $port, '-i', '${{ steps.ssh.outputs.private_key }}', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', 'UserKnownHostsFile=${{ steps.ssh.outputs.known_hosts }}')
+          $scpOptions = @('-P', $port, '-i', '${{ steps.ssh.outputs.private_key }}', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', 'UserKnownHostsFile=${{ steps.ssh.outputs.known_hosts }}')
+
+          & scp @scpOptions '${{ steps.package.outputs.archive }}' "${target}:$remoteArchive"
+          if ($LASTEXITCODE -ne 0) { throw 'Falha ao transferir o pacote de release' }
+
+          $promoteCommand = "sh -s -- '$deployPath' '$remoteArchive' '${{ steps.release_context.outputs.version }}' '${{ steps.release_context.outputs.git_sha }}' '${{ steps.package.outputs.sha256 }}' '$retention'"
+          Get-Content -Raw scripts/promote-update-release.sh | & ssh @sshOptions $target $promoteCommand
+          if ($LASTEXITCODE -ne 0) { throw 'Promoção remota recusada' }
+
+          npm run updates:diagnose -- --download --allow-backend-version-mismatch --report release-updates/release-report.json
+          if ($LASTEXITCODE -ne 0) {
+            Write-Warning 'Validação pós-publicação falhou; iniciando rollback para a release anterior.'
+            $rollbackCommand = "sh -s -- '$deployPath'"
+            Get-Content -Raw scripts/rollback-update-release.sh | & ssh @sshOptions $target $rollbackCommand
+            if ($LASTEXITCODE -ne 0) { throw 'Falha crítica: validação e rollback remoto falharam.' }
+            throw 'Release revertida porque o servidor não corresponde aos artefatos locais.'
+          }
+
+      - name: 15 · Create or update the audited GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = '${{ github.ref_name }}'
+          $archive = '${{ steps.package.outputs.archive }}'
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $archive release-updates/release-report.md release-updates/release-report.json --clobber
+          } else {
+            gh release create $tag $archive release-updates/release-report.md release-updates/release-report.json --verify-tag --title "Professor Connect $tag" --notes-file release-updates/release-report.md
+          }
+
+      - name: 16 · Publish final release report
+        shell: pwsh
+        run: Get-Content release-updates/release-report.md >> $env:GITHUB_STEP_SUMMARY

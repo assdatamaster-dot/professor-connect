@@ -12,6 +12,7 @@ import {
 } from '@professor-connect/shared/electron';
 import {
   getElectronAutoUpdater,
+  readBuildIdentity,
   UpdateManager,
   UpdateUIController,
 } from '@professor-connect/update-manager';
@@ -41,6 +42,11 @@ async function createMainWindow(): Promise<void> {
   const rendererPath = path.join(currentDirectory, '..', 'renderer', 'presence.html');
   const configPath = path.join(currentDirectory, '..', 'config.json');
   const iconPath = path.join(currentDirectory, '..', 'assets', 'logo.png');
+  const buildIdentity = await readBuildIdentity(
+    path.join(currentDirectory, '..', 'build-info.json'),
+    'teacher',
+    app.getVersion(),
+  );
   const manager = createTeacherWorkflowManager();
   const { serverUrl } = JSON.parse(await readFile(configPath, 'utf8')) as { serverUrl: string };
   const authClient = new DesktopAuthClient(
@@ -109,6 +115,8 @@ async function createMainWindow(): Promise<void> {
     isPackaged: app.isPackaged,
     quitApplication: () => app.quit(),
     webContents: () => mainWindow?.webContents,
+    buildIdentity,
+    updateUrl: `${serverUrl.replace(/\/$/, '')}/updates/teacher`,
   });
   updateManager.setAttendanceActive(presenceController.getSnapshot().activeSession !== undefined);
   unsubscribeUpdateActivity = presenceController.onStateChanged((snapshot) => {

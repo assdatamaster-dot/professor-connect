@@ -25,6 +25,10 @@ export class UpdateFileLogger {
     this.write('debug', args);
   }
 
+  public flush(): Promise<void> {
+    return this.pending;
+  }
+
   private write(level: string, args: readonly unknown[]): void {
     this.pending = this.pending
       .then(async () => {
@@ -51,11 +55,21 @@ export class UpdateFileLogger {
 }
 
 function formatValue(value: unknown): string {
-  if (value instanceof Error) return `${value.name}: ${value.message}`;
-  if (typeof value === 'string') return value;
+  if (value instanceof Error) return redactSensitive(`${value.name}: ${value.message}`);
+  if (typeof value === 'string') return redactSensitive(value);
   try {
-    return JSON.stringify(value);
+    return redactSensitive(JSON.stringify(value));
   } catch {
-    return String(value);
+    return redactSensitive(String(value));
   }
+}
+
+export function redactSensitive(value: string): string {
+  return value
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [REDACTED]')
+    .replace(
+      /(["']?(?:authorization|token|jwt|password|secret|database_url)["']?\s*[:=]\s*["']?)([^\s,"'}]+)/gi,
+      '$1[REDACTED]',
+    )
+    .replace(/(https?:\/\/)([^\s/@:]+):([^\s/@]+)@/gi, '$1[REDACTED]@');
 }

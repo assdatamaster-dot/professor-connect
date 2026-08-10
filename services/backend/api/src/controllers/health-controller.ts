@@ -1,7 +1,8 @@
 import type { Request, Response } from 'express';
 
 import type { HealthResponse } from '../types/health-response.js';
+import { getBackendBuildIdentity } from '../build-identity.js';
 
 export function getHealth(_request: Request, response: Response<HealthResponse>): void {
-  response.status(200).json({ status: 'ok' });
+  response.status(200).json({ status: 'ok', ...getBackendBuildIdentity() });
 }

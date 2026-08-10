@@ -23,11 +23,15 @@ services:
       - no-new-privileges:true
 
   backend:
-    image: ${PROFESSOR_CONNECT_IMAGE:-professor-connect-backend:0.1.0}
+    image: ${PROFESSOR_CONNECT_IMAGE:-professor-connect-backend:0.1.3}
     build:
       context: .
       dockerfile: services/backend/Dockerfile
       target: production
+      args:
+        APP_VERSION: ${APP_VERSION:-0.1.3}
+        GIT_SHA: ${GIT_SHA:-unknown}
+        BUILD_DATE: ${BUILD_DATE:-unknown}
     restart: unless-stopped
     init: true
     environment:

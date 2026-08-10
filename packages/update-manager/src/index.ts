@@ -3,6 +3,7 @@ import electronUpdater from 'electron-updater';
 import type { AppUpdaterLike } from './contracts.js';
 
 export * from './contracts.js';
+export { readBuildIdentity } from './build-identity.js';
 export { DownloadManager } from './download-manager.js';
 export { InstallManager } from './install-manager.js';
 export { ReleaseNotesService } from './release-notes-service.js';

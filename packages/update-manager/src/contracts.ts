@@ -2,6 +2,15 @@ export const UPDATE_CHANNELS = ['stable', 'beta', 'development'] as const;
 export type UpdateChannel = (typeof UPDATE_CHANNELS)[number];
 export type UpdateApplication = 'teacher' | 'student';
 
+export interface BuildIdentity {
+  readonly application: UpdateApplication;
+  readonly version: string;
+  readonly gitSha: string;
+  readonly buildDate: string;
+  readonly buildId: string;
+  readonly dirty: boolean;
+}
+
 export const UPDATE_IPC_CHANNELS = Object.freeze({
   getState: 'update-manager:get-state',
   check: 'update-manager:check',
@@ -59,6 +68,8 @@ export interface UpdateState {
   readonly message: string;
   readonly errorCode: string | undefined;
   readonly lastCheckedAt: string | undefined;
+  readonly buildIdentity: BuildIdentity;
+  readonly updateUrl: string;
 }
 
 export interface UpdateSettingsInput {

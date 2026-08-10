@@ -57,6 +57,9 @@ REFRESH_TOKEN_TTL_SECONDS=2592000
 BCRYPT_ROUNDS=12
 TRUST_PROXY=true
 CORS_ORIGINS=
+UPDATE_ARTIFACTS_PATH=/app/release-updates
+APP_GIT_SHA=<sha-completo-do-commit-publicado>
+APP_BUILD_DATE=<data-iso-do-build>
 ```
 
 Copie host, porta, usuário e **nome do banco** da seção **Credentials** do PostgreSQL no EasyPanel.
@@ -74,6 +77,10 @@ para o Compose. `DATABASE_URL` é obrigatória e deve apontar para PostgreSQL pe
 dois segredos JWT separadamente e nunca os registre no repositório ou nos logs. `CORS_ORIGINS`
 pode ficar vazio para clientes Electron; inclua origens HTTPS separadas por vírgula ao publicar
 um cliente web.
+
+`APP_GIT_SHA` e `APP_BUILD_DATE` não são segredos. Eles identificam a imagem em `/api/health` e
+devem corresponder ao commit e à data promovidos. Se a plataforma também oferece build args,
+forneça `GIT_SHA`, `BUILD_DATE` e `APP_VERSION` com os mesmos valores para preencher os labels OCI.
 
 No primeiro acesso a `/admin`, o painel detecta automaticamente o banco vazio e abre o Assistente
 de Configuração. Organização, administrador e preferências são criados pela interface; não há chave
@@ -94,7 +101,31 @@ O proxy deve preservar `Host`/`X-Forwarded-Host` e `X-Forwarded-Proto`, como oco
 padrão do EasyPanel. Com `TRUST_PROXY=true`, o backend reconhece a origem HTTPS pública como a
 própria origem e mantém bloqueadas somente origens externas que não estejam em `CORS_ORIGINS`.
 
-## 5. Publicar e validar
+## 5. Configurar o volume de atualizações Windows
+
+O build Git do EasyPanel não leva `release-updates/`: o diretório contém binários gerados e é
+ignorado pelo repositório. Em **Mounts**, crie um Volume persistente chamado `windows-updates` com
+`mountPath` `/app/release-updates`. Sem esse mount, `/updates/teacher/latest.yml` e
+`/updates/student/latest.yml` não existem e nenhum aplicativo Windows consegue atualizar.
+
+O GitHub Actions transfere as releases por SSH para o caminho real desse volume no host. Cadastre
+esse caminho como `UPDATE_DEPLOY_PATH` no environment `desktop-production`; o usuário SSH deve
+escrever no volume e o usuário `node` do container deve somente lê-lo. A publicação usa
+`.staging`, diretórios imutáveis em `.releases` e um link `.current`, portanto o filesystem que
+serve o mount deve aceitar e preservar links simbólicos. Não armazene chave SSH ou credencial do
+painel no repositório.
+
+Antes da primeira release, confirme pelo console que `/app/release-updates/teacher` e `student`
+não são diretórios reais antigos. O promotor recusa substituí-los automaticamente para não apagar
+dados. Faça backup e migração inicial em janela controlada, se necessário. Consulte
+[Pipeline de release](./release-pipeline.md) para o layout exato, secrets e rollback, e
+[Auto Update](./auto-update.md) para o procedimento A → B.
+
+A documentação oficial do EasyPanel explica que dados do container são descartados no restart e
+que Mounts do tipo Volume criam armazenamento persistente compartilhável entre containers:
+<https://easypanel.io/docs/services/app#mounts>.
+
+## 6. Publicar e validar
 
 Clique em **Deploy** e acompanhe os logs. Em um banco novo, antes de `Servidor iniciado`, devem
 aparecer a geração do Prisma Client e a aplicação de todas as migrations. Em deploys seguintes,
@@ -149,8 +180,19 @@ As migrations embarcadas, na ordem, são:
 
 ```json
 {
-  "status": "ok"
+  "status": "ok",
+  "version": "0.1.3",
+  "gitSha": "<sha-completo>",
+  "buildDate": "<data-iso>",
+  "environment": "production"
 }
+```
+
+Confirme também `/api/health` e os feeds antes de liberar clientes:
+
+```powershell
+npm run updates:diagnose
+npm run updates:diagnose -- --download
 ```
 
 Mantenha **1 réplica**. Identidade, refresh tokens, auditoria e histórico são persistidos, mas a
@@ -166,7 +208,7 @@ O comando deve listar cada arquivo em `/admin/assets/` com HTTP 200 e terminar c
 de que o painel foi publicado corretamente. Um asset inexistente deve responder 404, nunca receber
 o fallback HTML da SPA.
 
-## 6. Atualizar
+## 7. Atualizar
 
 1. publique o commit/tag aprovado no repositório;
 2. confirme que os checks e a imagem de produção passaram no CI ou em uma estação com Docker;
@@ -188,6 +230,9 @@ manutenção.
 - nenhum comando de start personalizado contorna o `CMD` da imagem;
 - proxy apontando para a porta `3000`;
 - HTTPS válido;
+- volume `windows-updates` persistente montado em `/app/release-updates`;
+- `latest.yml`, instalador, blockmap e `release-info.json` dos dois apps respondendo HTTP 200;
+- manifests sem cache e hashes locais/remotos aprovados por `updates:diagnose -- --download`;
 - exatamente uma réplica;
 - `/health` retornando HTTP 200;
 - `/admin` e todos os `/admin/assets/*.js|css` retornando HTTP 200 com MIME correto;
