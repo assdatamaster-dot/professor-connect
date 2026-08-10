@@ -73,6 +73,7 @@ interface StudentPresenceClientEvents {
 }
 
 interface StudentPresenceServerEvents {
+  'session:request:error': (payload: { readonly code: string; readonly message: string }) => void;
   'professors:available:list': (payload: readonly OnlineTeacher[]) => void;
   'session:pending': (payload: SessionResponsePayload) => void;
   'session:queue:updated': (payload: StudentQueuePayload) => void;
@@ -269,6 +270,10 @@ export class StudentPresenceController {
         undefined,
         undefined,
       );
+    });
+    socket.on('session:request:error', (payload) => {
+      this.clearQueueMetadata();
+      this.updateSessionState('idle', payload.message, undefined, undefined, undefined);
     });
     socket.on('disconnect', () => {
       this.stopHeartbeat();

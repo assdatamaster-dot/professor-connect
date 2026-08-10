@@ -21,6 +21,7 @@ export interface ProfessorPresenceSnapshot {
   readonly available: boolean;
   readonly availableSince: string | undefined;
   readonly sessionRequests: readonly ProfessorSessionRequest[];
+  readonly onlineStudents: readonly OperationalStudentPresence[];
   readonly activeSession: ProfessorActiveSession | undefined;
   readonly sessionNotice: string | undefined;
   readonly remoteControl: TeacherRemoteControlSnapshot;
@@ -30,6 +31,20 @@ export interface ProfessorPresenceSnapshot {
     readonly recoveryDeadline?: string;
   };
   readonly latencyMs: number | undefined;
+}
+
+export interface OperationalStudentPresence {
+  readonly id: string;
+  readonly name: string;
+  readonly connectionStatus: 'online' | 'reconnecting';
+  readonly attendanceStatus: 'available' | 'waiting' | 'in_attendance';
+  readonly onlineSince: string;
+  readonly lastHeartbeat: string;
+  readonly requestId?: string;
+  readonly position?: number;
+  readonly queuedAt?: string;
+  readonly sessionId?: string;
+  readonly attendanceStartedAt?: string;
 }
 
 export interface ProfessorSessionRequest {

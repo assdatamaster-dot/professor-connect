@@ -7,6 +7,7 @@ import type {
   AttendanceSession,
   SessionDelivery,
   SessionEndedListener,
+  SessionStartedListener,
   SessionManagerOptions,
   SessionSignalingRoute,
   SessionParticipantRole,
@@ -28,6 +29,7 @@ export class SessionManager {
     }
   >();
   private readonly endedListeners = new Set<SessionEndedListener>();
+  private readonly startedListeners = new Set<SessionStartedListener>();
   private readonly clock: () => Date;
   private readonly idFactory: () => string;
   private readonly persistence: SessionManagerOptions['persistence'];
@@ -129,11 +131,13 @@ export class SessionManager {
           ?.organizationId,
       },
     });
-    return {
+    const startedDelivery = {
       ...delivery,
       teacherRecoveryToken: teacherCredentials.token,
       studentRecoveryToken: studentCredentials.token,
     };
+    for (const listener of this.startedListeners) listener(startedDelivery);
+    return startedDelivery;
   }
 
   public findSession(sessionId: string): AttendanceSession | undefined {
@@ -414,6 +418,11 @@ export class SessionManager {
   public onSessionEnded(listener: SessionEndedListener): () => void {
     this.endedListeners.add(listener);
     return () => this.endedListeners.delete(listener);
+  }
+
+  public onSessionStarted(listener: SessionStartedListener): () => void {
+    this.startedListeners.add(listener);
+    return () => this.startedListeners.delete(listener);
   }
 
   public markFeatureUsed(

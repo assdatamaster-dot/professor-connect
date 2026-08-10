@@ -208,6 +208,8 @@ export function initializeWebSocket(
     heartbeatSettings.timeoutMs,
     heartbeatSettings.intervalMs,
     (socketId) => activeSessionManager.recordHeartbeat(socketId),
+    sessionRequestManager,
+    activeSessionManager,
   );
   studentPresenceGateway.registerEvents();
   const activeSessionGateway = new SessionGateway(socketServer, activeSessionManager, logger);

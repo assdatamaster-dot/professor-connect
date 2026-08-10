@@ -155,7 +155,7 @@ export function createApp(
     '/api/students',
     authenticate(authService),
     requirePermission('students.online.read'),
-    createStudentsRouter(studentPresenceManager),
+    createStudentsRouter(studentPresenceManager, sessionRequestManager, activeSessionManager),
   );
   app.use(
     '/api/sessions',

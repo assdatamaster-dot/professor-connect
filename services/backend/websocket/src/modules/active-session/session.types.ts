@@ -64,6 +64,7 @@ export interface SessionSignalingRoute {
 }
 
 export type SessionEndedListener = (delivery: SessionDelivery) => void;
+export type SessionStartedListener = (delivery: SessionDelivery) => void;
 import type {
   AttendanceSessionPersistence,
   AuditPersistence,

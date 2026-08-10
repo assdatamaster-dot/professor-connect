@@ -26,6 +26,7 @@ import {
   type ProfessorActiveSession,
   type ProfessorSessionRequest,
   type ProfessorPresenceSnapshot,
+  type OperationalStudentPresence,
 } from '../shared/presence-contracts.js';
 import type {
   RemoteControlLogEntry,
@@ -60,6 +61,7 @@ interface ProfessorPresenceClientEvents {
   'session:accept': (payload: { readonly requestId: string }) => void;
   'session:reject': (payload: { readonly requestId: string }) => void;
   'session:queue:get': () => void;
+  'students:presence:get': () => void;
   'session:end': (payload: { readonly sessionId: string; readonly recoveryToken?: string }) => void;
   'session:recover': (
     payload: { readonly sessionId: string; readonly recoveryToken: string },
@@ -81,6 +83,7 @@ interface ProfessorPresenceServerEvents {
   }) => void;
   'session:requested': (payload: ProfessorSessionRequest) => void;
   'session:queue:changed': (payload: TeacherQueuePayload) => void;
+  'students:presence:changed': (payload: readonly OperationalStudentPresence[]) => void;
   'session:timeout': (payload: SessionRequestTimeoutPayload) => void;
   'session:cancelled': (payload: SessionRequestTimeoutPayload) => void;
   'session:started': (payload: ProfessorActiveSession) => void;
@@ -136,6 +139,7 @@ export class ProfessorPresenceController {
   private authRefreshTimer: NodeJS.Timeout | undefined;
   private professorName: string | undefined;
   private sessionRequests: ProfessorSessionRequest[] = [];
+  private onlineStudents: OperationalStudentPresence[] = [];
   private activeSession: ProfessorActiveSession | undefined;
   private sessionNotice: string | undefined;
   private socket: PresenceSocket | undefined;
@@ -209,6 +213,7 @@ export class ProfessorPresenceController {
         : ProfessorPresenceStatus.CONNECTED;
       socket.emit('professor:online', { name });
       socket.emit('session:queue:get');
+      socket.emit('students:presence:get');
       this.startHeartbeat(socket);
       this.startAuthRefresh(socket);
       if (!this.startupRecoveryPending) this.recoverCurrentSession(socket);
@@ -253,6 +258,10 @@ export class ProfessorPresenceController {
       this.sessionRequests = [...payload.requests].sort(
         (left, right) => left.position - right.position,
       );
+      this.notifyListeners();
+    });
+    socket.on('students:presence:changed', (payload) => {
+      this.onlineStudents = [...payload];
       this.notifyListeners();
     });
     socket.on('session:timeout', (payload) => {
@@ -422,6 +431,7 @@ export class ProfessorPresenceController {
       available: this.available,
       availableSince: this.availableSince,
       sessionRequests: [...this.sessionRequests],
+      onlineStudents: [...this.onlineStudents],
       activeSession: this.activeSession,
       sessionNotice: this.sessionNotice,
       remoteControl: { ...this.remoteControl, logs: [...this.remoteControl.logs] },
@@ -674,6 +684,7 @@ export class ProfessorPresenceController {
     this.available = false;
     this.availableSince = undefined;
     this.sessionRequests = [];
+    this.onlineStudents = [];
     this.activeSession = undefined;
     this.sessionNotice = undefined;
     this.remoteControl = createInitialRemoteControlSnapshot();

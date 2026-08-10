@@ -209,21 +209,38 @@
             </div>
           </section>
 
-          <aside
-            id="attendance-queue"
-            class="attendance-queue"
-            aria-labelledby="queue-title"
-            hidden
-          >
-            <header>
-              <div>
-                <span class="overline">Fila de atendimento</span>
-                <h2 id="queue-title">Alunos aguardando</h2>
-              </div>
-              <strong id="queue-count" class="attendance-queue__count">0</strong>
-            </header>
-            <ol id="queue-list" class="attendance-queue__list"></ol>
-          </aside>
+          <div class="operational-rail">
+            <aside
+              id="attendance-queue"
+              class="attendance-queue"
+              aria-labelledby="queue-title"
+              hidden
+            >
+              <header>
+                <div>
+                  <span class="overline">Fila de atendimento</span>
+                  <h2 id="queue-title">Alunos aguardando</h2>
+                </div>
+                <strong id="queue-count" class="attendance-queue__count">0</strong>
+              </header>
+              <ol id="queue-list" class="attendance-queue__list"></ol>
+            </aside>
+
+            <aside
+              id="online-students"
+              class="online-students"
+              aria-labelledby="online-students-title"
+            >
+              <header>
+                <div>
+                  <span class="overline">Presen&ccedil;a em tempo real</span>
+                  <h2 id="online-students-title">Alunos online</h2>
+                </div>
+                <strong id="online-students-count" class="attendance-queue__count">0</strong>
+              </header>
+              <ul id="online-students-list" class="online-students__list"></ul>
+            </aside>
+          </div>
 
           <section id="active-attendance" class="active-attendance" hidden>
             <header class="session-header">

@@ -7,7 +7,7 @@ import { PresenceManager, StudentPresenceManager } from '@professor-connect/webs
 import { createApp } from '../src/app.js';
 import { AUTHORIZATION_HEADERS, TEST_IDENTITY, TestAuthService } from './auth-fixture.js';
 
-test('GET /api/students/online retorna somente id e nome dos alunos', async () => {
+test('GET /api/students/online retorna presenca e estado operacional da organizacao', async () => {
   const studentPresenceManager = new StudentPresenceManager(
     () => new Date('2026-01-01T00:00:00.000Z'),
   );
@@ -49,7 +49,16 @@ test('GET /api/students/online retorna somente id e nome dos alunos', async () =
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), {
       count: 1,
-      students: [{ id: 'student-id', name: 'Ana' }],
+      students: [
+        {
+          id: 'student-id',
+          name: 'Ana',
+          connectionStatus: 'ONLINE',
+          attendanceStatus: 'AVAILABLE',
+          onlineSince: '2026-01-01T00:00:00.000Z',
+          lastHeartbeat: '2026-01-01T00:00:00.000Z',
+        },
+      ],
     });
   } finally {
     await new Promise<void>((resolve, reject) => {

@@ -622,6 +622,119 @@ input:focus {
   box-shadow: 0 10px 28px rgb(21 35 61 / 8%);
 }
 
+.operational-rail {
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.operational-rail .attendance-queue {
+  margin: 0;
+}
+
+.online-students {
+  padding: 1.1rem 1.25rem;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface, #fff);
+  box-shadow: 0 10px 28px rgb(21 35 61 / 8%);
+}
+
+.online-students > header,
+.online-students__item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.online-students > header {
+  justify-content: space-between;
+}
+
+.online-students h2 {
+  margin: 0.2rem 0 0;
+  font-size: 1.15rem;
+}
+
+.online-students__list {
+  display: grid;
+  gap: 0.55rem;
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.online-students__item {
+  padding: 0.75rem 0.85rem;
+  border-radius: 12px;
+  background: color-mix(in srgb, #21a366 5%, transparent);
+}
+
+.online-students__indicator {
+  width: 0.7rem;
+  height: 0.7rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #21a366;
+  box-shadow: 0 0 0 4px rgb(33 163 102 / 12%);
+}
+
+.online-students__item[data-status='waiting'] .online-students__indicator {
+  background: #d29a00;
+  box-shadow: 0 0 0 4px rgb(210 154 0 / 14%);
+}
+
+.online-students__item[data-status='in_attendance'] .online-students__indicator {
+  background: #2478ff;
+  box-shadow: 0 0 0 4px rgb(36 120 255 / 14%);
+}
+
+.online-students__item[data-connection='reconnecting'] .online-students__indicator {
+  background: #98a2b3;
+  box-shadow: 0 0 0 4px rgb(152 162 179 / 16%);
+  animation: reconnecting-presence 1.4s ease-in-out infinite;
+}
+
+@keyframes reconnecting-presence {
+  50% {
+    opacity: 0.42;
+  }
+}
+
+.online-students__copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.online-students__copy strong,
+.online-students__copy small {
+  display: block;
+}
+
+.online-students__copy strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.online-students__copy small,
+.online-students__item time,
+.online-students__empty {
+  color: var(--text-muted, #657086);
+  font-size: 0.78rem;
+}
+
+.online-students__item time {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.online-students__empty {
+  padding: 0.75rem 0;
+}
+
 .attendance-queue > header,
 .attendance-queue__item {
   display: flex;
@@ -902,6 +1015,15 @@ input:focus {
 
 .teacher-workspace:has(#active-attendance:not([hidden])) .waiting-view {
   display: none;
+}
+
+.teacher-workspace:has(#active-attendance:not([hidden])) .active-attendance {
+  grid-row: 1;
+}
+
+.teacher-workspace:has(#active-attendance:not([hidden])) .operational-rail {
+  grid-row: 2;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .teacher-workspace:has(#active-attendance:not([hidden])) .active-attendance {
@@ -2353,5 +2475,33 @@ input:focus {
   .file-transfer-destination-row {
     align-items: stretch;
     flex-direction: column;
+  }
+}
+
+/* Keep the operational queue visible below the call without covering the media stage. */
+.teacher-workspace:has(#active-attendance:not([hidden])) {
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.teacher-workspace:has(#active-attendance:not([hidden])) .operational-rail {
+  max-height: 190px;
+}
+
+.teacher-workspace:has(#active-attendance:not([hidden])) .attendance-queue__list,
+.teacher-workspace:has(#active-attendance:not([hidden])) .online-students__list {
+  max-height: 108px;
+  overflow-y: auto;
+}
+
+@media (max-width: 760px) {
+  .teacher-workspace:has(#active-attendance:not([hidden])) {
+    height: auto;
+    grid-template-rows: auto auto;
+    overflow: visible;
+  }
+
+  .teacher-workspace:has(#active-attendance:not([hidden])) .operational-rail {
+    max-height: none;
+    grid-template-columns: 1fr;
   }
 }

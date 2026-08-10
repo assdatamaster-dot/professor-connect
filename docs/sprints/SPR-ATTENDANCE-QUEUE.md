@@ -81,6 +81,9 @@ ativa a fila continua visível; o diálogo de aceite aparece somente quando não
 
 ## Deploy no EasyPanel
 
+> A integracao de Presence operacional, estados, eventos e release 0.1.2 esta documentada em
+> `SPR-ATTENDANCE-PRESENCE-OPERATIONAL.md`.
+
 1. Faça backup/snapshot do PostgreSQL.
 2. Mantenha uma réplica do backend.
 3. Publique a nova imagem sem sobrescrever o comando padrão; o `prestart` executa

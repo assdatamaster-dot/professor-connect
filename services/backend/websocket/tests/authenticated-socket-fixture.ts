@@ -43,12 +43,17 @@ export function initializeTestWebSocket(
 
 export const TEST_AUTHENTICATION: SocketAuthenticationOptions = {
   authenticate(token) {
-    const [role = 'STUDENT', profileId = 'test-client', ...nameParts] = token.split(':');
+    const [
+      role = 'STUDENT',
+      profileId = 'test-client',
+      organizationId = 'organization-test',
+      ...nameParts
+    ] = token.split(':');
     if (role !== 'TEACHER' && role !== 'STUDENT')
       return Promise.reject(new Error('invalid test token'));
     return Promise.resolve({
       userId: `user-${profileId}`,
-      organizationId: 'organization-test',
+      organizationId,
       displayName: nameParts.join(':') || profileId,
       roles: [role],
       permissions: [
@@ -59,6 +64,7 @@ export const TEST_AUTHENTICATION: SocketAuthenticationOptions = {
         'remote-control.request',
         'remote-control.approve',
         'files.transfer',
+        'students.online.read',
       ],
       profileId,
       sessionFamilyId: `session-${profileId}`,
@@ -70,6 +76,10 @@ export function authenticatedSocketOptions(
   role: 'TEACHER' | 'STUDENT',
   profileId: string,
   displayName = profileId,
+  organizationId = 'organization-test',
 ): Partial<ManagerOptions & SocketOptions> {
-  return { transports: ['websocket'], auth: { token: `${role}:${profileId}:${displayName}` } };
+  return {
+    transports: ['websocket'],
+    auth: { token: `${role}:${profileId}:${organizationId}:${displayName}` },
+  };
 }

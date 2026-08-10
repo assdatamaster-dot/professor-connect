@@ -59,6 +59,12 @@ test('registra aluno, atualiza heartbeat e remove no evento de saída', async ()
     assert(updatedStudent.lastHeartbeat.getTime() >= previousHeartbeat.getTime());
     assert(messages.includes('Aluno Ana conectado'));
 
+    manager.markReconnecting(updatedStudent.socketId);
+    assert.equal(manager.getOnlineStudents().length, 0);
+    assert.equal(manager.getTrackedStudents()[0]?.connectionStatus, 'reconnecting');
+    manager.updateHeartbeat(updatedStudent.socketId);
+    assert.equal(manager.getOnlineStudents()[0]?.connectionStatus, 'online');
+
     client.emit(STUDENT_PRESENCE_EVENTS.DISCONNECT);
     await waitUntil(() => manager.getOnlineStudents().length === 0);
     assert(messages.includes('Aluno Ana desconectado'));

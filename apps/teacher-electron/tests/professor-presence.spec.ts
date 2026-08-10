@@ -26,6 +26,7 @@ import type {
 interface PresenceEvents {
   'professor:heartbeat': () => void;
   'professor:online': (payload: { readonly name: string }) => void;
+  'students:presence:get': () => void;
   'session:accept': (payload: { readonly requestId: string }) => void;
   'session:reject': (payload: { readonly requestId: string }) => void;
   'session:end': (payload: { readonly sessionId: string }) => void;
@@ -39,6 +40,18 @@ interface PresenceEvents {
 }
 
 interface SessionEvents {
+  'students:presence:changed': (
+    payload: readonly [
+      {
+        readonly id: string;
+        readonly name: string;
+        readonly connectionStatus: 'online';
+        readonly attendanceStatus: 'available';
+        readonly onlineSince: string;
+        readonly lastHeartbeat: string;
+      },
+    ],
+  ) => void;
   'session:requested': (payload: {
     readonly requestId: string;
     readonly studentId: string;
@@ -91,6 +104,16 @@ test('lê config.json, registra o professor e desconecta pelo Socket.IO', async 
   socketServer.on('connection', (socket) => {
     socket.on('professor:online', ({ name }) => {
       receivedNames.push(name);
+      socket.emit('students:presence:changed', [
+        {
+          id: 'student-id',
+          name: 'Ana',
+          connectionStatus: 'online',
+          attendanceStatus: 'available',
+          onlineSince: '2026-08-10T10:00:00.000Z',
+          lastHeartbeat: '2026-08-10T10:00:00.000Z',
+        },
+      ]);
       socket.emit('session:requested', {
         requestId: 'request-1',
         studentId: 'student-id',
@@ -150,6 +173,8 @@ test('lê config.json, registra o professor e desconecta pelo Socket.IO', async 
         receivedNames[0] === 'Carlos',
     );
     assert.equal(controller.getSnapshot().serverConnected, true);
+    await waitUntil(() => controller.getSnapshot().onlineStudents.length === 1);
+    assert.equal(controller.getSnapshot().onlineStudents[0]?.attendanceStatus, 'available');
     await waitUntil(() => controller.getSnapshot().sessionRequests.length === 1);
     assert.equal(controller.getSnapshot().sessionRequests[0]?.studentName, 'Ana');
     controller.acceptSession('request-1');

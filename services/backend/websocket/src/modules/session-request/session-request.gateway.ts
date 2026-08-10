@@ -22,6 +22,7 @@ export const SESSION_REQUEST_EVENTS = {
   QUEUE_UPDATED: 'session:queue:updated',
   QUEUE_CHANGED: 'session:queue:changed',
   QUEUE_CLEARED: 'session:queue:cleared',
+  ERROR: 'session:request:error',
 } as const;
 
 export interface RequestSessionPayload {
@@ -78,6 +79,10 @@ interface SessionRequestClientEvents {
 }
 
 interface SessionRequestServerEvents {
+  [SESSION_REQUEST_EVENTS.ERROR]: (payload: {
+    readonly code: 'NO_PROFESSOR_ONLINE' | 'REQUEST_NOT_ALLOWED';
+    readonly message: string;
+  }) => void;
   [SESSION_REQUEST_EVENTS.REQUESTED]: (payload: SessionRequestedPayload) => void;
   [SESSION_REQUEST_EVENTS.CREATED]: (payload: SessionResponsePayload) => void;
   [SESSION_REQUEST_EVENTS.ACCEPTED]: (payload: SessionResponsePayload) => void;
@@ -130,7 +135,7 @@ export class SessionRequestGateway {
 
   private registerSocketEvents(socket: SessionRequestSocket): void {
     socket.on(SESSION_REQUEST_EVENTS.REQUEST, (payload) => {
-      this.handleSafely('Nova solicitação inválida', () => {
+      try {
         requireRole(socket, 'STUDENT', 'session.request');
         const delivery = this.manager.createRequest(socket.id, requireText(payload, 'teacherId'));
         const { request, teacherSocketId, queue } = delivery;
@@ -150,7 +155,19 @@ export class SessionRequestGateway {
             teacherId: request.teacherId,
           });
         }
-      });
+      } catch (error) {
+        this.logger.error('Nova solicitação inválida', error);
+        const noProfessorOnline =
+          error instanceof Error && error.message.includes('Professor não está online');
+        socket.emit(SESSION_REQUEST_EVENTS.ERROR, {
+          code: noProfessorOnline ? 'NO_PROFESSOR_ONLINE' : 'REQUEST_NOT_ALLOWED',
+          message: noProfessorOnline
+            ? 'Nenhum professor disponível para atendimento neste momento.'
+            : error instanceof Error
+              ? error.message
+              : 'Não foi possível solicitar atendimento.',
+        });
+      }
     });
 
     socket.on(SESSION_REQUEST_EVENTS.ACCEPT, (payload) => {

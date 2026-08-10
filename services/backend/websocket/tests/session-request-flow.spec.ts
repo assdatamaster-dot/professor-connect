@@ -18,6 +18,7 @@ import {
   type ScreenSharePayload,
   type WebRtcDescriptionPayload,
   type WebRtcIceCandidatePayload,
+  type OperationalStudentPresencePayload,
 } from '../src/index.js';
 import {
   authenticatedSocketOptions,
@@ -47,6 +48,8 @@ interface ServerEvents {
   'webrtc:ice-candidate': (payload: WebRtcIceCandidatePayload) => void;
   'screen-share:start': (payload: ScreenSharePayload) => void;
   'screen-share:stop': (payload: ScreenSharePayload) => void;
+  'students:presence:changed': (payload: readonly OperationalStudentPresencePayload[]) => void;
+  'session:request:error': (payload: { readonly code: string; readonly message: string }) => void;
 }
 
 interface ClientEvents {
@@ -61,6 +64,7 @@ interface ClientEvents {
   'session:reject': (payload: { readonly requestId: string }) => void;
   'session:cancel': (payload: { readonly requestId: string }) => void;
   'session:queue:get': () => void;
+  'students:presence:get': () => void;
   'session:end': (payload: { readonly sessionId: string }) => void;
   'session:recover': (
     payload: { readonly sessionId: string; readonly recoveryToken: string },
@@ -120,6 +124,10 @@ test('atualiza posições e chama automaticamente o próximo aluno em tempo real
   try {
     await Promise.all([teacher, ana, bia, caio].map(waitForConnect));
     teacher.emit('professor:online', { name: 'Carlos' });
+    const allStudentsAvailable = waitForOperationalStudents(
+      teacher,
+      (items) => items.length === 3 && items.every((item) => item.attendanceStatus === 'available'),
+    );
     ana.emit('student:register', { id: 'student-a', name: 'Ana' });
     bia.emit('student:register', { id: 'student-b', name: 'Bia' });
     caio.emit('student:register', { id: 'student-c', name: 'Caio' });
@@ -127,17 +135,29 @@ test('atualiza posições e chama automaticamente o próximo aluno em tempo real
       () =>
         students.getOnlineStudents().length === 3 && professors.getOnlineProfessors().length === 1,
     );
+    assert.equal((await allStudentsAvailable).length, 3);
 
     const firstRequested = waitForRequested(teacher);
     ana.emit('request:session', { teacherId: 'teacher-id' });
     const first = await firstRequested;
     const anaStarted = waitForStarted(ana);
+    const anaInAttendance = waitForOperationalStudents(teacher, (items) =>
+      items.some((item) => item.id === 'student-a' && item.attendanceStatus === 'in_attendance'),
+    );
     teacher.emit('session:accept', { requestId: first.requestId });
     const firstSession = await anaStarted;
+    assert.equal(
+      (await anaInAttendance).find((item) => item.id === 'student-a')?.sessionId,
+      firstSession.sessionId,
+    );
 
     const biaPosition = waitForQueueUpdate(bia);
+    const biaWaiting = waitForOperationalStudents(teacher, (items) =>
+      items.some((item) => item.id === 'student-b' && item.attendanceStatus === 'waiting'),
+    );
     bia.emit('request:session', { teacherId: 'teacher-id' });
     assert.equal((await biaPosition).position, 1);
+    assert.equal((await biaWaiting).find((item) => item.id === 'student-b')?.position, 1);
     const caioPosition = waitForQueueUpdate(caio);
     const teacherQueue = waitForTeacherQueue(teacher, 2);
     caio.emit('request:session', { teacherId: 'teacher-id' });
@@ -170,6 +190,56 @@ test('atualiza posições e chama automaticamente o próximo aluno em tempo real
     ana.disconnect();
     bia.disconnect();
     caio.disconnect();
+    await new Promise<void>((resolve) => gateway.close(resolve));
+  }
+});
+
+test('isola a presença operacional por organização e diferencia ausência de professor', async () => {
+  const httpServer = createServer();
+  const professors = new PresenceManager();
+  const students = new StudentPresenceManager();
+  const requests = new SessionRequestManager(professors, students);
+  const sessions = new SessionManager(professors, students);
+  const gateway = initializeTestWebSocket(
+    httpServer,
+    { info(): void {}, error(): void {} },
+    { professors, students, requests, sessions },
+  );
+  await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve));
+  const address = httpServer.address();
+  assert(address !== null && typeof address === 'object');
+  const url = `http://127.0.0.1:${address.port}`;
+  const teacher = io(
+    url,
+    authenticatedSocketOptions('TEACHER', 'teacher-a', 'Carlos'),
+  ) as TestClient;
+  const foreignTeacher = io(
+    url,
+    authenticatedSocketOptions('TEACHER', 'teacher-b', 'Beatriz', 'organization-other'),
+  ) as TestClient;
+  const student = io(url, authenticatedSocketOptions('STUDENT', 'student-a', 'Ana')) as TestClient;
+
+  try {
+    await Promise.all([teacher, foreignTeacher, student].map(waitForConnect));
+    teacher.emit('professor:online', { name: 'Carlos' });
+    foreignTeacher.emit('professor:online', { name: 'Beatriz' });
+    await waitUntil(() => professors.getOnlineProfessors().length === 2);
+    const visible = waitForOperationalStudents(teacher, (items) => items.length === 1);
+    const isolated = waitForOperationalStudents(foreignTeacher, (items) => items.length === 0);
+    student.emit('student:register', { id: 'student-a', name: 'Ana' });
+    assert.equal((await visible)[0]?.name, 'Ana');
+    assert.deepEqual(await isolated, []);
+
+    const noProfessor = waitForRequestError(student);
+    student.emit('request:session', { teacherId: 'teacher-inexistente' });
+    assert.deepEqual(await noProfessor, {
+      code: 'NO_PROFESSOR_ONLINE',
+      message: 'Nenhum professor disponível para atendimento neste momento.',
+    });
+  } finally {
+    teacher.disconnect();
+    foreignTeacher.disconnect();
+    student.disconnect();
     await new Promise<void>((resolve) => gateway.close(resolve));
   }
 });
@@ -457,6 +527,26 @@ function waitForTeacherQueue(
     };
     client.on('session:queue:changed', listener);
   });
+}
+
+function waitForOperationalStudents(
+  client: TestClient,
+  predicate: (payload: readonly OperationalStudentPresencePayload[]) => boolean,
+): Promise<readonly OperationalStudentPresencePayload[]> {
+  return new Promise((resolve) => {
+    const listener = (payload: readonly OperationalStudentPresencePayload[]): void => {
+      if (!predicate(payload)) return;
+      client.off('students:presence:changed', listener);
+      resolve(payload);
+    };
+    client.on('students:presence:changed', listener);
+  });
+}
+
+function waitForRequestError(
+  client: TestClient,
+): Promise<{ readonly code: string; readonly message: string }> {
+  return new Promise((resolve) => client.once('session:request:error', resolve));
 }
 
 function waitForRejected(client: TestClient): Promise<SessionResponsePayload> {

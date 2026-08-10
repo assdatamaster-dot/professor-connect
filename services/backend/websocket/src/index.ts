@@ -53,6 +53,7 @@ export {
 export {
   STUDENT_PRESENCE_EVENTS,
   StudentPresenceGateway,
+  type OperationalStudentPresencePayload,
   type StudentRegisterPayload,
 } from './modules/student-presence/student-presence.gateway.js';
 export {

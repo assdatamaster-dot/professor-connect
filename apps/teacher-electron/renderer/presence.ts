@@ -54,6 +54,8 @@ const sessionNotice = requireElement<HTMLElement>('session-notice');
 const attendanceQueue = requireElement<HTMLElement>('attendance-queue');
 const queueCount = requireElement<HTMLElement>('queue-count');
 const queueList = requireElement<HTMLOListElement>('queue-list');
+const onlineStudentsCount = requireElement<HTMLElement>('online-students-count');
+const onlineStudentsList = requireElement<HTMLUListElement>('online-students-list');
 const logoutButton = requireElement<HTMLButtonElement>('logout-button');
 const profileButton = requireElement<HTMLButtonElement>('profile-button');
 const profileDialog = requireElement<HTMLDialogElement>('profile-dialog');
@@ -243,12 +245,16 @@ function render(snapshot: ProfessorPresenceSnapshot): void {
   }
   renderRemoteControl(snapshot.remoteControl, snapshot.activeSession !== undefined);
   renderAttendanceQueue(snapshot);
+  renderOnlineStudents(snapshot);
   renderSessionRequest(snapshot);
 }
 
 let latestQueueSnapshot: ProfessorPresenceSnapshot | undefined;
 setInterval(() => {
-  if (latestQueueSnapshot !== undefined) renderAttendanceQueue(latestQueueSnapshot);
+  if (latestQueueSnapshot !== undefined) {
+    renderAttendanceQueue(latestQueueSnapshot);
+    renderOnlineStudents(latestQueueSnapshot);
+  }
 }, 1_000);
 
 function renderAttendanceQueue(snapshot: ProfessorPresenceSnapshot): void {
@@ -290,6 +296,67 @@ function renderAttendanceQueue(snapshot: ProfessorPresenceSnapshot): void {
     return item;
   });
   queueList.replaceChildren(...items);
+}
+
+function renderOnlineStudents(snapshot: ProfessorPresenceSnapshot): void {
+  const students = [...snapshot.onlineStudents].sort((left, right) => {
+    const rank = { in_attendance: 0, waiting: 1, available: 2 } as const;
+    return (
+      rank[left.attendanceStatus] - rank[right.attendanceStatus] ||
+      left.name.localeCompare(right.name, 'pt-BR')
+    );
+  });
+  onlineStudentsCount.textContent = String(students.length);
+  const items = students.map((student) => {
+    const item = document.createElement('li');
+    const indicator = document.createElement('i');
+    const copy = document.createElement('span');
+    const name = document.createElement('strong');
+    const status = document.createElement('small');
+    const elapsed = document.createElement('time');
+    item.className = 'online-students__item';
+    item.dataset.status = student.attendanceStatus;
+    item.dataset.connection = student.connectionStatus;
+    indicator.className = 'online-students__indicator';
+    copy.className = 'online-students__copy';
+    name.textContent = student.name;
+    if (student.attendanceStatus === 'in_attendance') {
+      status.textContent = 'Em atendimento';
+      elapsed.textContent = formatElapsed(student.attendanceStartedAt, 'Em atendimento h\u00e1');
+    } else if (student.attendanceStatus === 'waiting') {
+      status.textContent =
+        student.position === undefined
+          ? 'Aguardando atendimento'
+          : `Aguardando atendimento \u00b7 ${student.position}\u00ba da fila`;
+      elapsed.textContent = formatElapsed(student.queuedAt, 'Aguardando h\u00e1');
+    } else {
+      status.textContent = 'Online / Dispon\u00edvel';
+      elapsed.textContent = formatElapsed(student.onlineSince, 'Online h\u00e1');
+    }
+    if (student.connectionStatus === 'reconnecting') {
+      status.textContent = `Reconectando \u00b7 ${status.textContent ?? ''}`;
+    }
+    copy.append(name, status);
+    item.append(indicator, copy, elapsed);
+    return item;
+  });
+  if (items.length === 0) {
+    const empty = document.createElement('li');
+    empty.className = 'online-students__empty';
+    empty.textContent = 'Nenhum aluno online nesta institui\u00e7\u00e3o.';
+    onlineStudentsList.replaceChildren(empty);
+  } else {
+    onlineStudentsList.replaceChildren(...items);
+  }
+}
+
+function formatElapsed(timestamp: string | undefined, prefix: string): string {
+  if (timestamp === undefined) return '';
+  const seconds = Math.max(0, Math.floor((Date.now() - Date.parse(timestamp)) / 1_000));
+  const hours = Math.floor(seconds / 3_600);
+  const minutes = Math.floor((seconds % 3_600) / 60);
+  const remainder = seconds % 60;
+  return `${prefix} ${hours > 0 ? `${String(hours).padStart(2, '0')}:` : ''}${String(minutes).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`;
 }
 
 function renderRemoteControl(
