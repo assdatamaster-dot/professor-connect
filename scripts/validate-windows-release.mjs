@@ -135,16 +135,19 @@ function validateExpectedCode(application, asarPath) {
 function authenticode(filePath) {
   if (process.platform !== 'win32') return { status: 'NotChecked', signer: null };
   const command = [
-    '$signature = Get-AuthenticodeSignature -LiteralPath $args[0]',
+    '$signature = Get-AuthenticodeSignature -LiteralPath $env:PROFESSOR_CONNECT_SIGNATURE_PATH',
     '[pscustomobject]@{',
     '  status = $signature.Status.ToString()',
     '  signer = if ($null -eq $signature.SignerCertificate) { $null } else { $signature.SignerCertificate.Subject }',
     '} | ConvertTo-Json -Compress',
-  ].join('; ');
+  ].join('\n');
   const output = execFileSync(
     'powershell',
-    ['-NoProfile', '-NonInteractive', '-Command', command, filePath],
-    { encoding: 'utf8' },
+    ['-NoProfile', '-NonInteractive', '-Command', command],
+    {
+      encoding: 'utf8',
+      env: { ...process.env, PROFESSOR_CONNECT_SIGNATURE_PATH: filePath },
+    },
   );
   return JSON.parse(output);
 }
