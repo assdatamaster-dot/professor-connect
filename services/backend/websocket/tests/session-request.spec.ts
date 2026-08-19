@@ -90,18 +90,22 @@ test('não aceita a solicitação depois que o aluno fica offline', () => {
   manager.close();
 });
 
-test('expira em 30 segundos, remove dos pendentes e preserva no histórico', async () => {
-  const { manager, professors } = createScenario(30);
-  const expired = new Promise<void>((resolve) => {
-    manager.onExpired((delivery) => {
-      assert.equal(delivery.request.status, 'expired');
-      resolve();
-    });
+test('expira em 30 segundos, remove dos pendentes e preserva no histórico', (context) => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  const { manager, professors } = createScenario(30_000);
+  let expirationEvents = 0;
+  manager.onExpired((delivery) => {
+    assert.equal(delivery.request.status, 'expired');
+    expirationEvents += 1;
   });
 
   manager.createRequest('student-socket', 'teacher-id');
-  await expired;
+  context.mock.timers.tick(29_999);
+  assert.equal(manager.listPendingRequests().length, 1);
 
+  context.mock.timers.tick(1);
+
+  assert.equal(expirationEvents, 1);
   assert.deepEqual(manager.listPendingRequests(), []);
   assert.equal(manager.listHistory()[0]?.status, 'expired');
   assert.equal(professors.findProfessorById('teacher-id')?.availability, 'available');
