@@ -14,6 +14,7 @@ import type { StudentRemoteControlSnapshot } from '../shared/remote-control-cont
 import type {
   AttendanceHistoryItem,
   OnlineTeacher,
+  ProfessorAvailabilitySnapshot,
   StudentSessionSnapshot,
 } from '../shared/session-contracts.js';
 import { AllScreensCompositeCapture } from './all-screens-composer.js';
@@ -28,9 +29,15 @@ const connectionBadge = requireElement<HTMLElement>('connection-badge');
 const connectionText = requireElement<HTMLElement>('connection-text');
 const attendanceText = requireElement<HTMLElement>('attendance-text');
 const statusMessage = requireElement<HTMLElement>('status-message');
+const professorAvailability = requireElement<HTMLElement>('professor-availability');
+const professorAvailabilityStatus = requireElement<HTMLElement>('professor-availability-status');
+const professorAvailabilityTitle = requireElement<HTMLElement>('professor-availability-title');
+const professorAvailabilityMessage = requireElement<HTMLElement>('professor-availability-message');
+const professorAvailabilityCounts = requireElement<HTMLElement>('professor-availability-counts');
 const sessionRecoveryOverlay = requireElement<HTMLElement>('session-recovery-overlay');
 const remoteControlText = requireElement<HTMLElement>('remote-control-text');
 const callButton = requireElement<HTMLButtonElement>('call-professor');
+const callButtonLabel = requireElement<HTMLElement>('call-professor-label');
 const teacherSelect = requireElement<HTMLSelectElement>('teacher-select');
 const teacherList = requireElement<HTMLElement>('teacher-list');
 const cancelRequestButton = requireElement<HTMLButtonElement>('cancel-request');
@@ -38,6 +45,7 @@ const queueStatus = requireElement<HTMLElement>('queue-status');
 const queueStatusKicker = requireElement<HTMLElement>('queue-status-kicker');
 const queueStatusPosition = requireElement<HTMLElement>('queue-status-position');
 const queueStatusAhead = requireElement<HTMLElement>('queue-status-ahead');
+const queueEstimatedWait = requireElement<HTMLElement>('queue-estimated-wait');
 const queueWaitTime = requireElement<HTMLTimeElement>('queue-wait-time');
 const queueTeacherPresence = requireElement<HTMLElement>('queue-teacher-presence');
 const requestConfirmationDialog = requireElement<HTMLDialogElement>('request-confirmation-dialog');
@@ -140,6 +148,7 @@ let renegotiationQueue = Promise.resolve();
 let lastWorkflowSnapshot: DesktopWorkflowSnapshot | undefined;
 let activeTeacherName: string | undefined;
 let availableTeachers: readonly OnlineTeacher[] = [];
+let latestSessionSnapshot: StudentSessionSnapshot | undefined;
 let queueWaitStartedAt: number | undefined;
 let queueWaitTimer: ReturnType<typeof setInterval> | undefined;
 const teacherAvailabilityTimer = window.setInterval(() => {
@@ -181,7 +190,7 @@ function render(snapshot: DesktopWorkflowSnapshot): void {
   connectionText.textContent = view.connectionLabel;
   attendanceText.textContent = view.attendanceLabel;
   statusMessage.textContent = view.statusMessage;
-  callButton.disabled = !view.isCallButtonEnabled || teacherSelect.value.length === 0;
+  updateCallAction();
   shareButton.disabled = activeWebRtcSessionId === undefined && !view.isShareButtonEnabled;
   endButton.disabled = !view.isEndButtonEnabled;
   const hasActiveWebRtcSession = activeWebRtcSessionId !== undefined;
@@ -467,6 +476,7 @@ remoteControlDialog.addEventListener('cancel', (event) => {
 let promptedRecoverySessionId: string | undefined;
 const unsubscribe = window.professorConnect.onStateChanged(render);
 const unsubscribeSession = window.professorConnectSession.onStateChanged((snapshot) => {
+  latestSessionSnapshot = snapshot;
   statusMessage.textContent = snapshot.message;
   sessionRecoveryOverlay.hidden =
     snapshot.status !== 'reconnecting' && snapshot.status !== 'recovering';
@@ -477,6 +487,7 @@ const unsubscribeSession = window.professorConnectSession.onStateChanged((snapsh
   activeTeacherName = snapshot.activeTeacherName;
   renderRemoteControl(snapshot.remoteControl);
   renderQueueStatus(snapshot);
+  renderProfessorAvailability(snapshot.availability, snapshot);
   const isSessionBusy =
     snapshot.status === 'waiting' ||
     snapshot.status === 'accepted' ||
@@ -484,8 +495,9 @@ const unsubscribeSession = window.professorConnectSession.onStateChanged((snapsh
     snapshot.status === 'reconnecting' ||
     snapshot.status === 'recovering' ||
     snapshot.status === 'recovery-available';
-  callButton.disabled = isSessionBusy || teacherSelect.value.length === 0;
-  teacherSelect.disabled = isSessionBusy;
+  callButton.disabled =
+    isSessionBusy || !snapshot.availability.queueEnabled || teacherSelect.value.length === 0;
+  teacherSelect.disabled = isSessionBusy || !snapshot.availability.queueEnabled;
   cancelRequestButton.hidden = snapshot.status !== 'waiting';
   cancelRequestButton.disabled = snapshot.status !== 'waiting';
   if (snapshot.activeSessionId !== undefined) {
@@ -527,6 +539,7 @@ function renderQueueStatus(snapshot: StudentSessionSnapshot): void {
     queueStatusKicker.textContent = 'Sua vez chegou';
     queueStatusPosition.textContent = 'O professor está disponível para atender você';
     queueStatusAhead.textContent = 'Entrando no atendimento…';
+    queueEstimatedWait.textContent = '';
     stopQueueWaitClock();
     return;
   }
@@ -541,6 +554,10 @@ function renderQueueStatus(snapshot: StudentSessionSnapshot): void {
     ahead === 0
       ? 'Você é o próximo aluno.'
       : `${ahead} ${ahead === 1 ? 'aluno' : 'alunos'} à sua frente.`;
+  queueEstimatedWait.textContent =
+    snapshot.estimatedWaitMinutes === undefined
+      ? 'Calculando estimativa de espera…'
+      : `Tempo estimado de espera: até ${snapshot.estimatedWaitMinutes} min`;
   queueTeacherPresence.textContent = snapshot.teacherOnline
     ? 'O professor atenderá você assim que estiver disponível.'
     : 'O professor está temporariamente offline. Sua posição foi preservada.';
@@ -651,11 +668,11 @@ function renderAvailableTeachers(teachers: readonly OnlineTeacher[]): void {
   teacherSelect.replaceChildren(placeholder, ...options);
 
   if (teachers.length === 0) {
-    teacherList.replaceChildren(createEmptyTeacherMessage('Nenhum professor disponível agora'));
+    teacherList.replaceChildren(createEmptyTeacherMessage('Nenhum professor online no momento'));
   } else {
     teacherList.replaceChildren(...teachers.map(createTeacherCard));
   }
-  callButton.disabled = selectedId.length === 0;
+  updateCallAction();
 }
 
 function createTeacherCard(teacher: OnlineTeacher): HTMLButtonElement {
@@ -696,7 +713,7 @@ function createTeacherCard(teacher: OnlineTeacher): HTMLButtonElement {
     for (const card of teacherList.querySelectorAll<HTMLButtonElement>('.teacher-card')) {
       card.setAttribute('aria-pressed', String(card.dataset.teacherId === teacher.id));
     }
-    callButton.disabled = false;
+    updateCallAction();
   });
   return button;
 }
@@ -706,6 +723,63 @@ function createEmptyTeacherMessage(message: string): HTMLParagraphElement {
   element.className = 'teacher-list__empty';
   element.textContent = message;
   return element;
+}
+
+function renderProfessorAvailability(
+  availability: ProfessorAvailabilitySnapshot,
+  session: StudentSessionSnapshot,
+): void {
+  professorAvailability.dataset.status = availability.status;
+  professorAvailabilityStatus.textContent =
+    availability.status === 'OFFLINE'
+      ? 'Offline'
+      : availability.status === 'BUSY'
+        ? 'Ocupado'
+        : 'Disponível';
+
+  if (availability.status === 'OFFLINE') {
+    professorAvailabilityTitle.textContent = 'Nenhum professor está online no momento.';
+    professorAvailabilityMessage.textContent =
+      'Assim que um professor entrar, você poderá solicitar atendimento.';
+  } else if (availability.status === 'BUSY') {
+    professorAvailabilityTitle.textContent = 'Todos os professores estão ocupados.';
+    professorAvailabilityMessage.textContent =
+      session.status === 'waiting' && session.queueMode === 'queued'
+        ? 'Você entrou na fila de atendimento e será chamado automaticamente.'
+        : 'Entre na fila de atendimento e você será chamado automaticamente.';
+  } else {
+    professorAvailabilityTitle.textContent = 'Professor disponível para atendimento.';
+    professorAvailabilityMessage.textContent =
+      availability.available === 1
+        ? 'Há um professor livre para atender você agora.'
+        : `Há ${availability.available} professores livres para atender você agora.`;
+  }
+
+  professorAvailabilityCounts.textContent = `${availability.online} online · ${availability.available} ${availability.available === 1 ? 'livre' : 'livres'} · ${availability.busy} ${availability.busy === 1 ? 'ocupado' : 'ocupados'}`;
+  updateCallAction();
+}
+
+function updateCallAction(): void {
+  const selectedTeacher = availableTeachers.find((teacher) => teacher.id === teacherSelect.value);
+  const availability = latestSessionSnapshot?.availability;
+  const sessionStatus = latestSessionSnapshot?.status;
+  const isSessionBusy =
+    sessionStatus === 'waiting' ||
+    sessionStatus === 'accepted' ||
+    sessionStatus === 'connected' ||
+    sessionStatus === 'reconnecting' ||
+    sessionStatus === 'recovering' ||
+    sessionStatus === 'recovery-available';
+  const workflowAllowsCall =
+    lastWorkflowSnapshot === undefined ||
+    createDesktopViewModel(lastWorkflowSnapshot, translations).isCallButtonEnabled;
+  callButtonLabel.textContent =
+    selectedTeacher?.status === 'busy' ? 'Entrar na fila' : 'Iniciar atendimento';
+  callButton.disabled =
+    isSessionBusy ||
+    !workflowAllowsCall ||
+    availability?.queueEnabled === false ||
+    selectedTeacher === undefined;
 }
 
 function initials(name: string): string {
@@ -987,6 +1061,7 @@ void window.professorConnectAuth.getIdentity().then((identity) => {
   }
 });
 void window.professorConnectSession.getState().then((snapshot) => {
+  latestSessionSnapshot = snapshot;
   activeTeacherName = snapshot.activeTeacherName;
   if (snapshot.activeSessionId !== undefined) {
     fileTransferClient.beginSession(
@@ -995,9 +1070,11 @@ void window.professorConnectSession.getState().then((snapshot) => {
     );
   }
   renderRemoteControl(snapshot.remoteControl);
+  renderQueueStatus(snapshot);
+  renderProfessorAvailability(snapshot.availability, snapshot);
 });
 teacherSelect.addEventListener('change', () => {
-  callButton.disabled = teacherSelect.value.length === 0;
+  updateCallAction();
 });
 void window.professorConnect
   .initialize()

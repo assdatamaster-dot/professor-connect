@@ -130,6 +130,7 @@ test('fila expõe somente a posição do aluno e a fila do professor autenticado
     assert.equal(ownRequest.position, 2);
     assert.equal(ownRequest.studentsAhead, 1);
     assert.equal(ownRequest.totalWaiting, 2);
+    assert.equal(ownRequest.estimatedWaitMinutes, 6);
     assert.equal(ownRequest.teacherOnline, true);
     assert.equal(ownRequest.nextExpected, 'AUTOMATIC_CALL');
     assert.equal(typeof ownRequest.waitingSeconds, 'number');

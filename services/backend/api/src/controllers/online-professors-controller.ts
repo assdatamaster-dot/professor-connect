@@ -1,11 +1,11 @@
 import type { Request, Response } from 'express';
 
-import type { PresenceManager } from '@professor-connect/websocket';
+import { calculateProfessorAvailability, type PresenceManager } from '@professor-connect/websocket';
 
 export function createOnlineProfessorsController(presenceManager: PresenceManager) {
   return function getOnlineProfessors(request: Request, response: Response): void {
-    const professors = presenceManager
-      .getOnlineProfessors()
+    const onlineProfessors = presenceManager.getOnlineProfessors();
+    const professors = onlineProfessors
       .filter(
         (professor) =>
           professor.organizationId === request.auth?.organizationId &&
@@ -19,6 +19,10 @@ export function createOnlineProfessorsController(presenceManager: PresenceManage
         ...(professor.avatarUrl === undefined ? {} : { avatarUrl: professor.avatarUrl }),
       }));
 
-    response.json({ count: professors.length, professors });
+    response.json({
+      count: professors.length,
+      professors,
+      availability: calculateProfessorAvailability(onlineProfessors, request.auth?.organizationId),
+    });
   };
 }

@@ -17,6 +17,7 @@ import type {
 
 import { StudentPresenceController } from '../main/student-presence.controller.js';
 import { RemoteControlReceiver } from '../main/remote-control.receiver.js';
+import type { OnlineTeacher, ProfessorAvailabilitySnapshot } from '../shared/session-contracts.js';
 import type {
   WebRtcDescriptionPayload,
   WebRtcIceCandidatePayload,
@@ -28,6 +29,7 @@ interface PresenceEvents {
   'student:heartbeat': () => void;
   'student:register': (payload: { readonly id: string; readonly name: string }) => void;
   'request:session': (payload: { readonly teacherId: string }) => void;
+  'professor:availability:get': () => void;
   'session:end': (payload: { readonly sessionId: string }) => void;
   'webrtc:answer': (payload: WebRtcDescriptionPayload) => void;
   'webrtc:offer': (payload: WebRtcDescriptionPayload) => void;
@@ -40,6 +42,8 @@ interface PresenceEvents {
 }
 
 interface SessionEvents {
+  'professors:available:list': (payload: readonly OnlineTeacher[]) => void;
+  'professors:availability:changed': (payload: ProfessorAvailabilitySnapshot) => void;
   'session:accepted': (payload: {
     readonly requestId: string;
     readonly teacherId: string;
@@ -80,6 +84,13 @@ test('conecta, registra, mantém heartbeat e desconecta o aluno automaticamente'
               availableSince: '2026-08-05T12:00:00.000Z',
             },
           ],
+          availability: {
+            status: 'AVAILABLE',
+            online: 1,
+            available: 1,
+            busy: 0,
+            queueEnabled: true,
+          },
         }),
       );
     }
@@ -112,6 +123,23 @@ test('conecta, registra, mantém heartbeat e desconecta o aluno automaticamente'
     socket.on('student:disconnect', (acknowledge) => {
       studentDisconnectCount += 1;
       acknowledge();
+    });
+    socket.on('professor:availability:get', () => {
+      socket.emit('professors:available:list', [
+        {
+          id: 'teacher-id',
+          name: 'Carlos',
+          status: 'available',
+          availableSince: '2026-08-05T12:00:00.000Z',
+        },
+      ]);
+      socket.emit('professors:availability:changed', {
+        status: 'AVAILABLE',
+        online: 1,
+        available: 1,
+        busy: 0,
+        queueEnabled: true,
+      });
     });
     socket.on('request:session', ({ teacherId }) => {
       requestedTeacherIds.push(teacherId);
@@ -205,6 +233,8 @@ test('conecta, registra, mantém heartbeat e desconecta o aluno automaticamente'
   controller.onWebRtcOffer((payload) => offers.push(payload));
   controller.onWebRtcIceCandidate((payload) => remoteCandidates.push(payload));
   controller.onWebRtcAnswer((payload) => renegotiationAnswers.push(payload));
+  const availabilitySnapshots: ProfessorAvailabilitySnapshot[] = [];
+  controller.onSessionStateChanged((snapshot) => availabilitySnapshots.push(snapshot.availability));
 
   try {
     await controller.connect();
@@ -219,6 +249,54 @@ test('conecta, registra, mantém heartbeat e desconecta o aluno automaticamente'
         availableSince: '2026-08-05T12:00:00.000Z',
       },
     ]);
+    assert.equal(controller.getSessionSnapshot().availability.status, 'AVAILABLE');
+
+    socketServer.emit('professors:available:list', [
+      {
+        id: 'teacher-id',
+        name: 'Carlos',
+        status: 'busy',
+        availableSince: '2026-08-05T12:00:00.000Z',
+      },
+    ]);
+    socketServer.emit('professors:availability:changed', {
+      status: 'BUSY',
+      online: 1,
+      available: 0,
+      busy: 1,
+      queueEnabled: true,
+    });
+    await waitUntil(() => controller.getSessionSnapshot().availability.status === 'BUSY');
+    assert.equal((await controller.getOnlineTeachers())[0]?.status, 'busy');
+
+    socketServer.emit('professors:available:list', []);
+    socketServer.emit('professors:availability:changed', {
+      status: 'OFFLINE',
+      online: 0,
+      available: 0,
+      busy: 0,
+      queueEnabled: false,
+    });
+    await waitUntil(() => controller.getSessionSnapshot().availability.status === 'OFFLINE');
+    assert(availabilitySnapshots.some((snapshot) => snapshot.status === 'BUSY'));
+    assert(availabilitySnapshots.some((snapshot) => snapshot.status === 'OFFLINE'));
+
+    socketServer.emit('professors:available:list', [
+      {
+        id: 'teacher-id',
+        name: 'Carlos',
+        status: 'available',
+        availableSince: '2026-08-05T12:00:00.000Z',
+      },
+    ]);
+    socketServer.emit('professors:availability:changed', {
+      status: 'AVAILABLE',
+      online: 1,
+      available: 1,
+      busy: 0,
+      queueEnabled: true,
+    });
+    await waitUntil(() => controller.getSessionSnapshot().availability.status === 'AVAILABLE');
 
     const waiting = controller.requestSession('teacher-id');
     assert.equal(waiting.message, 'Aguardando resposta…');

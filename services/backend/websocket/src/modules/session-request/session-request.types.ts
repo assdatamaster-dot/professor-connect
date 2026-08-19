@@ -22,10 +22,17 @@ export interface SessionQueueEntry {
   readonly position: number;
   readonly studentsAhead: number;
   readonly totalWaiting: number;
+  readonly estimatedWaitMinutes: number;
   readonly createdAt: string;
   readonly queuedAt?: string;
   readonly mode: 'direct' | 'queued';
   readonly teacherOnline: boolean;
+}
+
+export const ESTIMATED_ATTENDANCE_MINUTES = 3;
+
+export function estimateQueueWaitMinutes(position: number): number {
+  return Math.max(1, position) * ESTIMATED_ATTENDANCE_MINUTES;
 }
 
 export interface SessionRequestDelivery {

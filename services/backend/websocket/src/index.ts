@@ -51,6 +51,11 @@ export {
   type RegisterProfessorInput,
 } from './modules/professor-presence/presence.manager.js';
 export {
+  calculateProfessorAvailability,
+  type ProfessorAvailabilitySnapshot,
+  type ProfessorAvailabilityStatus,
+} from './modules/professor-presence/professor-availability.js';
+export {
   STUDENT_PRESENCE_EVENTS,
   StudentPresenceGateway,
   type OperationalStudentPresencePayload,
@@ -72,14 +77,16 @@ export {
   type TeacherQueuePayload,
 } from './modules/session-request/session-request.gateway.js';
 export { SessionRequestManager } from './modules/session-request/session-request.manager.js';
-export type {
-  SessionRequest,
-  SessionRequestDelivery,
-  SessionRequestExpirationHandler,
-  SessionRequestManagerOptions,
-  SessionRequestStatus,
-  SessionQueueEntry,
-  SessionQueueChangedHandler,
+export {
+  ESTIMATED_ATTENDANCE_MINUTES,
+  estimateQueueWaitMinutes,
+  type SessionRequest,
+  type SessionRequestDelivery,
+  type SessionRequestExpirationHandler,
+  type SessionRequestManagerOptions,
+  type SessionRequestStatus,
+  type SessionQueueEntry,
+  type SessionQueueChangedHandler,
 } from './modules/session-request/session-request.types.js';
 export {
   SESSION_EVENTS,

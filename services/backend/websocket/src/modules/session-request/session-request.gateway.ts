@@ -56,6 +56,7 @@ export interface StudentQueuePayload {
   readonly position: number;
   readonly studentsAhead: number;
   readonly totalWaiting: number;
+  readonly estimatedWaitMinutes: number;
   readonly createdAt: string;
   readonly queuedAt?: string;
   readonly mode: 'direct' | 'queued';
@@ -162,7 +163,7 @@ export class SessionRequestGateway {
         socket.emit(SESSION_REQUEST_EVENTS.ERROR, {
           code: noProfessorOnline ? 'NO_PROFESSOR_ONLINE' : 'REQUEST_NOT_ALLOWED',
           message: noProfessorOnline
-            ? 'Nenhum professor disponível para atendimento neste momento.'
+            ? 'Nenhum professor está online no momento.'
             : error instanceof Error
               ? error.message
               : 'Não foi possível solicitar atendimento.',
@@ -353,6 +354,7 @@ function toStudentQueue(entry: SessionQueueEntry): StudentQueuePayload {
     position: entry.position,
     studentsAhead: entry.studentsAhead,
     totalWaiting: entry.totalWaiting,
+    estimatedWaitMinutes: entry.estimatedWaitMinutes,
     createdAt: entry.createdAt,
     ...(entry.queuedAt === undefined ? {} : { queuedAt: entry.queuedAt }),
     mode: entry.mode,

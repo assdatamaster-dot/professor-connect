@@ -3,6 +3,10 @@ import type { Server, Socket } from 'socket.io';
 import type { CommunicationLogger } from '../communication/communication.types.js';
 import type { SocketIdentity } from '../../auth/socket-auth.types.js';
 import type { PresenceManager } from './presence.manager.js';
+import {
+  calculateProfessorAvailability,
+  type ProfessorAvailabilitySnapshot,
+} from './professor-availability.js';
 
 export const PROFESSOR_PRESENCE_EVENTS = {
   HEARTBEAT: 'professor:heartbeat',
@@ -11,6 +15,7 @@ export const PROFESSOR_PRESENCE_EVENTS = {
   AVAILABILITY_SET: 'professor:availability:set',
   AVAILABILITY_CHANGED: 'professor:availability:changed',
   AVAILABLE_LIST: 'professors:available:list',
+  AVAILABILITY_SNAPSHOT: 'professors:availability:changed',
 } as const;
 
 export interface ProfessorOnlinePayload {
@@ -44,6 +49,9 @@ interface ProfessorPresenceServerEvents {
   }) => void;
   [PROFESSOR_PRESENCE_EVENTS.AVAILABLE_LIST]: (
     payload: readonly AvailableProfessorPayload[],
+  ) => void;
+  [PROFESSOR_PRESENCE_EVENTS.AVAILABILITY_SNAPSHOT]: (
+    payload: ProfessorAvailabilitySnapshot,
   ) => void;
 }
 
@@ -185,8 +193,8 @@ export class ProfessorPresenceGateway {
   private sendAvailableProfessors(socket: ProfessorPresenceSocket): void {
     const identity = readIdentity(socket);
     if (identity === undefined) return;
-    const professors = this.presenceManager
-      .getOnlineProfessors()
+    const onlineProfessors = this.presenceManager.getOnlineProfessors();
+    const professors = onlineProfessors
       .filter(
         (professor) =>
           professor.organizationId === identity.organizationId &&
@@ -200,6 +208,10 @@ export class ProfessorPresenceGateway {
         ...(professor.avatarUrl === undefined ? {} : { avatarUrl: professor.avatarUrl }),
       }));
     socket.emit(PROFESSOR_PRESENCE_EVENTS.AVAILABLE_LIST, professors);
+    socket.emit(
+      PROFESSOR_PRESENCE_EVENTS.AVAILABILITY_SNAPSHOT,
+      calculateProfessorAvailability(onlineProfessors, identity.organizationId),
+    );
   }
 }
 

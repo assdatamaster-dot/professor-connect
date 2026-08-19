@@ -7,6 +7,7 @@ import { io, type Socket } from 'socket.io-client';
 import {
   PresenceManager,
   type AvailableProfessorPayload,
+  type ProfessorAvailabilitySnapshot,
   SessionManager,
   SessionRequestManager,
   StudentPresenceManager,
@@ -31,6 +32,7 @@ interface ServerEvents {
     readonly availableSince?: string;
   }) => void;
   'professors:available:list': (payload: readonly AvailableProfessorPayload[]) => void;
+  'professors:availability:changed': (payload: ProfessorAvailabilitySnapshot) => void;
   'session:requested': (payload: SessionRequestedPayload) => void;
   'session:accepted': (payload: SessionResponsePayload) => void;
   'session:rejected': (payload: SessionResponsePayload) => void;
@@ -156,12 +158,16 @@ test('atualiza posições e chama automaticamente o próximo aluno em tempo real
       items.some((item) => item.id === 'student-b' && item.attendanceStatus === 'waiting'),
     );
     bia.emit('request:session', { teacherId: 'teacher-id' });
-    assert.equal((await biaPosition).position, 1);
+    const biaQueue = await biaPosition;
+    assert.equal(biaQueue.position, 1);
+    assert.equal(biaQueue.estimatedWaitMinutes, 3);
     assert.equal((await biaWaiting).find((item) => item.id === 'student-b')?.position, 1);
     const caioPosition = waitForQueueUpdate(caio);
     const teacherQueue = waitForTeacherQueue(teacher, 2);
     caio.emit('request:session', { teacherId: 'teacher-id' });
-    assert.equal((await caioPosition).position, 2);
+    const caioQueue = await caioPosition;
+    assert.equal(caioQueue.position, 2);
+    assert.equal(caioQueue.estimatedWaitMinutes, 6);
     assert.deepEqual(
       (await teacherQueue).requests.map(({ studentName, position }) => ({ studentName, position })),
       [
@@ -176,15 +182,23 @@ test('atualiza posições e chama automaticamente o próximo aluno em tempo real
     );
     bia.emit('session:cancel', { requestId: 'queue-request-2' });
     assert.equal((await biaCancelled).requestId, 'queue-request-2');
-    assert.equal((await caioPromoted).position, 1);
+    const promotedQueue = await caioPromoted;
+    assert.equal(promotedQueue.position, 1);
+    assert.equal(promotedQueue.estimatedWaitMinutes, 3);
 
     const caioAccepted = waitForAccepted(caio);
     const caioStarted = waitForStarted(caio);
+    const availabilityTransitions: ProfessorAvailabilitySnapshot['status'][] = [];
+    caio.on('professors:availability:changed', ({ status }) => {
+      availabilityTransitions.push(status);
+    });
     teacher.emit('session:end', { sessionId: firstSession.sessionId });
     assert.equal((await caioAccepted).requestId, 'queue-request-3');
     const nextSession = await caioStarted;
     assert.equal(nextSession.studentId, 'student-c');
     assert.equal(sessions.listActiveSessions()[0]?.studentId, 'student-c');
+    assert(availabilityTransitions.includes('AVAILABLE'));
+    assert(availabilityTransitions.includes('BUSY'));
   } finally {
     teacher.disconnect();
     ana.disconnect();
@@ -234,7 +248,7 @@ test('isola a presença operacional por organização e diferencia ausência de 
     student.emit('request:session', { teacherId: 'teacher-inexistente' });
     assert.deepEqual(await noProfessor, {
       code: 'NO_PROFESSOR_ONLINE',
-      message: 'Nenhum professor disponível para atendimento neste momento.',
+      message: 'Nenhum professor está online no momento.',
     });
   } finally {
     teacher.disconnect();

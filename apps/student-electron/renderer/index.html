@@ -54,6 +54,26 @@
 
           <div id="call-section" class="call-action">
             <div class="call-message">
+              <section
+                id="professor-availability"
+                class="professor-availability"
+                data-status="OFFLINE"
+                aria-live="polite"
+              >
+                <span class="professor-availability__indicator" aria-hidden="true"></span>
+                <div class="professor-availability__copy">
+                  <span id="professor-availability-status" class="professor-availability__status"
+                    >Offline</span
+                  >
+                  <strong id="professor-availability-title"
+                    >Nenhum professor está online no momento.</strong
+                  >
+                  <p id="professor-availability-message">
+                    Assim que um professor entrar, você poderá solicitar atendimento.
+                  </p>
+                  <small id="professor-availability-counts">0 professores online</small>
+                </div>
+              </section>
               <span class="help-orb" aria-hidden="true">
                 <svg viewBox="0 0 24 24">
                   <path d="M7 11a5 5 0 1 1 5 5H9l-4 3v-5a5 5 0 0 1 2-3Z" />
@@ -71,6 +91,7 @@
                 >
                 <strong id="queue-status-position" class="queue-status__position"></strong>
                 <span id="queue-status-ahead" class="queue-status__ahead"></span>
+                <span id="queue-estimated-wait" class="queue-status__estimate"></span>
                 <time id="queue-wait-time" class="queue-status__time" datetime="PT0S">00:00</time>
                 <small id="queue-teacher-presence"></small>
               </section>
@@ -97,7 +118,7 @@
                 class="button button--primary button--large"
                 type="button"
               >
-                Solicitar atendimento
+                <span id="call-professor-label">Iniciar atendimento</span>
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="m9 18 6-6-6-6" />
                 </svg>

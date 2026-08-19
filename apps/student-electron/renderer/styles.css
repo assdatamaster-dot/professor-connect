@@ -259,6 +259,85 @@ button svg,
   background: color-mix(in srgb, #fff4c2 58%, transparent);
 }
 
+.professor-availability {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 0.85rem;
+  margin-bottom: 1.35rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid #d6dbe3;
+  border-radius: 14px;
+  background: #f4f6f8;
+}
+
+.professor-availability__indicator {
+  width: 12px;
+  height: 12px;
+  margin-top: 0.2rem;
+  border-radius: 50%;
+  background: #8b95a5;
+  box-shadow: 0 0 0 5px rgb(139 149 165 / 14%);
+}
+
+.professor-availability__copy,
+.professor-availability__copy strong,
+.professor-availability__copy p,
+.professor-availability__copy small {
+  display: block;
+}
+
+.professor-availability__status {
+  color: #657086;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.professor-availability__copy strong {
+  margin-top: 0.28rem;
+  font-size: 1rem;
+}
+
+.professor-availability__copy p {
+  margin: 0.3rem 0 0;
+  color: var(--ink-secondary);
+  font-size: 0.82rem;
+}
+
+.professor-availability__copy small {
+  margin-top: 0.55rem;
+  color: var(--ink-tertiary);
+}
+
+.professor-availability[data-status='BUSY'] {
+  border-color: #efd48a;
+  background: #fff8df;
+}
+
+.professor-availability[data-status='BUSY'] .professor-availability__indicator {
+  background: #e0a100;
+  box-shadow: 0 0 0 5px rgb(224 161 0 / 15%);
+}
+
+.professor-availability[data-status='BUSY'] .professor-availability__status {
+  color: #9a6900;
+}
+
+.professor-availability[data-status='AVAILABLE'] {
+  border-color: #a9dfc6;
+  background: #ecfbf4;
+}
+
+.professor-availability[data-status='AVAILABLE'] .professor-availability__indicator {
+  background: #16a36a;
+  box-shadow: 0 0 0 5px rgb(22 163 106 / 14%);
+}
+
+.professor-availability[data-status='AVAILABLE'] .professor-availability__status {
+  color: #08724a;
+}
+
 .queue-status__kicker,
 .queue-status__ahead,
 .queue-status__time,
@@ -285,6 +364,13 @@ button svg,
   margin-top: 0.55rem;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
+}
+
+.queue-status__estimate {
+  display: block;
+  margin-top: 0.55rem;
+  color: #8a6200;
+  font-weight: 750;
 }
 
 .queue-status small {
@@ -1416,6 +1502,10 @@ button svg,
     display: grid;
     grid-template-columns: auto 1fr;
     gap: 0 18px;
+  }
+
+  .call-message .professor-availability {
+    grid-column: 1 / -1;
   }
 
   .call-message .help-orb {

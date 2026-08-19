@@ -6,6 +6,19 @@ export interface OnlineTeacher {
   readonly avatarUrl?: string;
 }
 
+export type ProfessorAvailabilityStatus = 'OFFLINE' | 'BUSY' | 'AVAILABLE';
+
+export interface ProfessorAvailabilitySnapshot {
+  readonly status: ProfessorAvailabilityStatus;
+  readonly online: number;
+  readonly available: number;
+  readonly busy: number;
+  readonly queueEnabled: boolean;
+  readonly queuePosition?: number;
+  readonly studentsAhead?: number;
+  readonly estimatedWaitMinutes?: number;
+}
+
 export interface AttendanceHistoryItem {
   readonly requestId: string;
   readonly sessionId: string | null;
@@ -41,11 +54,13 @@ export interface StudentSessionSnapshot {
   readonly queuePosition: number | undefined;
   readonly studentsAhead: number | undefined;
   readonly totalWaiting: number | undefined;
+  readonly estimatedWaitMinutes: number | undefined;
   readonly queuedAt: string | undefined;
   readonly teacherOnline: boolean | undefined;
   readonly queueMode: 'direct' | 'queued' | undefined;
   readonly recoveryDeadline?: string;
   readonly latencyMs: number | undefined;
+  readonly availability: ProfessorAvailabilitySnapshot;
   readonly remoteControl: StudentRemoteControlSnapshot;
 }
 

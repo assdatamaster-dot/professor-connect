@@ -9,6 +9,7 @@ import {
   PROFESSOR_PRESENCE_EVENTS,
   PresenceManager,
   ProfessorPresenceGateway,
+  calculateProfessorAvailability,
   type ProfessorOnlinePayload,
 } from '../src/index.js';
 import type { CommunicationLogger } from '../src/modules/communication/communication.types.js';
@@ -17,6 +18,56 @@ interface ClientEvents {
   [PROFESSOR_PRESENCE_EVENTS.HEARTBEAT]: () => void;
   [PROFESSOR_PRESENCE_EVENTS.ONLINE]: (payload: ProfessorOnlinePayload) => void;
 }
+
+test('calcula OFFLINE, BUSY e AVAILABLE para os cenários de presença', () => {
+  const manager = new PresenceManager(
+    () => new Date('2026-08-19T12:00:00.000Z'),
+    (() => {
+      let id = 0;
+      return () => `teacher-${++id}`;
+    })(),
+  );
+
+  assert.deepEqual(calculateProfessorAvailability(manager.getOnlineProfessors()), {
+    status: 'OFFLINE',
+    online: 0,
+    available: 0,
+    busy: 0,
+    queueEnabled: false,
+  });
+
+  manager.registerProfessor({ name: 'Professor 1', socketId: 'socket-1' });
+  assert.equal(calculateProfessorAvailability(manager.getOnlineProfessors()).status, 'AVAILABLE');
+
+  manager.setAvailability('socket-1', 'busy');
+  assert.deepEqual(calculateProfessorAvailability(manager.getOnlineProfessors()), {
+    status: 'BUSY',
+    online: 1,
+    available: 0,
+    busy: 1,
+    queueEnabled: true,
+  });
+
+  manager.registerProfessor({ name: 'Professor 2', socketId: 'socket-2' });
+  manager.registerProfessor({ name: 'Professor 3', socketId: 'socket-3' });
+  manager.setAvailability('socket-2', 'busy');
+  assert.deepEqual(calculateProfessorAvailability(manager.getOnlineProfessors()), {
+    status: 'AVAILABLE',
+    online: 3,
+    available: 1,
+    busy: 2,
+    queueEnabled: true,
+  });
+
+  manager.setAvailability('socket-3', 'busy');
+  assert.deepEqual(calculateProfessorAvailability(manager.getOnlineProfessors()), {
+    status: 'BUSY',
+    online: 3,
+    available: 0,
+    busy: 3,
+    queueEnabled: true,
+  });
+});
 
 test('mantém a presença nominal enquanto o professor envia heartbeat', async () => {
   const httpServer = createServer();

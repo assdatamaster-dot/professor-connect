@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { PresenceManager } from '../professor-presence/presence.manager.js';
 import { StudentPresenceManager } from '../student-presence/student-presence.manager.js';
+import { estimateQueueWaitMinutes } from './session-request.types.js';
 import type {
   SessionQueueChangedHandler,
   SessionQueueEntry,
@@ -174,6 +175,7 @@ export class SessionRequestManager {
       position: index + 1,
       studentsAhead: index,
       totalWaiting: requests.length,
+      estimatedWaitMinutes: estimateQueueWaitMinutes(index + 1),
       createdAt: request.createdAt,
       ...(request.queuedAt === undefined ? {} : { queuedAt: request.queuedAt }),
       mode: request.queuedAt === undefined ? 'direct' : 'queued',

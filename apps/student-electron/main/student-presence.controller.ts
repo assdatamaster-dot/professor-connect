@@ -23,6 +23,7 @@ import type {
   AvailableTeachersListener,
   AttendanceHistoryItem,
   OnlineTeacher,
+  ProfessorAvailabilitySnapshot,
   StudentSessionListener,
   StudentSessionSnapshot,
 } from '../shared/session-contracts.js';
@@ -75,6 +76,7 @@ interface StudentPresenceClientEvents {
 interface StudentPresenceServerEvents {
   'session:request:error': (payload: { readonly code: string; readonly message: string }) => void;
   'professors:available:list': (payload: readonly OnlineTeacher[]) => void;
+  'professors:availability:changed': (payload: ProfessorAvailabilitySnapshot) => void;
   'session:pending': (payload: SessionResponsePayload) => void;
   'session:queue:updated': (payload: StudentQueuePayload) => void;
   'session:queue:cleared': () => void;
@@ -108,6 +110,7 @@ interface StudentQueuePayload {
   readonly position: number;
   readonly studentsAhead: number;
   readonly totalWaiting: number;
+  readonly estimatedWaitMinutes: number;
   readonly createdAt: string;
   readonly queuedAt?: string;
   readonly mode: 'direct' | 'queued';
@@ -164,9 +167,17 @@ export class StudentPresenceController {
     queuePosition: undefined,
     studentsAhead: undefined,
     totalWaiting: undefined,
+    estimatedWaitMinutes: undefined,
     queuedAt: undefined,
     teacherOnline: undefined,
     queueMode: undefined,
+    availability: {
+      status: 'OFFLINE',
+      online: 0,
+      available: 0,
+      busy: 0,
+      queueEnabled: false,
+    },
   };
 
   public constructor(
@@ -226,7 +237,11 @@ export class StudentPresenceController {
     });
     socket.on('professors:available:list', (teachers) => {
       this.availableTeachers = teachers.filter(isOnlineTeacher);
+      this.updateAvailability(availabilityFromTeachers(this.availableTeachers));
       this.notifyAvailableTeachersListeners();
+    });
+    socket.on('professors:availability:changed', (availability) => {
+      if (isProfessorAvailabilitySnapshot(availability)) this.updateAvailability(availability);
     });
     socket.on('session:pending', (payload) => {
       this.updateSessionState(
@@ -254,9 +269,16 @@ export class StudentPresenceController {
         queuePosition: payload.position,
         studentsAhead: payload.studentsAhead,
         totalWaiting: payload.totalWaiting,
+        estimatedWaitMinutes: payload.estimatedWaitMinutes,
         queuedAt: payload.queuedAt ?? payload.createdAt,
         teacherOnline: payload.teacherOnline,
         queueMode: payload.mode,
+        availability: {
+          ...this.sessionState.availability,
+          queuePosition: payload.position,
+          studentsAhead: payload.studentsAhead,
+          estimatedWaitMinutes: payload.estimatedWaitMinutes,
+        },
       };
       this.notifySessionListeners();
     });
@@ -472,6 +494,11 @@ export class StudentPresenceController {
       throw new Error('Resposta inválida ao listar professores');
     }
     this.availableTeachers = professors.filter(isOnlineTeacher);
+    const availability =
+      'availability' in payload && isProfessorAvailabilitySnapshot(payload.availability)
+        ? payload.availability
+        : availabilityFromTeachers(this.availableTeachers);
+    this.updateAvailability(availability);
     return this.availableTeachers;
   }
 
@@ -685,10 +712,34 @@ export class StudentPresenceController {
       queuePosition: undefined,
       studentsAhead: undefined,
       totalWaiting: undefined,
+      estimatedWaitMinutes: undefined,
       queuedAt: undefined,
       teacherOnline: undefined,
       queueMode: undefined,
+      availability: withoutQueueMetadata(this.sessionState.availability),
     };
+  }
+
+  private updateAvailability(availability: ProfessorAvailabilitySnapshot): void {
+    const queueMetadata =
+      this.sessionState.status === 'waiting' && this.sessionState.queueMode === 'queued'
+        ? {
+            ...(this.sessionState.queuePosition === undefined
+              ? {}
+              : { queuePosition: this.sessionState.queuePosition }),
+            ...(this.sessionState.studentsAhead === undefined
+              ? {}
+              : { studentsAhead: this.sessionState.studentsAhead }),
+            ...(this.sessionState.estimatedWaitMinutes === undefined
+              ? {}
+              : { estimatedWaitMinutes: this.sessionState.estimatedWaitMinutes }),
+          }
+        : {};
+    this.sessionState = {
+      ...this.sessionState,
+      availability: { ...availability, ...queueMetadata },
+    };
+    this.notifySessionListeners();
   }
 
   private notifySessionListeners(): void {
@@ -858,8 +909,49 @@ function isOnlineTeacher(value: unknown): value is OnlineTeacher {
     'name' in value &&
     typeof value.name === 'string' &&
     'status' in value &&
-    value.status === 'available' &&
+    (value.status === 'available' || value.status === 'busy') &&
     'availableSince' in value &&
     typeof value.availableSince === 'string'
   );
+}
+
+function availabilityFromTeachers(
+  teachers: readonly OnlineTeacher[],
+): ProfessorAvailabilitySnapshot {
+  const available = teachers.filter((teacher) => teacher.status === 'available').length;
+  const busy = teachers.filter((teacher) => teacher.status === 'busy').length;
+  const online = teachers.length;
+  return {
+    status: online === 0 ? 'OFFLINE' : available === 0 ? 'BUSY' : 'AVAILABLE',
+    online,
+    available,
+    busy,
+    queueEnabled: online > 0,
+  };
+}
+
+function isProfessorAvailabilitySnapshot(value: unknown): value is ProfessorAvailabilitySnapshot {
+  if (typeof value !== 'object' || value === null) return false;
+  const record = value as Readonly<Record<string, unknown>>;
+  return (
+    (record.status === 'OFFLINE' || record.status === 'BUSY' || record.status === 'AVAILABLE') &&
+    isNonNegativeInteger(record.online) &&
+    isNonNegativeInteger(record.available) &&
+    isNonNegativeInteger(record.busy) &&
+    typeof record.queueEnabled === 'boolean'
+  );
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+function withoutQueueMetadata(
+  availability: ProfessorAvailabilitySnapshot,
+): ProfessorAvailabilitySnapshot {
+  const { queuePosition, studentsAhead, estimatedWaitMinutes, ...snapshot } = availability;
+  void queuePosition;
+  void studentsAhead;
+  void estimatedWaitMinutes;
+  return snapshot;
 }

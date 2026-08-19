@@ -46,6 +46,7 @@ export function createAttendanceQueueController(manager: SessionRequestManager) 
                 position: entry.position,
                 studentsAhead: entry.studentsAhead,
                 totalWaiting: entry.totalWaiting,
+                estimatedWaitMinutes: entry.estimatedWaitMinutes,
                 requestedAt: entry.createdAt,
                 queuedAt: entry.queuedAt ?? null,
                 waitingSeconds: elapsedSeconds(entry.createdAt),

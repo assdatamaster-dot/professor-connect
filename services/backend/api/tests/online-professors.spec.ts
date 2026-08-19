@@ -7,7 +7,7 @@ import { PresenceManager } from '@professor-connect/websocket';
 import { createApp } from '../src/app.js';
 import { AUTHORIZATION_HEADERS, TEST_IDENTITY, TestAuthService } from './auth-fixture.js';
 
-test('GET /api/professors/online retorna somente professores disponíveis', async () => {
+test('GET /api/professors/online distingue professores livres, ocupados e offline', async () => {
   const presenceManager = new PresenceManager(
     () => new Date('2026-01-01T00:00:00.000Z'),
     () => 'professor-id',
@@ -29,7 +29,17 @@ test('GET /api/professors/online retorna somente professores disponíveis', asyn
       headers: AUTHORIZATION_HEADERS,
     });
     assert.equal(emptyResponse.status, 200);
-    assert.deepEqual(await emptyResponse.json(), { count: 0, professors: [] });
+    assert.deepEqual(await emptyResponse.json(), {
+      count: 0,
+      professors: [],
+      availability: {
+        status: 'OFFLINE',
+        online: 0,
+        available: 0,
+        busy: 0,
+        queueEnabled: false,
+      },
+    });
 
     presenceManager.registerProfessor({
       name: 'Carlos',
@@ -51,13 +61,42 @@ test('GET /api/professors/online retorna somente professores disponíveis', asyn
           availableSince: '2026-01-01T00:00:00.000Z',
         },
       ],
+      availability: {
+        status: 'AVAILABLE',
+        online: 1,
+        available: 1,
+        busy: 0,
+        queueEnabled: true,
+      },
+    });
+
+    presenceManager.setAvailability('socket-id', 'busy');
+    const busyResponse = await fetch(`${baseUrl}/api/professors/online`, {
+      headers: AUTHORIZATION_HEADERS,
+    });
+    assert.deepEqual((await busyResponse.json()).availability, {
+      status: 'BUSY',
+      online: 1,
+      available: 0,
+      busy: 1,
+      queueEnabled: true,
     });
 
     presenceManager.setAvailability('socket-id', 'unavailable');
     const unavailableResponse = await fetch(`${baseUrl}/api/professors/online`, {
       headers: AUTHORIZATION_HEADERS,
     });
-    assert.deepEqual(await unavailableResponse.json(), { count: 0, professors: [] });
+    assert.deepEqual(await unavailableResponse.json(), {
+      count: 0,
+      professors: [],
+      availability: {
+        status: 'OFFLINE',
+        online: 0,
+        available: 0,
+        busy: 0,
+        queueEnabled: false,
+      },
+    });
   } finally {
     await new Promise<void>((resolve, reject) => {
       server.close((error) => (error === undefined ? resolve() : reject(error)));
