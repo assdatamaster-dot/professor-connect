@@ -47,7 +47,7 @@ RUN npm ci --omit=dev && npm run prisma:generate && npm cache clean --force
 
 FROM base AS production
 
-ARG APP_VERSION=0.1.3
+ARG APP_VERSION=0.1.4
 ARG GIT_SHA=unknown
 ARG BUILD_DATE=unknown
 

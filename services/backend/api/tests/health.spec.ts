@@ -11,7 +11,7 @@ test('GET /health responde com o estado da aplicação', async () => {
   await mkdir(teacherDirectory);
   await writeFile(
     join(teacherDirectory, 'latest.yml'),
-    'version: 0.1.3\npath: teacher.exe\nsha512: test\n',
+    'version: 0.1.4\npath: teacher.exe\nsha512: test\n',
     'utf8',
   );
   await writeFile(join(teacherDirectory, 'teacher.exe'), 'installer fixture', 'utf8');
@@ -36,7 +36,7 @@ test('GET /health responde com o estado da aplicação', async () => {
     );
     const body = (await response.json()) as Record<string, unknown>;
     assert.equal(body.status, 'ok');
-    assert.equal(body.version, '0.1.3');
+    assert.equal(body.version, '0.1.4');
     assert.equal(typeof body.environment, 'string');
     assert.equal(typeof body.gitSha, 'string');
     assert.equal(typeof body.buildDate, 'string');
