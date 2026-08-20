@@ -86,17 +86,72 @@ jobs:
       - name: 08 · Stage update artifacts
         run: npm run updates:stage
 
-      - name: 09 · Validate ASAR and create QA report
-        run: >-
-          npm run updates:release:validate --
-          --version "${{ steps.release_context.outputs.version }}"
-          --git-sha "${{ steps.release_context.outputs.git_sha }}"
+      - name: 09 · Diagnose workspace before QA report generation
+        shell: pwsh
+        run: |
+          Write-Host '=== Location before report generation ==='
+          Get-Location
+          Write-Host "GITHUB_WORKSPACE=$env:GITHUB_WORKSPACE"
+          Write-Host "RUNNER_WORKSPACE=$env:RUNNER_WORKSPACE"
+          Write-Host '=== Workspace root ==='
+          Get-ChildItem -Force
+          Write-Host "release-updates exists: $(Test-Path -LiteralPath 'release-updates' -PathType Container)"
 
-      - name: 10 · Publish QA report in the job summary
+      - name: 10 · Validate ASAR and create QA report
+        id: qa_report
+        shell: pwsh
+        run: |
+          npm run updates:release:validate -- --version "${{ steps.release_context.outputs.version }}" --git-sha "${{ steps.release_context.outputs.git_sha }}"
+          $generatorExitCode = $LASTEXITCODE
+
+          Write-Host "Report generator exit code: $generatorExitCode"
+          Write-Host '=== Location inside generator step after npm ==='
+          Get-Location
+          Write-Host "GITHUB_WORKSPACE=$env:GITHUB_WORKSPACE"
+          Write-Host "release-updates exists: $(Test-Path -LiteralPath 'release-updates' -PathType Container)"
+          Write-Host "release-report.md exists: $(Test-Path -LiteralPath 'release-updates/release-report.md' -PathType Leaf)"
+          Get-ChildItem -Force 'release-updates' -ErrorAction SilentlyContinue
+          if (Test-Path -LiteralPath 'release-updates/release-report.md' -PathType Leaf) {
+            Get-Item -LiteralPath 'release-updates/release-report.md' |
+              Select-Object FullName, Length, LastWriteTime
+          }
+
+          if ($generatorExitCode -ne 0) {
+            exit $generatorExitCode
+          }
+
+      - name: 11 · Diagnose workspace after QA report generation
+        if: ${{ always() }}
+        shell: pwsh
+        run: |
+          Write-Host '=== Location in step after report generation ==='
+          Get-Location
+          Write-Host "GITHUB_WORKSPACE=$env:GITHUB_WORKSPACE"
+          Write-Host "RUNNER_WORKSPACE=$env:RUNNER_WORKSPACE"
+          Write-Host "Generator report output=${{ steps.qa_report.outputs.report }}"
+          Write-Host "release-updates exists: $(Test-Path -LiteralPath 'release-updates' -PathType Container)"
+          Write-Host "release-report.md exists: $(Test-Path -LiteralPath 'release-updates/release-report.md' -PathType Leaf)"
+          Get-ChildItem -Force 'release-updates' -ErrorAction SilentlyContinue
+          if (Test-Path -LiteralPath 'release-updates/release-report.md' -PathType Leaf) {
+            Get-Item -LiteralPath 'release-updates/release-report.md' |
+              Select-Object FullName, Length, LastWriteTime
+          }
+
+          Write-Host '=== release-report.md under GITHUB_WORKSPACE ==='
+          Get-ChildItem -Path $env:GITHUB_WORKSPACE -Recurse -Filter 'release-report.md' -File -ErrorAction SilentlyContinue |
+            Select-Object FullName, Length, LastWriteTime
+
+          if ($env:RUNNER_WORKSPACE -ne $env:GITHUB_WORKSPACE) {
+            Write-Host '=== release-report.md under RUNNER_WORKSPACE ==='
+            Get-ChildItem -Path $env:RUNNER_WORKSPACE -Recurse -Filter 'release-report.md' -File -ErrorAction SilentlyContinue |
+              Select-Object FullName, Length, LastWriteTime
+          }
+
+      - name: 12 · Publish QA report in the job summary
         shell: pwsh
         run: Get-Content release-updates/release-report.md >> $env:GITHUB_STEP_SUMMARY
 
-      - name: 11 · Keep QA artifacts outside production
+      - name: 13 · Keep QA artifacts outside production
         uses: actions/upload-artifact@v7
         with:
           name: desktop-qa-${{ steps.release_context.outputs.version }}-${{ github.sha }}
