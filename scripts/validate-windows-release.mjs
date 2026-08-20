@@ -7,7 +7,10 @@ import { fileURLToPath } from 'node:url';
 
 import * as asar from '@electron/asar';
 
-const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const moduleRepository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const repository = process.env.GITHUB_WORKSPACE
+  ? path.resolve(process.env.GITHUB_WORKSPACE)
+  : moduleRepository;
 const requireSignature = process.argv.includes('--require-signature');
 const expectedVersion = readArgument('--version') ?? (await readJson('package.json')).version;
 const expectedGitSha = readArgument('--git-sha') ?? git(['rev-parse', 'HEAD']);
@@ -107,12 +110,18 @@ await writeFile(
   `${results.map((entry) => `${entry.sha256}  ${entry.application}/${entry.artifact}`).join('\n')}\n`,
   'utf8',
 );
+await Promise.all([
+  assertFile(jsonPath, 'release-report.json'),
+  assertFile(markdownPath, 'release-report.md'),
+  assertFile(sumsPath, 'SHA256SUMS.txt'),
+]);
 
 process.stdout.write(`RELEASE_VALIDATION ${JSON.stringify(report)}\n`);
 if (process.env.GITHUB_OUTPUT !== undefined) {
+  const reportOutput = path.relative(repository, markdownPath).split(path.sep).join('/');
   await appendFile(
     process.env.GITHUB_OUTPUT,
-    `report=${path.relative(repository, markdownPath)}\nversion=${expectedVersion}\ngit_sha=${expectedGitSha}\n`,
+    `report=${reportOutput}\nversion=${expectedVersion}\ngit_sha=${expectedGitSha}\n`,
     'utf8',
   );
 }
@@ -178,6 +187,11 @@ async function hashFile(filePath, algorithm, encoding) {
   const hash = createHash(algorithm);
   for await (const chunk of createReadStream(filePath)) hash.update(chunk);
   return hash.digest(encoding);
+}
+
+async function assertFile(filePath, label) {
+  const fileStat = await stat(filePath);
+  assert(fileStat.isFile(), `${label} não foi criado em ${filePath}`);
 }
 
 function requireMatch(value, pattern, label) {
