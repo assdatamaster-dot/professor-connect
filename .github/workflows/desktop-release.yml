@@ -92,17 +92,17 @@ jobs:
           --version "${{ steps.release_context.outputs.version }}"
           --git-sha "${{ steps.release_context.outputs.git_sha }}"
 
-      - name: 10 · Keep QA artifacts outside production
+      - name: 10 · Publish QA report in the job summary
+        shell: pwsh
+        run: Get-Content release-updates/release-report.md >> $env:GITHUB_STEP_SUMMARY
+
+      - name: 11 · Keep QA artifacts outside production
         uses: actions/upload-artifact@v7
         with:
           name: desktop-qa-${{ steps.release_context.outputs.version }}-${{ github.sha }}
           path: release-updates/
           if-no-files-found: error
           retention-days: 14
-
-      - name: 11 · Publish QA report in the job summary
-        shell: pwsh
-        run: Get-Content release-updates/release-report.md >> $env:GITHUB_STEP_SUMMARY
 
   release:
     name: 06-13 · Signed and promoted Windows release
